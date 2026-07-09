@@ -143,7 +143,7 @@ async function resolvePath(root, filePath, { forWrite = false } = {}) {
     return real;
   }
 
-  const parent = await fs.realpath(path.dirname(target));
+  const parent = await ensureWriteParent(root, path.dirname(target));
   if (!isInside(root, parent)) {
     throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
   }
@@ -163,6 +163,39 @@ async function resolvePath(root, filePath, { forWrite = false } = {}) {
   }
 
   return path.join(parent, path.basename(target));
+}
+
+async function ensureWriteParent(root, parentPath) {
+  if (!isInside(root, parentPath)) {
+    throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+  }
+
+  let current = root;
+  const relative = path.relative(root, parentPath);
+  for (const part of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, part);
+    let stat;
+    try {
+      stat = await fs.lstat(current);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      await fs.mkdir(current);
+      continue;
+    }
+
+    if (stat.isSymbolicLink()) {
+      const real = await fs.realpath(current);
+      if (!isInside(root, real)) {
+        throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+      }
+      stat = await fs.stat(real);
+    }
+    if (!stat.isDirectory()) {
+      throw new WorkspaceError(400, 'Path parent is not a directory.');
+    }
+  }
+
+  return fs.realpath(parentPath);
 }
 
 function assertMarkdown(filePath) {

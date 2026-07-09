@@ -56,6 +56,31 @@ test('saves markdown atomically without leaving temp files', async () => {
   );
 });
 
+test('creates missing folders when saving markdown', async () => {
+  const root = await tempRoot();
+  const workspace = await createWorkspace(root);
+
+  await workspace.saveFile('/daily/2026-07-09.md', '# 2026-07-09\n');
+
+  assert.equal(
+    await fs.readFile(path.join(root, 'daily', '2026-07-09.md'), 'utf8'),
+    '# 2026-07-09\n'
+  );
+});
+
+test('rejects missing folders through symlink escapes', async () => {
+  const root = await tempRoot();
+  const outside = await tempRoot();
+
+  await fs.symlink(outside, path.join(root, 'escape'));
+
+  const workspace = await createWorkspace(root);
+  await assert.rejects(
+    () => workspace.saveFile('/escape/note.md', 'nope'),
+    /outside WORKSPACE_ROOT/
+  );
+});
+
 test('returns git diff for a markdown file', async () => {
   const root = await tempRoot();
   const note = path.join(root, 'note.md');
