@@ -55,6 +55,13 @@ export function renderMarkdown(source = '') {
       continue;
     }
 
+    const table = parseTable(lines, index);
+    if (table) {
+      blocks.push(table.block);
+      index = table.nextIndex;
+      continue;
+    }
+
     const list = parseListItem(line);
     if (list) {
       const ordered = list.ordered;
@@ -73,7 +80,7 @@ export function renderMarkdown(source = '') {
     while (
       index < lines.length &&
       lines[index].trim() &&
-      !startsBlock(lines[index])
+      !startsBlock(lines[index], lines[index + 1])
     ) {
       paragraph.push(lines[index].trim());
       index += 1;
@@ -124,6 +131,86 @@ function parseInlineToken(token) {
   return { type: 'em', text: token.slice(1, -1) };
 }
 
+function parseTable(lines, index) {
+  if (!isTableStart(lines[index], lines[index + 1])) return null;
+
+  const headers = parseTableRow(lines[index]);
+  const alignments = parseTableDivider(lines[index + 1]);
+  const rows = [];
+  index += 2;
+
+  while (index < lines.length && lines[index].trim()) {
+    const row = parseTableRow(lines[index]);
+    if (!row) break;
+    rows.push(normalizeTableCells(row, headers.length).map(parseInline));
+    index += 1;
+  }
+
+  return {
+    block: {
+      type: 'table',
+      alignments,
+      headers: headers.map(parseInline),
+      rows
+    },
+    nextIndex: index
+  };
+}
+
+function isTableStart(header, divider) {
+  const headers = parseTableRow(header);
+  const alignments = parseTableDivider(divider);
+  return !!headers && !!alignments && headers.length === alignments.length;
+}
+
+function parseTableRow(line = '') {
+  if (!line.includes('|')) return null;
+
+  const cells = [];
+  let cell = '';
+  const trimmed = line.trim();
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === '\\' && trimmed[index + 1] === '|') {
+      cell += '|';
+      index += 1;
+    } else if (char === '|') {
+      cells.push(cell.trim());
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell.trim());
+
+  if (cells[0] === '') cells.shift();
+  if (cells[cells.length - 1] === '') cells.pop();
+  return cells.length > 1 ? cells : null;
+}
+
+function parseTableDivider(line) {
+  const cells = parseTableRow(line);
+  if (!cells) return null;
+
+  const alignments = [];
+  for (const cell of cells) {
+    const marker = cell.replace(/\s+/g, '');
+    if (!/^:?-{3,}:?$/.test(marker)) return null;
+    alignments.push(
+      marker.startsWith(':') && marker.endsWith(':')
+        ? 'center'
+        : marker.endsWith(':')
+          ? 'right'
+          : 'left'
+    );
+  }
+  return alignments;
+}
+
+function normalizeTableCells(cells, count) {
+  return Array.from({ length: count }, (_, index) => cells[index] || '');
+}
+
 function parseListItem(line) {
   const match = line.match(/^\s*((?:[-*+])|(?:\d+[.)]))\s+(.+)$/);
   if (!match) return null;
@@ -137,12 +224,13 @@ function parseListItem(line) {
   };
 }
 
-function startsBlock(line) {
+function startsBlock(line, nextLine = '') {
   return (
     /^```/.test(line) ||
     /^(#{1,6})\s+/.test(line) ||
     /^>\s?/.test(line) ||
     /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim()) ||
+    isTableStart(line, nextLine) ||
     !!parseListItem(line)
   );
 }

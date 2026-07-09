@@ -793,6 +793,31 @@
                 <hr />
               {:else if block.type === 'code'}
                 <pre><code>{block.text}</code></pre>
+              {:else if block.type === 'table'}
+                <div class="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        {#each block.headers as header, column}
+                          <th class={`align-${block.alignments[column]}`}>
+                            {@render inline(header)}
+                          </th>
+                        {/each}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each block.rows as row}
+                        <tr>
+                          {#each row as cell, column}
+                            <td class={`align-${block.alignments[column]}`}>
+                              {@render inline(cell)}
+                            </td>
+                          {/each}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
               {:else if block.type === 'list'}
                 <svelte:element this={block.ordered ? 'ol' : 'ul'}>
                   {#each block.items as item}

@@ -512,7 +512,8 @@ button {
 .preview-pane ul,
 .preview-pane ol,
 .preview-pane blockquote,
-.preview-pane pre {
+.preview-pane pre,
+.preview-pane .table-scroll {
   margin: 0.8em 0;
 }
 
@@ -552,6 +553,37 @@ button {
   border: 1px solid #e1e5eb;
   border-radius: 6px;
   background: #f7f9fb;
+}
+
+.preview-pane .table-scroll {
+  overflow: auto;
+}
+
+.preview-pane table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.preview-pane th,
+.preview-pane td {
+  padding: 8px 10px;
+  border: 1px solid #dfe6ee;
+  vertical-align: top;
+}
+
+.preview-pane th {
+  background: #f3f6fa;
+  color: #172033;
+  font-weight: 720;
+}
+
+.preview-pane .align-center {
+  text-align: center;
+}
+
+.preview-pane .align-right {
+  text-align: right;
 }
 
 .preview-pane code {

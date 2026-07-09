@@ -33,6 +33,25 @@ test('drops unsafe link targets', () => {
   assert.equal(parseInline('[bad](javascript:alert(1))')[0].href, '');
 });
 
+test('renders pipe tables with alignment and inline cells', () => {
+  const blocks = renderMarkdown(`Intro
+| Name | Scale | Notes |
+|:---|---:|:---:|
+| FM4NPP | 10B-100B | **raw** |
+| Q2C | 100M-100B | [docs](/wiki/q2c) |
+`);
+
+  assert.equal(blocks[0].type, 'paragraph');
+  assert.equal(blocks[1].type, 'table');
+  assert.deepEqual(blocks[1].alignments, ['left', 'right', 'center']);
+  assert.deepEqual(
+    blocks[1].headers.map((cell) => cell[0].text),
+    ['Name', 'Scale', 'Notes']
+  );
+  assert.equal(blocks[1].rows[0][2][0].type, 'strong');
+  assert.equal(blocks[1].rows[1][2][0].href, '/wiki/q2c');
+});
+
 test('auto-links bare URLs', () => {
   assert.deepEqual(parseInline('See https://example.com/doc.pdf')[1], {
     type: 'link',
