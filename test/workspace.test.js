@@ -76,6 +76,53 @@ test('returns markdown, image, and PDF files in the workspace tree', async () =>
   ]);
 });
 
+test('searches visible paths and markdown content from an index', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'raw', 'assets'), { recursive: true });
+  await fs.mkdir(path.join(root, '.hidden'), { recursive: true });
+  await fs.writeFile(path.join(root, 'note.md'), 'First\nNeedle found\n');
+  await fs.writeFile(path.join(root, 'raw', 'assets', 'photo.png'), 'png');
+  await fs.writeFile(path.join(root, '.hidden', 'secret.md'), 'Needle hidden\n');
+
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(await workspace.searchFiles('needle'), [
+    {
+      name: 'note.md',
+      type: 'file',
+      path: '/note.md',
+      fileKind: 'markdown',
+      kind: 'content',
+      from: 6,
+      to: 12,
+      lineNumber: 2,
+      preview: 'Needle found'
+    }
+  ]);
+  assert.deepEqual(await workspace.searchFiles('photo'), [
+    {
+      name: 'photo.png',
+      type: 'file',
+      path: '/raw/assets/photo.png',
+      fileKind: 'image',
+      kind: 'path'
+    }
+  ]);
+});
+
+test('invalidates the search index after saving markdown', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old phrase\n');
+
+  const workspace = await createWorkspace(root);
+
+  assert.equal((await workspace.searchFiles('old'))[0].path, '/note.md');
+  await workspace.saveFile('/note.md', 'new phrase\n');
+
+  assert.deepEqual(await workspace.searchFiles('old'), []);
+  assert.equal((await workspace.searchFiles('new'))[0].path, '/note.md');
+});
+
 test('resolves media files for read-only preview', async () => {
   const root = await tempRoot();
   await fs.mkdir(path.join(root, 'raw', 'assets'), { recursive: true });

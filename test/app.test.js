@@ -27,3 +27,11 @@ test('reads from the selected workspace root', async () => {
   assert.equal((await workspaces.get('1').loadFile('/second.md')).content, 'second');
   assert.throws(() => workspaces.get('9'), /Unknown workspace root/);
 });
+
+test('searches through the selected workspace root', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'Needle found\n');
+  const workspaces = await createWorkspaceRegistry([root]);
+
+  assert.equal((await workspaces.get().searchFiles('needle'))[0].path, '/note.md');
+});

@@ -57,7 +57,7 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
-  $: queueWorkspaceSearch(searchQuery.trim(), workspaceTree);
+  $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
     : status.includes('Syncing')
@@ -651,7 +651,7 @@
       ?.scrollIntoView({ block: 'center' });
   }
 
-  function queueWorkspaceSearch(query, nodes) {
+  function queueWorkspaceSearch(query, root, _nodes) {
     clearTimeout(searchTimer);
     const run = ++searchRun;
 
@@ -662,68 +662,21 @@
     }
 
     searchStatus = 'Searching...';
-    searchTimer = setTimeout(() => searchWorkspace(query, nodes, run), 250);
+    searchTimer = setTimeout(() => searchWorkspace(query, root, run), 250);
   }
 
-  async function searchWorkspace(query, nodes, run) {
-    const needle = query.toLowerCase();
-    const results = [];
-
+  async function searchWorkspace(query, root, run) {
     try {
-      // ponytail: linear scan over visible Markdown files; add an index if big workspaces get slow.
-      for (const file of collectFiles(nodes)) {
-        if (run !== searchRun || results.length >= 50) return;
-
-        if (file.path.toLowerCase().includes(needle)) {
-          results.push({ ...file, kind: 'path' });
-          continue;
-        }
-        if (file.fileKind !== 'markdown') continue;
-
-        const match = findContentMatch(
-          await readSearchContent(file.path),
-          needle
-        );
-        if (match) results.push({ ...file, kind: 'content', ...match });
-      }
-
-      if (run === searchRun) {
+      const results = await requestJson(
+        `/api/workspace/search?root=${encodeURIComponent(root)}&q=${encodeURIComponent(query)}`
+      );
+      if (run === searchRun && root === selectedRoot) {
         searchResults = results;
         searchStatus = results.length ? '' : 'No matches';
       }
     } catch (err) {
-      if (run === searchRun) searchStatus = err.message;
+      if (run === searchRun && root === selectedRoot) searchStatus = err.message;
     }
-  }
-
-  async function readSearchContent(path) {
-    if (path === selectedPath) return content;
-    const key = rootPathKey(selectedRoot, path);
-    if (fileCache.has(key)) return fileCache.get(key);
-
-    const file = await requestJson(
-      `/api/workspace/load?root=${encodeURIComponent(selectedRoot)}&path=${encodeURIComponent(path)}`
-    );
-    fileCache.set(key, file.content);
-    return file.content;
-  }
-
-  function findContentMatch(text, needle) {
-    const index = text.toLowerCase().indexOf(needle);
-    if (index === -1) return null;
-
-    const lineStart = text.lastIndexOf('\n', index) + 1;
-    const lineEnd = text.indexOf('\n', index);
-    const line = text
-      .slice(lineStart, lineEnd === -1 ? text.length : lineEnd)
-      .trim();
-
-    return {
-      from: index,
-      to: index + needle.length,
-      lineNumber: text.slice(0, lineStart).split('\n').length,
-      preview: line.length > 140 ? `${line.slice(0, 137)}...` : line
-    };
   }
 
   async function openSearchResult(result) {

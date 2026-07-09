@@ -24,14 +24,26 @@ export class WorkspaceError extends Error {
 
 export async function createWorkspace(workspaceRoot) {
   const root = await fs.realpath(workspaceRoot);
+  let searchIndex;
 
   return {
     root,
-    readTree: () => readTree(root, root),
+    readTree: async () => {
+      searchIndex = null;
+      return readTree(root, root);
+    },
     loadFile: (filePath) => loadFile(root, filePath),
     loadMediaFile: (filePath) => loadMediaFile(root, filePath),
     diffFile: (filePath) => diffFile(root, filePath),
-    saveFile: (filePath, content) => saveFile(root, filePath, content),
+    saveFile: async (filePath, content) => {
+      const result = await saveFile(root, filePath, content);
+      searchIndex = null;
+      return result;
+    },
+    searchFiles: async (query, options) => {
+      searchIndex ??= await buildSearchIndex(root);
+      return searchIndex.search(query, options);
+    },
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
 }
@@ -141,6 +153,109 @@ async function saveFile(root, filePath, content) {
   }
 
   return { success: true, timestamp: new Date().toISOString() };
+}
+
+async function buildSearchIndex(root) {
+  const files = await readSearchFiles(root, root);
+
+  return {
+    search(query, { limit = 50 } = {}) {
+      const needle = normalizeSearchQuery(query);
+      if (!needle) return [];
+
+      const results = [];
+      const maxResults = Math.max(1, Math.min(Number(limit) || 50, 100));
+
+      for (const file of files) {
+        if (results.length >= maxResults) break;
+
+        if (file.lowerPath.includes(needle)) {
+          results.push(searchResult(file, 'path'));
+          continue;
+        }
+        if (file.fileKind !== 'markdown') continue;
+
+        const match = findSearchContentMatch(file, needle);
+        if (match) results.push({ ...searchResult(file, 'content'), ...match });
+      }
+
+      return results;
+    }
+  };
+}
+
+async function readSearchFiles(root, dir, prefix = '') {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.sort(sortEntries)) {
+    if (isHiddenSearchEntry(entry.name)) continue;
+
+    const absolute = path.join(dir, entry.name);
+    const real = await realpathOrNull(absolute);
+    if (!real || !isInside(root, real)) continue;
+
+    const nodePath = `${prefix}/${entry.name}`.replaceAll(path.sep, '/');
+    if (entry.isDirectory()) {
+      files.push(...(await readSearchFiles(root, absolute, nodePath)));
+    } else if (entry.isFile()) {
+      const fileKind = fileKindForPath(entry.name);
+      if (!fileKind) continue;
+
+      const file = {
+        name: entry.name,
+        type: 'file',
+        path: nodePath,
+        fileKind,
+        lowerPath: nodePath.toLowerCase()
+      };
+
+      if (fileKind === 'markdown') {
+        file.content = await fs.readFile(real, 'utf8');
+        file.lowerContent = file.content.toLowerCase();
+      }
+
+      files.push(file);
+    }
+  }
+
+  return files;
+}
+
+function normalizeSearchQuery(query) {
+  return typeof query === 'string' ? query.trim().toLowerCase() : '';
+}
+
+function isHiddenSearchEntry(name) {
+  return name.endsWith('.tmp') || name.startsWith('.') || name === 'node_modules';
+}
+
+function searchResult(file, kind) {
+  return {
+    name: file.name,
+    type: file.type,
+    path: file.path,
+    fileKind: file.fileKind,
+    kind
+  };
+}
+
+function findSearchContentMatch(file, needle) {
+  const index = file.lowerContent.indexOf(needle);
+  if (index === -1) return null;
+
+  const lineStart = file.content.lastIndexOf('\n', index) + 1;
+  const lineEnd = file.content.indexOf('\n', index);
+  const line = file.content
+    .slice(lineStart, lineEnd === -1 ? file.content.length : lineEnd)
+    .trim();
+
+  return {
+    from: index,
+    to: index + needle.length,
+    lineNumber: file.content.slice(0, lineStart).split('\n').length,
+    preview: line.length > 140 ? `${line.slice(0, 137)}...` : line
+  };
 }
 
 async function resolvePath(root, filePath, { forWrite = false } = {}) {
