@@ -25,6 +25,7 @@
   let sidebarVisible = true;
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
+  let appShell;
   let editorHost;
   let editorView;
   let saveTimer;
@@ -47,10 +48,12 @@
 
   onMount(async () => {
     createEditor('');
+    document.addEventListener('selectionchange', updateBrowserSelectedText);
     await loadRoots();
   });
 
   onDestroy(() => {
+    document.removeEventListener('selectionchange', updateBrowserSelectedText);
     editorView?.destroy();
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
@@ -257,6 +260,7 @@
     const root = selectedRoot;
     const path = selectedPath;
     viewMode = 'diff';
+    selectedText = '';
     diffFiles = [];
     diffStatus = 'Loading diff...';
     error = '';
@@ -298,6 +302,26 @@
     selectedText = selection.empty
       ? ''
       : state.sliceDoc(selection.from, selection.to);
+  }
+
+  function updateBrowserSelectedText() {
+    const selection = window.getSelection?.();
+    const text = selection?.toString() ?? '';
+    const anchorNode = selection?.anchorNode;
+    const focusNode = selection?.focusNode;
+
+    if (
+      text &&
+      appShell &&
+      anchorNode &&
+      focusNode &&
+      appShell.contains(anchorNode) &&
+      appShell.contains(focusNode)
+    ) {
+      selectedText = text;
+    } else if (!text) {
+      selectedText = '';
+    }
   }
 
   function storageKey(root, path) {
@@ -466,6 +490,7 @@
 
   function setViewMode(mode) {
     viewMode = mode;
+    selectedText = '';
     if (mode === 'edit')
       requestAnimationFrame(() => editorView?.requestMeasure());
   }
@@ -496,7 +521,11 @@
   {/each}
 {/snippet}
 
-<main class:sidebar-hidden={!sidebarVisible} class="app-shell">
+<main
+  bind:this={appShell}
+  class:sidebar-hidden={!sidebarVisible}
+  class="app-shell"
+>
   <aside
     class:sidebar-closed={!sidebarVisible}
     class="sidebar"
@@ -763,11 +792,7 @@
 
     <footer class="statusbar">
       <span class={statusClass}>{status}</span>
-      <span
-        >{selectedText
-          ? `${selectedText.length} selected`
-          : 'Selected text: 0'}</span
-      >
+      <span>Selected text: {selectedText.length}</span>
     </footer>
   </section>
 </main>
