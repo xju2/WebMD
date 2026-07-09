@@ -36,7 +36,7 @@
   $: workspaceTree = cleanTree(tree);
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = collectFiles(workspaceTree).length;
-  $: renderedBlocks = renderMarkdown(content);
+  $: renderedBlocks = viewMode === 'preview' ? renderMarkdown(content) : [];
   $: queueWorkspaceSearch(searchQuery.trim(), workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
