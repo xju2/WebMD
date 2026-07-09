@@ -68,11 +68,13 @@
     searchHistory = readSearchHistory();
     createEditor('');
     document.addEventListener('selectionchange', updateBrowserSelectedText);
+    window.addEventListener('popstate', openNavigationState);
     await loadRoots();
   });
 
   onDestroy(() => {
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
+    window.removeEventListener('popstate', openNavigationState);
     editorView?.destroy();
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
@@ -122,6 +124,8 @@
       selectedRoot = workspaceRoots[0]?.id ?? '0';
       dailyNoteFolder = readDailyNoteFolder(selectedRoot);
       await loadTree(selectedRoot);
+      const path = navigationPathFromLocation();
+      if (path) await openFile(path, { historyMode: 'replace' });
     } catch (err) {
       error = err.message;
     }
@@ -175,7 +179,7 @@
     await loadTree();
   }
 
-  async function openFile(path) {
+  async function openFile(path, { historyMode = 'push' } = {}) {
     if (selectedPath && selectedIsMarkdown && content !== lastSaved)
       await saveNow();
 
@@ -190,6 +194,7 @@
     if (fileKind !== 'markdown') {
       showMediaFile(path);
       status = '[Read-only]';
+      updateNavigationState(path, historyMode);
       return;
     }
 
@@ -205,12 +210,14 @@
 
       showFile(root, path, nextContent, file.content);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
+      updateNavigationState(path, historyMode);
       if (buffered) queueRetry();
     } catch (err) {
       const buffered = sessionStorage.getItem(storageKey(root, path));
       if (buffered) {
         showFile(root, path, buffered, '');
         status = '[Offline - Retrying]';
+        updateNavigationState(path, historyMode);
         queueRetry();
       } else {
         error = err.message;
@@ -241,6 +248,7 @@
       if (root !== selectedRoot || selectedPath !== path) return;
       showFile(root, path, file.content, file.content);
       status = '[Saved]';
+      updateNavigationState(path);
     } catch (err) {
       if (root !== selectedRoot || selectedPath !== path) return;
       if (err.status !== 404) {
@@ -259,12 +267,14 @@
         if (root !== selectedRoot || selectedPath !== path) return;
         showFile(root, path, nextContent, nextContent);
         status = '[Saved]';
+        updateNavigationState(path);
         await loadTree(root);
       } catch (saveErr) {
         sessionStorage.setItem(storageKey(root, path), nextContent);
         showFile(root, path, nextContent, '');
         error = saveErr.message;
         status = '[Offline - Retrying]';
+        updateNavigationState(path);
         queueRetry();
       }
     }
@@ -364,7 +374,8 @@
       status = '[Offline - Retrying]';
       return;
     }
-    if (path && content === lastSaved) await openFile(path);
+    if (path && content === lastSaved)
+      await openFile(path, { historyMode: 'replace' });
     else if (!path) status = '[Saved]';
   }
 
@@ -453,7 +464,7 @@
 
   function wikiLinkHref(target) {
     const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
-    return path ? `#${path}` : '';
+    return path ? `#${encodeURI(path)}` : '';
   }
 
   async function openWikiLink(event, target) {
@@ -465,6 +476,40 @@
     }
 
     await openFile(path);
+  }
+
+  async function openNavigationState(event) {
+    const state = event.state || {};
+    const path = state.path || navigationPathFromLocation();
+    if (!path) return;
+
+    if (state.root && state.root !== selectedRoot) return;
+    await openFile(path, { historyMode: 'none' });
+  }
+
+  function updateNavigationState(path, mode = 'push') {
+    if (mode === 'none' || !path) return;
+
+    const state = { root: selectedRoot, path };
+    const url = `#${encodeURI(path)}`;
+    const current = history.state || {};
+    const method =
+      mode === 'replace' ||
+      (current.root === state.root && current.path === state.path)
+        ? 'replaceState'
+        : 'pushState';
+
+    history[method](state, '', url);
+  }
+
+  function navigationPathFromLocation() {
+    if (!location.hash.startsWith('#/')) return '';
+
+    try {
+      return decodeURI(location.hash.slice(1));
+    } catch {
+      return location.hash.slice(1);
+    }
   }
 
   function basename(path) {
