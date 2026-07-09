@@ -130,7 +130,13 @@ async function resolvePath(root, filePath, { forWrite = false } = {}) {
   }
 
   if (!forWrite) {
-    const real = await fs.realpath(target);
+    let real;
+    try {
+      real = await fs.realpath(target);
+    } catch (error) {
+      if (error.code === 'ENOENT') throw new WorkspaceError(404, 'File not found.');
+      throw error;
+    }
     if (!isInside(root, real)) {
       throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
     }

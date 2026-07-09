@@ -20,6 +20,16 @@ test('rejects traversal paths', async () => {
   await assert.rejects(() => workspace.loadFile('/../outside.md'), /Path traversal/);
 });
 
+test('reports missing markdown files as not found', async () => {
+  const root = await tempRoot();
+  const workspace = await createWorkspace(root);
+
+  await assert.rejects(
+    () => workspace.loadFile('/missing.md'),
+    (error) => error.status === 404 && /not found/i.test(error.message)
+  );
+});
+
 test('rejects symlink escapes', async () => {
   const root = await tempRoot();
   const outside = await tempRoot();

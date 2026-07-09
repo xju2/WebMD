@@ -9,6 +9,7 @@
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const SEARCH_HISTORY_LIMIT = 8;
+  const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
 
   let tree = [];
   let workspaceRoots = [];
@@ -27,6 +28,7 @@
   let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
+  let dailyNoteFolder = '/';
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
   let appShell;
@@ -40,6 +42,7 @@
   let applyingServerText = false;
 
   $: workspaceTree = cleanTree(tree);
+  $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = collectFiles(workspaceTree).length;
   $: renderedBlocks = viewMode === 'preview' ? renderMarkdown(content) : [];
@@ -94,7 +97,11 @@
       ?.includes('application/json')
       ? await response.json()
       : null;
-    if (!response.ok) throw new Error(payload?.error || response.statusText);
+    if (!response.ok) {
+      const error = new Error(payload?.error || response.statusText);
+      error.status = response.status;
+      throw error;
+    }
     return payload;
   }
 
@@ -102,6 +109,7 @@
     try {
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
+      dailyNoteFolder = readDailyNoteFolder(selectedRoot);
       await loadTree(selectedRoot);
     } catch (err) {
       error = err.message;
@@ -115,6 +123,12 @@
       );
       if (root === selectedRoot) {
         tree = nextTree;
+        if (
+          !['/', ...collectVisibleDirectories(nextTree)].includes(
+            dailyNoteFolder
+          )
+        )
+          chooseDailyNoteFolder('/');
         error = '';
       }
       return true;
@@ -129,6 +143,7 @@
     if (selectedPath && content !== lastSaved) await saveNow();
 
     selectedRoot = root;
+    dailyNoteFolder = readDailyNoteFolder(root);
     tree = [];
     selectedPath = '';
     content = '';
@@ -165,21 +180,13 @@
       const buffered = sessionStorage.getItem(storageKey(root, path));
       const nextContent = buffered ?? file.content;
 
-      content = nextContent;
-      lastSaved = file.content;
-      fileCache.set(rootPathKey(root, path), nextContent);
-      expandToPath(path);
-      setEditorContent(nextContent);
+      showFile(root, path, nextContent, file.content);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
       if (buffered) queueRetry();
     } catch (err) {
       const buffered = sessionStorage.getItem(storageKey(root, path));
       if (buffered) {
-        content = buffered;
-        lastSaved = '';
-        fileCache.set(rootPathKey(root, path), buffered);
-        expandToPath(path);
-        setEditorContent(buffered);
+        showFile(root, path, buffered, '');
         status = '[Offline - Retrying]';
         queueRetry();
       } else {
@@ -187,6 +194,75 @@
         status = '[Offline - Retrying]';
       }
     }
+  }
+
+  async function openTodayNote() {
+    const path = todayNotePath();
+    const root = selectedRoot;
+
+    if (selectedPath && content !== lastSaved) await saveNow();
+
+    selectedPath = path;
+    diffFiles = [];
+    diffStatus = '';
+    viewMode = 'edit';
+    selectedText = '';
+    status = '[Syncing...]';
+    error = '';
+
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+      );
+      if (root !== selectedRoot || selectedPath !== path) return;
+      showFile(root, path, file.content, file.content);
+      status = '[Saved]';
+    } catch (err) {
+      if (root !== selectedRoot || selectedPath !== path) return;
+      if (err.status !== 404) {
+        error = err.message;
+        status = '[Offline - Retrying]';
+        return;
+      }
+
+      const nextContent = `# ${path.split('/').pop().replace(/\.md$/i, '')}\n\n`;
+      try {
+        await requestJson('/api/workspace/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ root, path, content: nextContent })
+        });
+        if (root !== selectedRoot || selectedPath !== path) return;
+        showFile(root, path, nextContent, nextContent);
+        status = '[Saved]';
+        await loadTree(root);
+      } catch (saveErr) {
+        sessionStorage.setItem(storageKey(root, path), nextContent);
+        showFile(root, path, nextContent, '');
+        error = saveErr.message;
+        status = '[Offline - Retrying]';
+        queueRetry();
+      }
+    }
+  }
+
+  function todayNotePath(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const parent = dailyNoteFolders.includes(dailyNoteFolder)
+      ? dailyNoteFolder
+      : '/';
+    const folder = parent === '/' ? '' : parent;
+    return `${folder}/${year}-${month}-${day}.md`;
+  }
+
+  function showFile(root, path, nextContent, savedContent) {
+    content = nextContent;
+    lastSaved = savedContent;
+    fileCache.set(rootPathKey(root, path), nextContent);
+    expandToPath(path);
+    setEditorContent(nextContent);
   }
 
   function setEditorContent(nextContent) {
@@ -378,6 +454,39 @@
     );
   }
 
+  function collectVisibleDirectories(nodes) {
+    return nodes.flatMap((node) => {
+      if (
+        node.type !== 'directory' ||
+        node.name.startsWith('.') ||
+        node.name === 'node_modules'
+      )
+        return [];
+      return [node.path, ...collectVisibleDirectories(node.children || [])];
+    });
+  }
+
+  function chooseDailyNoteFolder(folder) {
+    dailyNoteFolder = folder;
+    try {
+      localStorage.setItem(dailyNoteFolderStorageKey(selectedRoot), folder);
+    } catch {
+      // Ignore storage failures; the selected folder still works this session.
+    }
+  }
+
+  function readDailyNoteFolder(root) {
+    try {
+      return localStorage.getItem(dailyNoteFolderStorageKey(root)) || '/';
+    } catch {
+      return '/';
+    }
+  }
+
+  function dailyNoteFolderStorageKey(root) {
+    return `${DAILY_NOTE_FOLDER_KEY}:${root}`;
+  }
+
   function toggleFolder(path) {
     const next = new Set(expandedDirs);
     next.has(path) ? next.delete(path) : next.add(path);
@@ -563,6 +672,31 @@
   class:sidebar-hidden={!sidebarVisible}
   class="app-shell"
 >
+  <nav class="global-bar" aria-label="Global actions">
+    <button
+      aria-label="Add today's daily note"
+      class="global-action"
+      disabled={!workspaceRoots.length}
+      title="Add today's daily note"
+      type="button"
+      on:click={openTodayNote}
+    >
+      +
+    </button>
+    <select
+      aria-label="Daily notes folder"
+      class="global-folder-select"
+      disabled={!workspaceRoots.length}
+      title={`Daily notes folder: ${dailyNoteFolder}`}
+      value={dailyNoteFolder}
+      on:change={(event) => chooseDailyNoteFolder(event.currentTarget.value)}
+    >
+      {#each dailyNoteFolders as folder}
+        <option value={folder}>{folder}</option>
+      {/each}
+    </select>
+  </nav>
+
   <aside
     class:sidebar-closed={!sidebarVisible}
     class="sidebar"

@@ -31,7 +31,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
+  grid-template-columns: 68px minmax(210px, 280px) minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
   min-height: 0;
@@ -40,7 +40,62 @@ button {
 }
 
 .app-shell.sidebar-hidden {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.global-bar {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 6px;
+  border-right: 1px solid #d9dee7;
+  background: #172033;
+}
+
+.global-action {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid #334158;
+  border-radius: 6px;
+  background: #22304a;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 1.35rem;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.global-action:hover {
+  border-color: #5d7598;
+  background: #2b4267;
+}
+
+.global-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.global-folder-select {
+  width: 54px;
+  height: 30px;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid #334158;
+  border-radius: 6px;
+  background: #22304a;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+.global-folder-select:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .sidebar {
@@ -734,7 +789,7 @@ button {
 
 @media (max-width: 760px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: 68px minmax(0, 1fr);
     grid-template-rows: minmax(150px, 32vh) minmax(0, 1fr);
   }
 
@@ -742,9 +797,24 @@ button {
     grid-template-rows: minmax(0, 1fr);
   }
 
+  .global-bar {
+    grid-row: 1 / -1;
+  }
+
   .sidebar {
+    grid-column: 2;
+    grid-row: 1;
     border-right: 0;
     border-bottom: 1px solid #d9dee7;
+  }
+
+  .workspace {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .app-shell.sidebar-hidden .workspace {
+    grid-row: 1 / -1;
   }
 
   .cm-content {
