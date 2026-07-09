@@ -6,6 +6,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
+  import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const SEARCH_HISTORY_LIMIT = 8;
@@ -44,9 +45,13 @@
   let applyingServerText = false;
 
   $: workspaceTree = cleanTree(tree);
+  $: workspaceFiles = collectFiles(workspaceTree);
+  $: markdownFiles = workspaceFiles.filter(
+    (file) => file.fileKind === 'markdown'
+  );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
-  $: fileCount = collectFiles(workspaceTree).length;
+  $: fileCount = workspaceFiles.length;
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
@@ -446,6 +451,22 @@
     return `/api/workspace/media?root=${encodeURIComponent(selectedRoot)}&path=${encodeURIComponent(path)}`;
   }
 
+  function wikiLinkHref(target) {
+    const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
+    return path ? `#${path}` : '';
+  }
+
+  async function openWikiLink(event, target) {
+    event.preventDefault();
+    const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
+    if (!path) {
+      error = `Invalid wiki link: ${target}`;
+      return;
+    }
+
+    await openFile(path);
+  }
+
   function basename(path) {
     return path.split('/').pop() || path;
   }
@@ -740,6 +761,14 @@
       <code>{segment.text}</code>
     {:else if segment.type === 'link' && segment.href}
       <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a>
+    {:else if segment.type === 'wikiLink'}
+      <a
+        class="wiki-link"
+        href={wikiLinkHref(segment.target)}
+        title={wikiLinkHref(segment.target)}
+        on:click={(event) => openWikiLink(event, segment.target)}
+        >{segment.text}</a
+      >
     {:else if segment.type === 'strong'}
       <strong>{segment.text}</strong>
     {:else if segment.type === 'em'}

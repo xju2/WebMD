@@ -647,6 +647,11 @@ button {
   color: #174b82;
 }
 
+.preview-pane a.wiki-link {
+  font-weight: 650;
+  text-decoration-style: dotted;
+}
+
 .preview-pane blockquote {
   padding-left: 14px;
   border-left: 4px solid #cbd9ea;

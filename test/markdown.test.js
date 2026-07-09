@@ -79,3 +79,16 @@ test('auto-links bare URLs', () => {
     href: 'https://example.com/doc.pdf'
   });
 });
+
+test('parses wiki links as workspace references', () => {
+  assert.deepEqual(parseInline('See [[2026-07-08]]')[1], {
+    type: 'wikiLink',
+    target: '2026-07-08',
+    text: '2026-07-08'
+  });
+  assert.deepEqual(parseInline('See [[2026-07-08|yesterday]]')[1], {
+    type: 'wikiLink',
+    target: '2026-07-08',
+    text: 'yesterday'
+  });
+});

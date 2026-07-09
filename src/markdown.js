@@ -1,3 +1,5 @@
+import { parseWikiLinkValue } from './wiki-links.js';
+
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
 export function renderMarkdown(source = '') {
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
@@ -96,7 +98,7 @@ export function renderMarkdown(source = '') {
 
 export function parseInline(text) {
   const tokenPattern =
-    /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+)/g;
+    /(`[^`]+`|\[[^\]]+\]\([^)]+\)|\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+)/g;
   const segments = [];
   let lastIndex = 0;
 
@@ -121,6 +123,11 @@ function parseInlineToken(token) {
   const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
   if (link) {
     return { type: 'link', text: link[1], href: safeHref(link[2]) };
+  }
+
+  const wikiLink = token.match(/^\[\[([^\]\n]+)\]\]$/);
+  if (wikiLink) {
+    return { type: 'wikiLink', ...parseWikiLinkValue(wikiLink[1]) };
   }
 
   if (/^https?:\/\//i.test(token))
