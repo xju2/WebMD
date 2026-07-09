@@ -15,6 +15,7 @@
   let workspaceRoots = [];
   let selectedRoot = '0';
   let selectedPath = '';
+  let selectedFileKind = 'markdown';
   let content = '';
   let lastSaved = '';
   let status = '[Saved]';
@@ -46,7 +47,11 @@
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = collectFiles(workspaceTree).length;
-  $: renderedBlocks = viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: selectedIsMarkdown = selectedFileKind === 'markdown';
+  $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
+  $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
+  $: renderedBlocks =
+    selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
   $: queueWorkspaceSearch(searchQuery.trim(), workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
@@ -141,12 +146,14 @@
 
   async function switchWorkspace(root) {
     if (root === selectedRoot) return;
-    if (selectedPath && content !== lastSaved) await saveNow();
+    if (selectedPath && selectedIsMarkdown && content !== lastSaved)
+      await saveNow();
 
     selectedRoot = root;
     dailyNoteFolder = readDailyNoteFolder(root);
     tree = [];
     selectedPath = '';
+    selectedFileKind = 'markdown';
     content = '';
     lastSaved = '';
     status = '[Saved]';
@@ -164,14 +171,24 @@
   }
 
   async function openFile(path) {
-    if (selectedPath && content !== lastSaved) await saveNow();
+    if (selectedPath && selectedIsMarkdown && content !== lastSaved)
+      await saveNow();
 
     const root = selectedRoot;
+    const fileKind = fileKindForPath(path);
     selectedPath = path;
+    selectedFileKind = fileKind;
     diffFiles = [];
     diffStatus = '';
-    status = '[Syncing...]';
     error = '';
+
+    if (fileKind !== 'markdown') {
+      showMediaFile(path);
+      status = '[Read-only]';
+      return;
+    }
+
+    status = '[Syncing...]';
 
     try {
       const file = await requestJson(
@@ -204,6 +221,7 @@
     if (selectedPath && content !== lastSaved) await saveNow();
 
     selectedPath = path;
+    selectedFileKind = 'markdown';
     diffFiles = [];
     diffStatus = '';
     viewMode = 'edit';
@@ -259,11 +277,21 @@
   }
 
   function showFile(root, path, nextContent, savedContent) {
+    selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
     fileCache.set(rootPathKey(root, path), nextContent);
     expandToPath(path);
     setEditorContent(nextContent);
+  }
+
+  function showMediaFile(path) {
+    content = '';
+    lastSaved = '';
+    selectedText = '';
+    viewMode = 'preview';
+    expandToPath(path);
+    setEditorContent('');
   }
 
   function setEditorContent(nextContent) {
@@ -276,7 +304,7 @@
   }
 
   function scheduleSave() {
-    if (!selectedPath) return;
+    if (!selectedPath || !selectedIsMarkdown) return;
     status = '[Syncing...]';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 700);
@@ -284,7 +312,7 @@
 
   async function saveNow() {
     clearTimeout(saveTimer);
-    if (!selectedPath || content === lastSaved) return;
+    if (!selectedPath || !selectedIsMarkdown || content === lastSaved) return;
 
     const root = selectedRoot;
     const path = selectedPath;
@@ -322,7 +350,7 @@
     status = '[Syncing...]';
     error = '';
 
-    if (path && content !== lastSaved) await saveNow();
+    if (path && selectedIsMarkdown && content !== lastSaved) await saveNow();
     if (root !== selectedRoot) return;
 
     fileCache = new Map();
@@ -336,7 +364,7 @@
   }
 
   async function showDiff() {
-    if (!selectedPath) return;
+    if (!selectedPath || !selectedIsMarkdown) return;
     if (content !== lastSaved) await saveNow();
 
     const root = selectedRoot;
@@ -412,6 +440,36 @@
 
   function rootPathKey(root, path) {
     return `${root}:${path}`;
+  }
+
+  function mediaUrl(path) {
+    return `/api/workspace/media?root=${encodeURIComponent(selectedRoot)}&path=${encodeURIComponent(path)}`;
+  }
+
+  function basename(path) {
+    return path.split('/').pop() || path;
+  }
+
+  function fileKindForPath(path) {
+    return (
+      findFileNode(workspaceTree, path)?.fileKind ||
+      (/\.(avif|gif|jpe?g|png|svg|webp)$/i.test(path)
+        ? 'image'
+        : /\.pdf$/i.test(path)
+          ? 'pdf'
+          : 'markdown')
+    );
+  }
+
+  function findFileNode(nodes, path) {
+    for (const node of nodes) {
+      if (node.type === 'file' && node.path === path) return node;
+      if (node.type === 'directory') {
+        const match = findFileNode(node.children || [], path);
+        if (match) return match;
+      }
+    }
+    return null;
   }
 
   function flattenTree(nodes, expanded, level = 0) {
@@ -554,6 +612,7 @@
           results.push({ ...file, kind: 'path' });
           continue;
         }
+        if (file.fileKind !== 'markdown') continue;
 
         const match = findContentMatch(
           await readSearchContent(file.path),
@@ -604,7 +663,8 @@
   async function openSearchResult(result) {
     rememberSearch(searchQuery);
     await openFile(result.path);
-    if (result.from != null) selectEditorRange(result.from, result.to);
+    if (result.from != null && result.fileKind === 'markdown')
+      selectEditorRange(result.from, result.to);
   }
 
   function readSearchHistory() {
@@ -741,7 +801,7 @@
       {/if}
     </div>
     <div class="sidebar-title">
-      <span>Notes</span>
+      <span>Files</span>
       <div class="sidebar-title-actions">
         <span>{fileCount} files</span>
         <button
@@ -870,7 +930,7 @@
           </button>
         {/each}
         {#if !flatTree.length}
-          <p class="empty-copy">No Markdown files</p>
+          <p class="empty-copy">No supported files</p>
         {/if}
       </div>
     {/if}
@@ -904,8 +964,8 @@
       <div class="topbar-actions">
         <div class="view-toggle" aria-label="View mode">
           <button
-            class:active={viewMode === 'edit'}
-            disabled={!selectedPath}
+            class:active={viewMode === 'edit' && selectedIsMarkdown}
+            disabled={!selectedPath || !selectedIsMarkdown}
             type="button"
             on:click={() => setViewMode('edit')}
           >
@@ -920,8 +980,8 @@
             Preview
           </button>
           <button
-            class:active={viewMode === 'diff'}
-            disabled={!selectedPath}
+            class:active={viewMode === 'diff' && selectedIsMarkdown}
+            disabled={!selectedPath || !selectedIsMarkdown}
             type="button"
             on:click={showDiff}
           >
@@ -930,7 +990,7 @@
         </div>
         <button
           class="save-button"
-          disabled={!selectedPath || content === lastSaved}
+          disabled={!selectedPath || !selectedIsMarkdown || content === lastSaved}
           on:click={saveNow}
         >
           Save
@@ -944,14 +1004,14 @@
 
     <div class:empty={!selectedPath} class="editor-frame">
       {#if !selectedPath}
-        <div class="empty-state">Open a Markdown file from Notes.</div>
+        <div class="empty-state">Open a file from Files.</div>
       {/if}
       <div
         bind:this={editorHost}
-        class:hidden={viewMode !== 'edit'}
+        class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
         class="editor-host"
       ></div>
-      {#if selectedPath}
+      {#if selectedPath && selectedIsMarkdown}
         <article
           aria-label="Rendered Markdown preview"
           class:hidden={viewMode !== 'preview'}
@@ -1054,6 +1114,28 @@
                 {/each}
               </article>
             {/each}
+          {/if}
+        </section>
+      {:else if selectedPath}
+        <section
+          aria-label="Read-only media preview"
+          class:image={selectedFileKind === 'image'}
+          class:pdf={selectedFileKind === 'pdf'}
+          class="media-pane"
+        >
+          {#if selectedFileKind === 'image'}
+            <img src={mediaPreviewUrl} alt={basename(selectedPath)} />
+          {:else if selectedFileKind === 'pdf'}
+            <object
+              class="media-pdf"
+              data={mediaPreviewUrl}
+              title={basename(selectedPath)}
+              type="application/pdf"
+            >
+              <a href={mediaPreviewUrl} rel="noreferrer" target="_blank">
+                Open {basename(selectedPath)}
+              </a>
+            </object>
           {/if}
         </section>
       {/if}

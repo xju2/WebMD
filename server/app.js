@@ -26,6 +26,12 @@ export async function createApp({ workspaceRoot, workspaceRoots }) {
     res.json(await workspaces.get(req.query.root).loadFile(req.query.path));
   }));
 
+  app.get('/api/workspace/media', asyncHandler(async (req, res) => {
+    const file = await workspaces.get(req.query.root).loadMediaFile(req.query.path);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.sendFile(file.absolute);
+  }));
+
   app.get('/api/workspace/diff', asyncHandler(async (req, res) => {
     res.json(await workspaces.get(req.query.root).diffFile(req.query.path));
   }));

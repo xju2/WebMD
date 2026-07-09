@@ -5,6 +5,15 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const IMAGE_EXTENSIONS = new Set([
+  '.avif',
+  '.gif',
+  '.jpeg',
+  '.jpg',
+  '.png',
+  '.svg',
+  '.webp'
+]);
 
 export class WorkspaceError extends Error {
   constructor(status, message) {
@@ -20,6 +29,7 @@ export async function createWorkspace(workspaceRoot) {
     root,
     readTree: () => readTree(root, root),
     loadFile: (filePath) => loadFile(root, filePath),
+    loadMediaFile: (filePath) => loadMediaFile(root, filePath),
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: (filePath, content) => saveFile(root, filePath, content),
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
@@ -62,8 +72,10 @@ async function readTree(root, dir, prefix = '') {
         path: nodePath,
         children: await readTree(root, absolute, nodePath)
       });
-    } else if (entry.isFile() && isMarkdownPath(entry.name)) {
-      nodes.push({ name: entry.name, type: 'file', path: nodePath });
+    } else if (entry.isFile()) {
+      const fileKind = fileKindForPath(entry.name);
+      if (fileKind)
+        nodes.push({ name: entry.name, type: 'file', path: nodePath, fileKind });
     }
   }
 
@@ -78,6 +90,16 @@ async function loadFile(root, filePath) {
     path: normalized,
     content: await fs.readFile(absolute, 'utf8')
   };
+}
+
+async function loadMediaFile(root, filePath) {
+  const normalized = normalizeWorkspacePath(filePath);
+  const fileKind = assertMedia(normalized);
+  const absolute = await resolvePath(root, normalized);
+  const stat = await fs.stat(absolute);
+
+  if (!stat.isFile()) throw new WorkspaceError(400, 'Path points to a directory.');
+  return { path: normalized, absolute, fileKind };
 }
 
 async function diffFile(root, filePath) {
@@ -204,8 +226,24 @@ function assertMarkdown(filePath) {
   }
 }
 
+function assertMedia(filePath) {
+  const fileKind = fileKindForPath(filePath);
+  if (fileKind !== 'image' && fileKind !== 'pdf') {
+    throw new WorkspaceError(400, 'Only image and PDF files are supported.');
+  }
+  return fileKind;
+}
+
 function isMarkdownPath(filePath) {
-  return /\.(md|markdown)$/i.test(filePath);
+  return fileKindForPath(filePath) === 'markdown';
+}
+
+function fileKindForPath(filePath) {
+  const extension = path.extname(filePath).toLowerCase();
+  if (extension === '.md' || extension === '.markdown') return 'markdown';
+  if (IMAGE_EXTENSIONS.has(extension)) return 'image';
+  if (extension === '.pdf') return 'pdf';
+  return '';
 }
 
 function isInside(root, target) {

@@ -30,6 +30,71 @@ test('reports missing markdown files as not found', async () => {
   );
 });
 
+test('returns markdown, image, and PDF files in the workspace tree', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'raw', 'assets'), { recursive: true });
+  await fs.writeFile(path.join(root, 'raw', 'assets', 'manual.pdf'), 'pdf');
+  await fs.writeFile(path.join(root, 'raw', 'assets', 'photo.png'), 'png');
+  await fs.writeFile(path.join(root, 'raw', 'assets', 'table.csv'), 'csv');
+  await fs.writeFile(path.join(root, 'note.md'), 'note');
+
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(await workspace.readTree(), [
+    {
+      name: 'raw',
+      type: 'directory',
+      path: '/raw',
+      children: [
+        {
+          name: 'assets',
+          type: 'directory',
+          path: '/raw/assets',
+          children: [
+            {
+              name: 'manual.pdf',
+              type: 'file',
+              path: '/raw/assets/manual.pdf',
+              fileKind: 'pdf'
+            },
+            {
+              name: 'photo.png',
+              type: 'file',
+              path: '/raw/assets/photo.png',
+              fileKind: 'image'
+            }
+          ]
+        }
+      ]
+    },
+    {
+      name: 'note.md',
+      type: 'file',
+      path: '/note.md',
+      fileKind: 'markdown'
+    }
+  ]);
+});
+
+test('resolves media files for read-only preview', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'raw', 'assets'), { recursive: true });
+  const image = path.join(root, 'raw', 'assets', 'photo.png');
+  await fs.writeFile(image, 'png');
+  await fs.writeFile(path.join(root, 'raw', 'assets', 'table.csv'), 'csv');
+
+  const workspace = await createWorkspace(root);
+  const result = await workspace.loadMediaFile('/raw/assets/photo.png');
+
+  assert.equal(result.path, '/raw/assets/photo.png');
+  assert.equal(result.fileKind, 'image');
+  assert.equal(await fs.readFile(result.absolute, 'utf8'), 'png');
+  await assert.rejects(
+    () => workspace.loadMediaFile('/raw/assets/table.csv'),
+    /Only image and PDF files/
+  );
+});
+
 test('rejects symlink escapes', async () => {
   const root = await tempRoot();
   const outside = await tempRoot();
