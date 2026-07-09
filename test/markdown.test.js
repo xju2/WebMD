@@ -52,6 +52,26 @@ test('renders pipe tables with alignment and inline cells', () => {
   assert.equal(blocks[1].rows[1][2][0].href, '/wiki/q2c');
 });
 
+test('renders supported callout blockquotes', () => {
+  const blocks = renderMarkdown(`> [!note] My Note
+> Body with **detail**.
+
+> [!tldr]
+> Short version.
+
+> [!warning] Keep as quote
+`);
+
+  assert.equal(blocks[0].type, 'callout');
+  assert.equal(blocks[0].variant, 'note');
+  assert.equal(blocks[0].title[0].text, 'My Note');
+  assert.equal(blocks[0].children[1].type, 'strong');
+  assert.equal(blocks[1].type, 'callout');
+  assert.equal(blocks[1].variant, 'tldr');
+  assert.equal(blocks[1].title[0].text, 'TLDR');
+  assert.equal(blocks[2].type, 'quote');
+});
+
 test('auto-links bare URLs', () => {
   assert.deepEqual(parseInline('See https://example.com/doc.pdf')[1], {
     type: 'link',

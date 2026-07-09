@@ -945,6 +945,13 @@
                 <p>{@render inline(block.children)}</p>
               {:else if block.type === 'quote'}
                 <blockquote>{@render inline(block.children)}</blockquote>
+              {:else if block.type === 'callout'}
+                <aside class={`callout callout-${block.variant}`}>
+                  <p class="callout-title">{@render inline(block.title)}</p>
+                  {#if block.children.length}
+                    <p class="callout-body">{@render inline(block.children)}</p>
+                  {/if}
+                </aside>
               {:else if block.type === 'rule'}
                 <hr />
               {:else if block.type === 'code'}

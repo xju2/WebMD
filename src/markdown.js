@@ -51,7 +51,7 @@ export function renderMarkdown(source = '') {
         quote.push(lines[index].replace(/^>\s?/, ''));
         index += 1;
       }
-      blocks.push({ type: 'quote', children: parseInline(quote.join(' ')) });
+      blocks.push(parseQuote(quote));
       continue;
     }
 
@@ -222,6 +222,24 @@ function parseListItem(line) {
     checked: task ? task[1].toLowerCase() === 'x' : false,
     children: parseInline(task ? task[2] : match[2])
   };
+}
+
+function parseQuote(lines) {
+  const marker = lines[0]?.match(/^\[!(note|tldr|deadline|info)\]\s*(.*)$/i);
+  if (!marker) return { type: 'quote', children: parseInline(lines.join(' ')) };
+
+  const variant = marker[1].toLowerCase();
+  const title = marker[2].trim() || calloutTitle(variant);
+  return {
+    type: 'callout',
+    variant,
+    title: parseInline(title),
+    children: parseInline(lines.slice(1).join(' ').trim())
+  };
+}
+
+function calloutTitle(variant) {
+  return variant === 'tldr' ? 'TLDR' : variant[0].toUpperCase() + variant.slice(1);
 }
 
 function startsBlock(line, nextLine = '') {

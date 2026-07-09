@@ -583,6 +583,7 @@ button {
 .preview-pane ul,
 .preview-pane ol,
 .preview-pane blockquote,
+.preview-pane .callout,
 .preview-pane pre,
 .preview-pane .table-scroll {
   margin: 0.8em 0;
@@ -616,6 +617,45 @@ button {
   padding-left: 14px;
   border-left: 4px solid #cbd9ea;
   color: #4f5d70;
+}
+
+.preview-pane .callout {
+  padding: 12px 14px;
+  border: 1px solid #dfe6ee;
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.preview-pane .callout-title {
+  margin: 0;
+  color: #152033;
+  font-weight: 720;
+}
+
+.preview-pane .callout-body {
+  margin: 0.45em 0 0;
+  color: #46566b;
+}
+
+.preview-pane .callout-note {
+  border-left-color: #4d7cfe;
+  background: #f3f6ff;
+}
+
+.preview-pane .callout-tldr {
+  border-left-color: #6f52d9;
+  background: #f7f4ff;
+}
+
+.preview-pane .callout-deadline {
+  border-left-color: #c2410c;
+  background: #fff7ed;
+}
+
+.preview-pane .callout-info {
+  border-left-color: #0284c7;
+  background: #eef8ff;
 }
 
 .preview-pane pre {
