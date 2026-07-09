@@ -19,6 +19,9 @@
   let searchResults = [];
   let searchStatus = '';
   let viewMode = 'edit';
+  let diffText = '';
+  let diffStatus = '';
+  let sidebarVisible = true;
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
   let editorHost;
@@ -105,8 +108,10 @@
         tree = nextTree;
         error = '';
       }
+      return true;
     } catch (err) {
       if (root === selectedRoot) error = err.message;
+      return false;
     }
   }
 
@@ -124,6 +129,8 @@
     searchQuery = '';
     searchResults = [];
     searchStatus = '';
+    diffText = '';
+    diffStatus = '';
     expandedDirs = new Set();
     loadedTreeOnce = false;
     fileCache = new Map();
@@ -136,6 +143,8 @@
 
     const root = selectedRoot;
     selectedPath = path;
+    diffText = '';
+    diffStatus = '';
     status = '[Syncing...]';
     error = '';
 
@@ -203,7 +212,11 @@
         body: JSON.stringify({ root, path, content: nextContent })
       });
       sessionStorage.removeItem(storageKey(root, path));
-      if (selectedRoot === root && selectedPath === path && content === nextContent) {
+      if (
+        selectedRoot === root &&
+        selectedPath === path &&
+        content === nextContent
+      ) {
         lastSaved = nextContent;
         fileCache.set(rootPathKey(root, path), nextContent);
         status = '[Saved]';
@@ -214,6 +227,51 @@
       error = err.message;
       status = '[Offline - Retrying]';
       queueRetry();
+    }
+  }
+
+  async function syncWorkspace() {
+    const root = selectedRoot;
+    const path = selectedPath;
+    status = '[Syncing...]';
+    error = '';
+
+    if (path && content !== lastSaved) await saveNow();
+    if (root !== selectedRoot) return;
+
+    fileCache = new Map();
+    const synced = await loadTree(root);
+    if (!synced) {
+      status = '[Offline - Retrying]';
+      return;
+    }
+    if (path && content === lastSaved) await openFile(path);
+    else if (!path) status = '[Saved]';
+  }
+
+  async function showDiff() {
+    if (!selectedPath) return;
+    if (content !== lastSaved) await saveNow();
+
+    const root = selectedRoot;
+    const path = selectedPath;
+    viewMode = 'diff';
+    diffText = '';
+    diffStatus = 'Loading diff...';
+    error = '';
+
+    try {
+      const result = await requestJson(
+        `/api/workspace/diff?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+      );
+      if (root !== selectedRoot || path !== selectedPath) return;
+      diffText = result.diff;
+      diffStatus = result.diff ? '' : 'No git changes';
+    } catch (err) {
+      if (root === selectedRoot && path === selectedPath) {
+        diffStatus = '';
+        error = err.message;
+      }
     }
   }
 
@@ -433,8 +491,12 @@
   {/each}
 {/snippet}
 
-<main class="app-shell">
-  <aside class="sidebar" aria-label="Workspace files">
+<main class:sidebar-hidden={!sidebarVisible} class="app-shell">
+  <aside
+    class:sidebar-closed={!sidebarVisible}
+    class="sidebar"
+    aria-label="Workspace files"
+  >
     <div class="brand-row">
       <div class="brand">WebMD</div>
       {#if workspaceRoots.length}
@@ -452,7 +514,18 @@
     </div>
     <div class="sidebar-title">
       <span>Notes</span>
-      <span>{fileCount} files</span>
+      <div class="sidebar-title-actions">
+        <span>{fileCount} files</span>
+        <button
+          aria-label="Sync files"
+          class="sync-button"
+          title="Sync files"
+          type="button"
+          on:click={syncWorkspace}
+        >
+          Sync
+        </button>
+      </div>
     </div>
     <div class="sidebar-search">
       <input
@@ -543,7 +616,20 @@
 
   <section class="workspace">
     <header class="topbar">
-      <div class="current-file">{selectedPath || 'No file selected'}</div>
+      <div class="file-heading">
+        <button
+          aria-label={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+          aria-pressed={sidebarVisible}
+          class:active={sidebarVisible}
+          class="sidebar-toggle"
+          title={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
+          type="button"
+          on:click={() => (sidebarVisible = !sidebarVisible)}
+        >
+          Files
+        </button>
+        <div class="current-file">{selectedPath || 'No file selected'}</div>
+      </div>
       <div class="topbar-actions">
         <div class="view-toggle" aria-label="View mode">
           <button
@@ -561,6 +647,14 @@
             on:click={() => setViewMode('preview')}
           >
             Preview
+          </button>
+          <button
+            class:active={viewMode === 'diff'}
+            disabled={!selectedPath}
+            type="button"
+            on:click={showDiff}
+          >
+            Diff
           </button>
         </div>
         <button
@@ -627,6 +721,17 @@
             <p class="preview-empty">Empty file</p>
           {/if}
         </article>
+        <section
+          aria-label="Git diff"
+          class:hidden={viewMode !== 'diff'}
+          class="diff-pane"
+        >
+          {#if diffStatus}
+            <p class="preview-empty">{diffStatus}</p>
+          {:else}
+            <pre>{diffText}</pre>
+          {/if}
+        </section>
       {/if}
     </div>
 

@@ -22,6 +22,7 @@ body,
   width: 100%;
   height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 button {
@@ -32,17 +33,28 @@ button {
   display: grid;
   grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);
   width: 100%;
-  height: 100%;
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   background: #f4f6f8;
+}
+
+.app-shell.sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid #d9dee7;
   background: #eef2f6;
+}
+
+.sidebar.sidebar-closed {
+  display: none;
 }
 
 .brand-row {
@@ -82,11 +94,36 @@ button {
   text-transform: uppercase;
 }
 
-.sidebar-title span:last-child {
+.sidebar-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-title-actions span {
   color: #7a8595;
   font-size: 0.72rem;
   font-weight: 650;
   text-transform: none;
+}
+
+.sidebar-title .sync-button {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 720;
+  text-transform: none;
+}
+
+.sidebar-title .sync-button:hover {
+  border-color: #9fb2ca;
+  background: #f7fafc;
+  color: #123f75;
 }
 
 .sidebar-search {
@@ -134,6 +171,7 @@ button {
 
 .tree,
 .search-results {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 4px 8px 16px;
@@ -235,6 +273,7 @@ button {
   min-width: 0;
   min-height: 0;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
   background: #ffffff;
 }
 
@@ -242,6 +281,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 3;
+  grid-row: 1;
   display: flex;
   min-width: 0;
   align-items: center;
@@ -258,6 +298,33 @@ button {
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
+}
+
+.file-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-toggle {
+  flex: 0 0 auto;
+  width: 62px;
+  height: 34px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle.active {
+  border-color: #9fb2ca;
+  background: #eef2f6;
+  color: #123f75;
 }
 
 .current-file {
@@ -320,6 +387,7 @@ button {
 }
 
 .error-banner {
+  grid-row: 2;
   padding: 8px 16px;
   border-bottom: 1px solid #f0c2be;
   background: #fff2f0;
@@ -329,13 +397,16 @@ button {
 
 .editor-frame {
   position: relative;
+  grid-row: 3;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .editor-host,
 .cm-editor {
   height: 100%;
+  min-height: 0;
 }
 
 .hidden {
@@ -473,6 +544,23 @@ button {
   color: #778296;
 }
 
+.diff-pane {
+  height: 100%;
+  overflow: auto;
+  padding: 22px 24px 80px;
+  background: #fbfcfd;
+}
+
+.diff-pane pre {
+  min-width: max-content;
+  margin: 0;
+  color: #172033;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  white-space: pre;
+}
+
 .empty-state {
   position: absolute;
   inset: 0;
@@ -482,6 +570,7 @@ button {
 }
 
 .statusbar {
+  grid-row: 4;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -512,6 +601,10 @@ button {
     grid-template-rows: minmax(150px, 32vh) minmax(0, 1fr);
   }
 
+  .app-shell.sidebar-hidden {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid #d9dee7;
@@ -532,5 +625,9 @@ button {
 
   .preview-pane {
     padding: 20px 18px 72px;
+  }
+
+  .diff-pane {
+    padding: 18px 16px 64px;
   }
 }

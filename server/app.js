@@ -26,6 +26,10 @@ export async function createApp({ workspaceRoot, workspaceRoots }) {
     res.json(await workspaces.get(req.query.root).loadFile(req.query.path));
   }));
 
+  app.get('/api/workspace/diff', asyncHandler(async (req, res) => {
+    res.json(await workspaces.get(req.query.root).diffFile(req.query.path));
+  }));
+
   app.post('/api/workspace/save', asyncHandler(async (req, res) => {
     res.json(
       await workspaces.get(req.body.root).saveFile(req.body.path, req.body.content)
@@ -61,8 +65,7 @@ export async function createWorkspaceRegistry(roots) {
   return {
     options: workspaces.map((workspace, index) => ({
       id: String(index),
-      name: path.basename(workspace.root) || workspace.root,
-      path: workspace.root
+      name: path.basename(workspace.root) || workspace.root
     })),
     get(id = '0') {
       const workspace = byId.get(String(id));

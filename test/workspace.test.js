@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { promisify } from 'node:util';
 import { createWorkspace } from '../server/workspace.js';
+
+const execFileAsync = promisify(execFile);
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
@@ -40,4 +44,20 @@ test('saves markdown atomically without leaving temp files', async () => {
     (await fs.readdir(root)).filter((name) => name.endsWith('.tmp')),
     []
   );
+});
+
+test('returns git diff for a markdown file', async () => {
+  const root = await tempRoot();
+  const note = path.join(root, 'note.md');
+  await fs.writeFile(note, 'old\n');
+  await execFileAsync('git', ['init'], { cwd: root });
+  await execFileAsync('git', ['add', 'note.md'], { cwd: root });
+  await fs.writeFile(note, 'new\n');
+
+  const workspace = await createWorkspace(root);
+  const result = await workspace.diffFile('/note.md');
+
+  assert.equal(result.path, '/note.md');
+  assert.match(result.diff, /^-old$/m);
+  assert.match(result.diff, /^\+new$/m);
 });

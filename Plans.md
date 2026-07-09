@@ -10,6 +10,7 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 - Keep SSH tunnel isolation as the only auth layer for now.
 - Never allow paths or symlinks to resolve outside `$WORKSPACE_ROOT`.
 - Use whole-file saves for MVP and recovery; use collaborative CM6 updates for active multi-user editing.
+- Keep git diff support server-side and raw: validate the note path, run `git diff`, show unified output.
 - Keep AI provider keys server-side. Support local Ollama and remote API providers.
 - Show inline AI edits as a diff before applying them.
 
@@ -57,6 +58,17 @@ Tasks:
 Done when:
 - A user can edit notes through the SSH tunnel without visible typing lag.
 - Network failure does not silently lose unsaved text.
+
+### 3.5 Git Diff Preview
+
+Tasks:
+- Add `GET /api/workspace/diff` for the selected Markdown file.
+- Run `git diff -- <file>` from the selected workspace root after existing path validation.
+- Add a `Diff` button that saves pending edits, fetches the diff, and shows raw unified output in a read-only pane.
+
+Done when:
+- A changed tracked note can show its git diff from the editor without leaving the browser.
+- Non-git workspaces report the git error instead of pretending there are changes.
 
 ### 4. Collaborative Editing
 
@@ -124,6 +136,7 @@ Done when:
 
 - Separate app authentication.
 - Database-backed revision storage.
+- Side-by-side diff rendering and commit history browsing.
 - Plugin system.
 - Mobile-specific editor redesign.
 - User/account management.

@@ -1,6 +1,10 @@
+import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 export class WorkspaceError extends Error {
   constructor(status, message) {
@@ -16,6 +20,7 @@ export async function createWorkspace(workspaceRoot) {
     root,
     readTree: () => readTree(root, root),
     loadFile: (filePath) => loadFile(root, filePath),
+    diffFile: (filePath) => diffFile(root, filePath),
     saveFile: (filePath, content) => saveFile(root, filePath, content),
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
@@ -73,6 +78,26 @@ async function loadFile(root, filePath) {
     path: normalized,
     content: await fs.readFile(absolute, 'utf8')
   };
+}
+
+async function diffFile(root, filePath) {
+  const normalized = normalizeWorkspacePath(filePath);
+  assertMarkdown(normalized);
+  const absolute = await resolvePath(root, normalized);
+  const relative = path.relative(root, absolute).replaceAll(path.sep, '/');
+
+  try {
+    const { stdout } = await execFileAsync('git', ['diff', '--', relative], {
+      cwd: root,
+      maxBuffer: 10 * 1024 * 1024
+    });
+    return { path: normalized, diff: stdout };
+  } catch (error) {
+    throw new WorkspaceError(
+      400,
+      error.stderr?.trim() || error.message || 'Unable to read git diff.'
+    );
+  }
 }
 
 async function saveFile(root, filePath, content) {
