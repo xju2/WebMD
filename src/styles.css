@@ -231,7 +231,14 @@ button {
   padding: 0 10px 6px;
 }
 
-.search-history button {
+.search-history-item {
+  display: flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+}
+
+.history-chip {
   max-width: 100%;
   min-width: 0;
   height: 28px;
@@ -245,17 +252,44 @@ button {
   font-weight: 650;
 }
 
-.search-history button:hover {
+.history-chip:hover {
   border-color: #9fb2ca;
   background: #f7fafc;
   color: #123f75;
 }
 
-.search-history span {
+.history-chip span {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.history-remove {
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #7a8595;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 760;
+  line-height: 1;
+  opacity: 0;
+}
+
+.search-history-item:hover .history-remove,
+.search-history-item:focus-within .history-remove {
+  opacity: 1;
+}
+
+.history-remove:hover,
+.history-remove:focus-visible {
+  background: #dfe8f6;
+  color: #123f75;
 }
 
 .tree,

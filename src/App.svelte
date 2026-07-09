@@ -638,6 +638,16 @@
     }
   }
 
+  function removeSearchHistory(term) {
+    searchHistory = searchHistory.filter((item) => item !== term);
+
+    try {
+      localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+    } catch {
+      // Ignore storage failures; removing from the visible list is enough.
+    }
+  }
+
   function selectEditorRange(from, to) {
     setViewMode('edit');
     editorView.dispatch({
@@ -805,17 +815,29 @@
       {#if searchHistory.length}
         <div class="search-history" aria-label="Recent searches">
           {#each searchHistory as term}
-            <button
-              aria-label={`Search for ${term}`}
-              title={term}
-              type="button"
-              on:click={() => {
-                searchQuery = term;
-                rememberSearch(term);
-              }}
-            >
-              <span>{term}</span>
-            </button>
+            <div class="search-history-item">
+              <button
+                aria-label={`Search for ${term}`}
+                class="history-chip"
+                title={term}
+                type="button"
+                on:click={() => {
+                  searchQuery = term;
+                  rememberSearch(term);
+                }}
+              >
+                <span>{term}</span>
+              </button>
+              <button
+                aria-label={`Remove ${term} from recent searches`}
+                class="history-remove"
+                title={`Remove ${term}`}
+                type="button"
+                on:click={() => removeSearchHistory(term)}
+              >
+                x
+              </button>
+            </div>
           {/each}
         </div>
       {/if}
