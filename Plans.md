@@ -137,6 +137,7 @@ Done when:
 - Separate app authentication.
 - Database-backed revision storage.
 - Side-by-side diff rendering and commit history browsing.
+- Markdown preview engine upgrade: keep the small renderer for now; consider `markdown-it` with lazy preview loading for fuller Markdown, images, and simple media embeds, or a unified/remark pipeline only if custom attachment/media transforms become central. Keep PDF viewing and annotations separate, likely via a PDF viewer path plus app-level annotation data keyed by file, page, and range/rect.
 - Plugin system.
 - Mobile-specific editor redesign.
 - User/account management.
