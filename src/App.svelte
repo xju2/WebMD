@@ -3,7 +3,7 @@
   import { EditorState } from '@codemirror/state';
   import { EditorView } from '@codemirror/view';
   import { basicSetup } from 'codemirror';
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, tick } from 'svelte';
   import { parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
 
@@ -33,6 +33,7 @@
   let loadedTreeOnce = false;
   let appShell;
   let editorHost;
+  let treeHost;
   let editorView;
   let saveTimer;
   let retryTimer;
@@ -514,6 +515,18 @@
     expandedDirs = next;
   }
 
+  async function revealSelectedFileInSidebar() {
+    if (!selectedPath) return;
+
+    sidebarVisible = true;
+    searchQuery = '';
+    expandToPath(selectedPath);
+    await tick();
+    treeHost
+      ?.querySelector('.tree button.active')
+      ?.scrollIntoView({ block: 'center' });
+  }
+
   function queueWorkspaceSearch(query, nodes) {
     clearTimeout(searchTimer);
     const run = ++searchRun;
@@ -806,7 +819,7 @@
           {/each}
         </div>
       {/if}
-      <div class="tree">
+      <div bind:this={treeHost} class="tree">
         {#each flatTree as node}
           <button
             class:active={node.path === selectedPath}
@@ -855,7 +868,16 @@
         >
           Files
         </button>
-        <div class="current-file">{selectedPath || 'No file selected'}</div>
+        <button
+          aria-label="Show current file in sidebar"
+          class="current-file"
+          disabled={!selectedPath}
+          title={selectedPath ? 'Double-click to show in sidebar' : undefined}
+          type="button"
+          on:dblclick={revealSelectedFileInSidebar}
+        >
+          {selectedPath || 'No file selected'}
+        </button>
       </div>
       <div class="topbar-actions">
         <div class="view-toggle" aria-label="View mode">
