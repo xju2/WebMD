@@ -4,6 +4,7 @@
   import { EditorView } from '@codemirror/view';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount } from 'svelte';
+  import { parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
 
   let tree = [];
@@ -19,7 +20,7 @@
   let searchResults = [];
   let searchStatus = '';
   let viewMode = 'edit';
-  let diffText = '';
+  let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
   let expandedDirs = new Set();
@@ -129,7 +130,7 @@
     searchQuery = '';
     searchResults = [];
     searchStatus = '';
-    diffText = '';
+    diffFiles = [];
     diffStatus = '';
     expandedDirs = new Set();
     loadedTreeOnce = false;
@@ -143,7 +144,7 @@
 
     const root = selectedRoot;
     selectedPath = path;
-    diffText = '';
+    diffFiles = [];
     diffStatus = '';
     status = '[Syncing...]';
     error = '';
@@ -256,7 +257,7 @@
     const root = selectedRoot;
     const path = selectedPath;
     viewMode = 'diff';
-    diffText = '';
+    diffFiles = [];
     diffStatus = 'Loading diff...';
     error = '';
 
@@ -265,8 +266,12 @@
         `/api/workspace/diff?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
       );
       if (root !== selectedRoot || path !== selectedPath) return;
-      diffText = result.diff;
-      diffStatus = result.diff ? '' : 'No git changes';
+      diffFiles = parseUnifiedDiff(result.diff);
+      diffStatus = result.diff
+        ? diffFiles.length
+          ? ''
+          : 'No readable diff hunks'
+        : 'No git changes';
     } catch (err) {
       if (root === selectedRoot && path === selectedPath) {
         diffStatus = '';
@@ -729,7 +734,28 @@
           {#if diffStatus}
             <p class="preview-empty">{diffStatus}</p>
           {:else}
-            <pre>{diffText}</pre>
+            {#each diffFiles as file}
+              <article class="diff-file">
+                <header class="diff-file-header">{file.title}</header>
+                {#each file.hunks as hunk}
+                  <section class="diff-hunk">
+                    <div class="diff-hunk-header">
+                      <span>{hunk.header}</span>
+                      {#if hunk.summary}
+                        <strong>{hunk.summary}</strong>
+                      {/if}
+                    </div>
+                    {#each hunk.lines as line}
+                      <div class={`diff-line diff-line-${line.kind}`}>
+                        <span class="diff-line-number">{line.oldNumber}</span>
+                        <span class="diff-line-number">{line.newNumber}</span>
+                        <code>{line.text}</code>
+                      </div>
+                    {/each}
+                  </section>
+                {/each}
+              </article>
+            {/each}
           {/if}
         </section>
       {/if}
