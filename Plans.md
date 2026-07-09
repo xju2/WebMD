@@ -141,3 +141,4 @@ Done when:
 - Plugin system.
 - Mobile-specific editor redesign.
 - User/account management.
+- Move the daily-note folder selector out of the always-visible global rail once there is a settings/preferences surface; it is useful setup but distracting after the first choice.
