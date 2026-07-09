@@ -7,6 +7,9 @@
   import { parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
 
+  const SEARCH_HISTORY_KEY = 'webmd:search-history';
+  const SEARCH_HISTORY_LIMIT = 8;
+
   let tree = [];
   let workspaceRoots = [];
   let selectedRoot = '0';
@@ -17,6 +20,7 @@
   let error = '';
   let selectedText = '';
   let searchQuery = '';
+  let searchHistory = [];
   let searchResults = [];
   let searchStatus = '';
   let viewMode = 'edit';
@@ -47,6 +51,7 @@
       : 'saved';
 
   onMount(async () => {
+    searchHistory = readSearchHistory();
     createEditor('');
     document.addEventListener('selectionchange', updateBrowserSelectedText);
     await loadRoots();
@@ -475,8 +480,40 @@
   }
 
   async function openSearchResult(result) {
+    rememberSearch(searchQuery);
     await openFile(result.path);
     if (result.from != null) selectEditorRange(result.from, result.to);
+  }
+
+  function readSearchHistory() {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'
+      );
+      return Array.isArray(value)
+        ? value
+            .filter((item) => typeof item === 'string')
+            .slice(0, SEARCH_HISTORY_LIMIT)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function rememberSearch(query) {
+    const term = query.trim();
+    if (!term) return;
+
+    searchHistory = [
+      term,
+      ...searchHistory.filter((item) => item !== term)
+    ].slice(0, SEARCH_HISTORY_LIMIT);
+
+    try {
+      localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(searchHistory));
+    } catch {
+      // Ignore storage failures; live search still works.
+    }
   }
 
   function selectEditorRange(from, to) {
@@ -565,6 +602,11 @@
       <input
         aria-label="Search files and contents"
         bind:value={searchQuery}
+        name="webmd-search"
+        on:blur={() => rememberSearch(searchQuery)}
+        on:keydown={(event) => {
+          if (event.key === 'Enter') rememberSearch(searchQuery);
+        }}
         placeholder="Search files and contents"
         type="search"
       />
@@ -613,6 +655,23 @@
         {/if}
       </div>
     {:else}
+      {#if searchHistory.length}
+        <div class="search-history" aria-label="Recent searches">
+          {#each searchHistory as term}
+            <button
+              aria-label={`Search for ${term}`}
+              title={term}
+              type="button"
+              on:click={() => {
+                searchQuery = term;
+                rememberSearch(term);
+              }}
+            >
+              <span>{term}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
       <div class="tree">
         {#each flatTree as node}
           <button
