@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.2",
+    "@codemirror/state": "^6.7.1",
     "codemirror": "^6.0.2",
     "express": "^5.1.0"
   },

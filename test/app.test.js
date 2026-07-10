@@ -1,12 +1,28 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { ChangeSet, Text } from '@codemirror/state';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createWorkspaceRegistry } from '../server/app.js';
+import { createApp, createWorkspaceRegistry } from '../server/app.js';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
+}
+
+function updateFor(content, change) {
+  return {
+    changes: ChangeSet.of(change, Text.of(content.split('\n')).length).toJSON(),
+    clientID: 'test'
+  };
+}
+
+async function listen(app) {
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { port } = server.address();
+  return { server, url: `http://127.0.0.1:${port}` };
 }
 
 test('reads from the selected workspace root', async () => {
@@ -34,4 +50,44 @@ test('searches through the selected workspace root', async () => {
   const workspaces = await createWorkspaceRegistry([root]);
 
   assert.equal((await workspaces.get().searchFiles('needle'))[0].path, '/note.md');
+});
+
+test('accepts document updates and exposes them as SSE events', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old');
+
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const abort = new AbortController();
+
+  try {
+    const updateResponse = await fetch(`${url}/api/workspace/updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/note.md',
+        version: 0,
+        updates: [updateFor('old', { from: 0, to: 3, insert: 'new' })]
+      })
+    });
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal((await updateResponse.json()).version, 1);
+    assert.equal(await fs.readFile(path.join(root, 'note.md'), 'utf8'), 'new');
+
+    const eventsResponse = await fetch(
+      `${url}/api/workspace/events?path=${encodeURIComponent('/note.md')}&since=0`,
+      { signal: abort.signal }
+    );
+    assert.equal(eventsResponse.status, 200);
+    assert.match(
+      eventsResponse.headers.get('content-type') || '',
+      /^text\/event-stream/
+    );
+
+    const { value } = await eventsResponse.body.getReader().read();
+    assert.match(new TextDecoder().decode(value), /data: .*"version":1/);
+  } finally {
+    abort.abort();
+    server.close();
+  }
 });

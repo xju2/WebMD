@@ -14,9 +14,17 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 - Keep AI provider keys server-side. Support local Ollama and remote API providers.
 - Show inline AI edits as a diff before applying them.
 
+## Current Status
+
+- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, and raw git diff preview.
+- In progress: collaborative editing. The backend now owns per-document versions, accepts CM6 `ChangeSet` JSON through `POST /api/workspace/updates`, snapshots accepted updates to disk, and streams/replays update batches through `GET /api/workspace/events`.
+- Next: connect CodeMirror clients to the update/event endpoints and rebase pending local changes against remote updates.
+
 ## Milestones
 
 ### 1. Project Skeleton
+
+Status: Done.
 
 Tasks:
 - Create a Vite + Svelte 5 frontend.
@@ -32,6 +40,8 @@ Done when:
 
 ### 2. Workspace File API
 
+Status: Done.
+
 Tasks:
 - Implement canonical path resolution.
 - Reject traversal and symlink escapes.
@@ -45,6 +55,8 @@ Done when:
 - Attempts to read outside `$WORKSPACE_ROOT` fail.
 
 ### 3. Editor MVP
+
+Status: Done.
 
 Tasks:
 - Build the main app layout: sidebar, editor pane, status area.
@@ -61,6 +73,8 @@ Done when:
 
 ### 3.5 Git Diff Preview
 
+Status: Done.
+
 Tasks:
 - Add `GET /api/workspace/diff` for the selected Markdown file.
 - Run `git diff -- <file>` from the selected workspace root after existing path validation.
@@ -72,13 +86,15 @@ Done when:
 
 ### 4. Collaborative Editing
 
+Status: In progress.
+
 Tasks:
-- Add server-owned document versions.
-- Implement `POST /api/workspace/updates`.
-- Implement `GET /api/workspace/events` using SSE.
-- Store per-document update logs in memory for active sessions.
-- Snapshot collaborative state back to disk with atomic writes.
-- Rebase pending local CM6 updates against remote updates.
+- [x] Add server-owned document versions.
+- [x] Implement `POST /api/workspace/updates`.
+- [x] Implement `GET /api/workspace/events` using SSE.
+- [x] Store per-document update logs in memory for active sessions.
+- [x] Snapshot collaborative state back to disk with atomic writes.
+- [ ] Rebase pending local CM6 updates against remote updates.
 
 Done when:
 - Two browser sessions can edit the same file and see each other's changes without last-write-wins overwrite.
@@ -124,13 +140,14 @@ Done when:
 
 ## First Implementation Pass
 
-1. Scaffold frontend and backend.
-2. Implement backend path validation, tree, load, and atomic save.
-3. Build Svelte shell with sidebar and CodeMirror editor.
-4. Wire debounced save and offline recovery.
-5. Add collaboration endpoints after single-user editing works.
-6. Add AI chat after collaboration has a stable document state.
-7. Add inline diff edits last.
+1. [x] Scaffold frontend and backend.
+2. [x] Implement backend path validation, tree, load, and atomic save.
+3. [x] Build Svelte shell with sidebar and CodeMirror editor.
+4. [x] Wire debounced save and offline recovery.
+5. [x] Add collaboration endpoints after single-user editing works.
+6. [ ] Wire CodeMirror collaboration clients to the backend update/event endpoints.
+7. [ ] Add AI chat after collaboration has a stable document state.
+8. [ ] Add inline diff edits last.
 
 ## Deferred Until Needed
 

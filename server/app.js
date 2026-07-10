@@ -44,9 +44,36 @@ export async function createApp({ workspaceRoot, workspaceRoots }) {
     res.json(await workspaces.get(req.query.root).diffFile(req.query.path));
   }));
 
+  app.get('/api/workspace/events', asyncHandler(async (req, res) => {
+    const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+    const subscription = await workspaces
+      .get(req.query.root)
+      .subscribeEvents(req.query.path, req.query.since, send);
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    for (const event of subscription.backlog) send(event);
+
+    const heartbeat = setInterval(() => res.write(':\n\n'), 30000);
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      subscription.unsubscribe();
+    });
+  }));
+
   app.post('/api/workspace/save', asyncHandler(async (req, res) => {
     res.json(
       await workspaces.get(req.body.root).saveFile(req.body.path, req.body.content)
+    );
+  }));
+
+  app.post('/api/workspace/updates', asyncHandler(async (req, res) => {
+    res.json(
+      await workspaces
+        .get(req.body.root)
+        .applyUpdates(req.body.path, req.body.version, req.body.updates)
     );
   }));
 

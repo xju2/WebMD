@@ -1,10 +1,12 @@
 import { execFile } from 'node:child_process';
+import { ChangeSet, Text } from '@codemirror/state';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
+const MAX_DOCUMENT_EVENTS = 1000;
 const IMAGE_EXTENSIONS = new Set([
   '.avif',
   '.gif',
@@ -25,6 +27,7 @@ export class WorkspaceError extends Error {
 export async function createWorkspace(workspaceRoot) {
   const root = await fs.realpath(workspaceRoot);
   let searchIndex;
+  const documents = new Map();
 
   return {
     root,
@@ -32,7 +35,7 @@ export async function createWorkspace(workspaceRoot) {
       searchIndex = null;
       return readTree(root, root);
     },
-    loadFile: (filePath) => loadFile(root, filePath),
+    loadFile: (filePath) => loadFile(root, documents, filePath),
     loadMediaFile: (filePath) => loadMediaFile(root, filePath),
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
@@ -40,6 +43,19 @@ export async function createWorkspace(workspaceRoot) {
       searchIndex = null;
       return result;
     },
+    applyUpdates: async (filePath, version, updates) => {
+      const result = await applyDocumentUpdates(
+        root,
+        documents,
+        filePath,
+        version,
+        updates
+      );
+      searchIndex = null;
+      return result;
+    },
+    subscribeEvents: (filePath, since, send) =>
+      subscribeDocumentEvents(root, documents, filePath, since, send),
     searchFiles: async (query, options) => {
       searchIndex ??= await buildSearchIndex(root);
       return searchIndex.search(query, options);
@@ -94,13 +110,23 @@ async function readTree(root, dir, prefix = '') {
   return nodes;
 }
 
-async function loadFile(root, filePath) {
+async function loadFile(root, documents, filePath) {
   const normalized = normalizeWorkspacePath(filePath);
   assertMarkdown(normalized);
+  const document = documents.get(normalized);
+  if (document) {
+    return {
+      path: normalized,
+      content: document.content,
+      version: document.version
+    };
+  }
+
   const absolute = await resolvePath(root, normalized);
   return {
     path: normalized,
-    content: await fs.readFile(absolute, 'utf8')
+    content: await fs.readFile(absolute, 'utf8'),
+    version: 0
   };
 }
 
@@ -153,6 +179,119 @@ async function saveFile(root, filePath, content) {
   }
 
   return { success: true, timestamp: new Date().toISOString() };
+}
+
+async function applyDocumentUpdates(root, documents, filePath, version, updates) {
+  if (!Array.isArray(updates)) {
+    throw new WorkspaceError(400, 'Updates must be an array.');
+  }
+
+  const document = await getDocument(root, documents, filePath);
+  return enqueueDocumentWrite(document, async () => {
+    const baseVersion = parseVersion(version);
+    if (baseVersion !== document.version) {
+      throw new WorkspaceError(409, `Document is at version ${document.version}.`);
+    }
+    if (!updates.length) {
+      return { success: true, path: document.path, version: document.version };
+    }
+
+    const nextContent = applyChangeSets(document.content, updates);
+    await saveFile(root, document.path, nextContent);
+
+    const events = updates.map((update, index) => ({
+      path: document.path,
+      version: baseVersion + index + 1,
+      updates: [update]
+    }));
+
+    document.content = nextContent;
+    document.version = baseVersion + updates.length;
+    document.events.push(...events);
+    // ponytail: bounded in-memory log; persist logs when reconnect windows matter.
+    while (document.events.length > MAX_DOCUMENT_EVENTS) document.events.shift();
+    for (const event of events) {
+      for (const listener of document.listeners) {
+        try {
+          listener(event);
+        } catch {
+          document.listeners.delete(listener);
+        }
+      }
+    }
+
+    return { success: true, path: document.path, version: document.version };
+  });
+}
+
+async function subscribeDocumentEvents(root, documents, filePath, since, send) {
+  if (typeof send !== 'function') {
+    throw new WorkspaceError(500, 'Event listener is required.');
+  }
+
+  const document = await getDocument(root, documents, filePath);
+  const version = parseVersion(since);
+  const backlog = document.events.filter((event) => event.version > version);
+  document.listeners.add(send);
+
+  return {
+    path: document.path,
+    version: document.version,
+    backlog,
+    unsubscribe: () => document.listeners.delete(send)
+  };
+}
+
+async function getDocument(root, documents, filePath) {
+  const normalized = normalizeWorkspacePath(filePath);
+  assertMarkdown(normalized);
+
+  let document = documents.get(normalized);
+  if (document) return document;
+
+  const absolute = await resolvePath(root, normalized);
+  document = {
+    path: normalized,
+    content: await fs.readFile(absolute, 'utf8'),
+    version: 0,
+    events: [],
+    listeners: new Set(),
+    pendingWrite: Promise.resolve()
+  };
+  documents.set(normalized, document);
+  return document;
+}
+
+function enqueueDocumentWrite(document, write) {
+  const nextWrite = document.pendingWrite.then(write, write);
+  document.pendingWrite = nextWrite.catch(() => {});
+  return nextWrite;
+}
+
+function applyChangeSets(content, updates) {
+  let doc = Text.of(content.split('\n'));
+
+  try {
+    for (const update of updates) {
+      if (!update || typeof update !== 'object' || !('changes' in update)) {
+        throw new WorkspaceError(400, 'Each update must include changes.');
+      }
+      doc = ChangeSet.fromJSON(update.changes).apply(doc);
+    }
+  } catch (error) {
+    if (error instanceof WorkspaceError) throw error;
+    throw new WorkspaceError(400, error.message || 'Invalid document update.');
+  }
+
+  return doc.toString();
+}
+
+function parseVersion(value) {
+  const version = Number(value);
+  if (!Number.isInteger(version) || version < 0) {
+    throw new WorkspaceError(400, 'Version must be a non-negative integer.');
+  }
+  return version;
 }
 
 async function buildSearchIndex(root) {

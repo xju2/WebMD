@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { ChangeSet, Text } from '@codemirror/state';
 import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,6 +12,13 @@ const execFileAsync = promisify(execFile);
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
+}
+
+function updateFor(content, change) {
+  return {
+    changes: ChangeSet.of(change, Text.of(content.split('\n')).length).toJSON(),
+    clientID: 'test'
+  };
 }
 
 test('rejects traversal paths', async () => {
@@ -207,4 +215,61 @@ test('returns git diff for a markdown file', async () => {
   assert.equal(result.path, '/note.md');
   assert.match(result.diff, /^-old$/m);
   assert.match(result.diff, /^\+new$/m);
+});
+
+test('applies versioned document updates and writes a snapshot', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old\n');
+
+  const workspace = await createWorkspace(root);
+  assert.deepEqual(await workspace.loadFile('/note.md'), {
+    path: '/note.md',
+    content: 'old\n',
+    version: 0
+  });
+
+  const result = await workspace.applyUpdates('/note.md', 0, [
+    updateFor('old\n', { from: 0, to: 3, insert: 'new' })
+  ]);
+
+  assert.equal(result.version, 1);
+  assert.equal(await fs.readFile(path.join(root, 'note.md'), 'utf8'), 'new\n');
+  assert.equal((await workspace.loadFile('/note.md')).version, 1);
+  await assert.rejects(
+    () =>
+      workspace.applyUpdates('/note.md', 0, [
+        updateFor('new\n', { from: 0, to: 3, insert: 'bad' })
+      ]),
+    (error) => error.status === 409
+  );
+});
+
+test('replays and pushes document update events', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old');
+
+  const workspace = await createWorkspace(root);
+  const pushed = [];
+  const live = await workspace.subscribeEvents('/note.md', 0, (event) =>
+    pushed.push(event)
+  );
+
+  await workspace.applyUpdates('/note.md', 0, [
+    updateFor('old', { from: 0, to: 3, insert: 'new' }),
+    updateFor('new', { from: 3, to: 3, insert: '!' })
+  ]);
+
+  assert.deepEqual(
+    pushed.map((event) => event.version),
+    [1, 2]
+  );
+  live.unsubscribe();
+
+  const replay = await workspace.subscribeEvents('/note.md', 1, () => {});
+  assert.equal(replay.version, 2);
+  assert.deepEqual(
+    replay.backlog.map((event) => event.version),
+    [2]
+  );
+  replay.unsubscribe();
 });
