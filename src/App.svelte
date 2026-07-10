@@ -854,6 +854,29 @@
   {/each}
 {/snippet}
 
+{#snippet diffFile(file)}
+  <article class="diff-file">
+    <header class="diff-file-header">{file.title}</header>
+    {#each file.hunks as hunk}
+      <section class="diff-hunk">
+        <div class="diff-hunk-header">
+          <span>{hunk.header}</span>
+          {#if hunk.summary}
+            <strong>{hunk.summary}</strong>
+          {/if}
+        </div>
+        {#each hunk.lines as line}
+          <div class={`diff-line diff-line-${line.kind}`}>
+            <span class="diff-line-number">{line.oldNumber}</span>
+            <span class="diff-line-number">{line.newNumber}</span>
+            <code>{line.text}</code>
+          </div>
+        {/each}
+      </section>
+    {/each}
+  </article>
+{/snippet}
+
 <main
   bind:this={appShell}
   class:sidebar-hidden={!sidebarVisible}
@@ -1164,6 +1187,10 @@
                 <hr />
               {:else if block.type === 'code'}
                 <pre><code>{block.text}</code></pre>
+              {:else if block.type === 'diff'}
+                {#each block.files as file}
+                  {@render diffFile(file)}
+                {/each}
               {:else if block.type === 'table'}
                 <div class="table-scroll">
                   <table>
@@ -1219,26 +1246,7 @@
             <p class="preview-empty">{diffStatus}</p>
           {:else}
             {#each diffFiles as file}
-              <article class="diff-file">
-                <header class="diff-file-header">{file.title}</header>
-                {#each file.hunks as hunk}
-                  <section class="diff-hunk">
-                    <div class="diff-hunk-header">
-                      <span>{hunk.header}</span>
-                      {#if hunk.summary}
-                        <strong>{hunk.summary}</strong>
-                      {/if}
-                    </div>
-                    {#each hunk.lines as line}
-                      <div class={`diff-line diff-line-${line.kind}`}>
-                        <span class="diff-line-number">{line.oldNumber}</span>
-                        <span class="diff-line-number">{line.newNumber}</span>
-                        <code>{line.text}</code>
-                      </div>
-                    {/each}
-                  </section>
-                {/each}
-              </article>
+              {@render diffFile(file)}
             {/each}
           {/if}
         </section>

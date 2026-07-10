@@ -738,6 +738,10 @@ button {
   background: #f7f9fb;
 }
 
+.preview-pane .diff-file {
+  margin: 0.8em 0;
+}
+
 .preview-pane .table-scroll {
   overflow: auto;
 }

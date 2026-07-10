@@ -29,6 +29,28 @@ console.log("ok");
   assert.equal(blocks[3].lang, 'js');
 });
 
+test('renders fenced unified diffs as diff blocks', () => {
+  const blocks = renderMarkdown(`\`\`\`diff
+diff --git a/scripts/submit_reco_h5.sh b/scripts/submit_reco_h5.sh
+index 42ced7d..19ccce4 100755
+--- a/scripts/submit_reco_h5.sh
++++ b/scripts/submit_reco_h5.sh
+@@ -10,13 +10,14 @@ export MPICH_MPIIO_DVS_MAXNODES=48
+ IN_VAL_H5_FILE="/global/cfs/cdirs/m3443/data/foundational_universe/raw_data/L80_N4096/L80_N4096_z3_s2.hdf5"
+-RECO_H5_FILE="/global/cfs/cdirs/m3443/data/foundational_universe/raw_data/L80_N4096/L80_N4096_z3_s2_RECO.hdf5"
++RECO_H5_FILE="/global/cfs/cdirs/m3443/data/foundational_universe/raw_data/L80_N4096/L80_N4096_z3_s2_RECO_x0-7-1_v1.hdf5"
++TRAIN_CONFIG_FILE="src/fundra/configs/resolved/vqvae/x0.7.0.yaml"
+\`\`\``);
+
+  assert.equal(blocks[0].type, 'diff');
+  assert.equal(blocks[0].files[0].title, 'scripts/submit_reco_h5.sh');
+  assert.equal(blocks[0].files[0].hunks[0].header, '@@ -10,13 +10,14 @@');
+  assert.deepEqual(
+    blocks[0].files[0].hunks[0].lines.map((line) => line.kind),
+    ['context', 'removed', 'added', 'added']
+  );
+});
+
 test('drops unsafe link targets', () => {
   assert.equal(parseInline('[bad](javascript:alert(1))')[0].href, '');
 });

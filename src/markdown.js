@@ -1,3 +1,4 @@
+import { parseUnifiedDiff } from './diff.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
@@ -22,11 +23,7 @@ export function renderMarkdown(source = '') {
         index += 1;
       }
       if (index < lines.length) index += 1;
-      blocks.push({
-        type: 'code',
-        lang: fence[1] || '',
-        text: code.join('\n')
-      });
+      blocks.push(parseCodeBlock(fence[1] || '', code.join('\n')));
       continue;
     }
 
@@ -94,6 +91,13 @@ export function renderMarkdown(source = '') {
   }
 
   return blocks;
+}
+
+function parseCodeBlock(lang, text) {
+  const files = lang.toLowerCase() === 'diff' ? parseUnifiedDiff(text) : [];
+  return files.length
+    ? { type: 'diff', lang, text, files }
+    : { type: 'code', lang, text };
 }
 
 export function parseInline(text) {
