@@ -16,9 +16,9 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 
 ## Current Status
 
-- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, and raw git diff preview.
-- In progress: collaborative editing. The backend now owns per-document versions, accepts CM6 `ChangeSet` JSON through `POST /api/workspace/updates`, snapshots accepted updates to disk, and streams/replays update batches through `GET /api/workspace/events`.
-- Next: connect CodeMirror clients to the update/event endpoints and rebase pending local changes against remote updates.
+- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, raw git diff preview, and MVP collaborative editing.
+- Collaborative editing now uses server-owned document versions, CM6 `ChangeSet` updates through `POST /api/workspace/updates`, atomic disk snapshots, SSE update replay through `GET /api/workspace/events`, and client-side rebasing for pending local edits.
+- Next: add AI chat after the collaborative document state.
 
 ## Milestones
 
@@ -86,7 +86,7 @@ Done when:
 
 ### 4. Collaborative Editing
 
-Status: In progress.
+Status: Done.
 
 Tasks:
 - [x] Add server-owned document versions.
@@ -94,7 +94,7 @@ Tasks:
 - [x] Implement `GET /api/workspace/events` using SSE.
 - [x] Store per-document update logs in memory for active sessions.
 - [x] Snapshot collaborative state back to disk with atomic writes.
-- [ ] Rebase pending local CM6 updates against remote updates.
+- [x] Rebase pending local CM6 updates against remote updates.
 
 Done when:
 - Two browser sessions can edit the same file and see each other's changes without last-write-wins overwrite.
@@ -145,7 +145,7 @@ Done when:
 3. [x] Build Svelte shell with sidebar and CodeMirror editor.
 4. [x] Wire debounced save and offline recovery.
 5. [x] Add collaboration endpoints after single-user editing works.
-6. [ ] Wire CodeMirror collaboration clients to the backend update/event endpoints.
+6. [x] Wire CodeMirror collaboration clients to the backend update/event endpoints.
 7. [ ] Add AI chat after collaboration has a stable document state.
 8. [ ] Add inline diff edits last.
 

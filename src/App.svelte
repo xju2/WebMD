@@ -4,6 +4,10 @@
   import { EditorView } from '@codemirror/view';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
+  import {
+    rebaseRemoteUpdate,
+    updateFromChangeSet as createCollabUpdate
+  } from './collab.js';
   import { parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
@@ -11,6 +15,9 @@
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const SEARCH_HISTORY_LIMIT = 8;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
+  const CLIENT_ID =
+    globalThis.crypto?.randomUUID?.() ||
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   let tree = [];
   let workspaceRoots = [];
@@ -45,6 +52,15 @@
   let navigationBackStack = [];
   let navigationForwardStack = [];
   let applyingServerText = false;
+  let documentVersion = 0;
+  let collaborationEnabled = false;
+  let documentEvents;
+  let pendingUpdates = [];
+  let inFlightUpdates = [];
+  let sendingUpdates = false;
+  let sendPromise = Promise.resolve();
+  let sendRun = 0;
+  let updateSequence = 0;
 
   $: workspaceTree = cleanTree(tree);
   $: workspaceFiles = collectFiles(workspaceTree);
@@ -79,6 +95,7 @@
   onDestroy(() => {
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
+    closeDocumentEvents();
     editorView?.destroy();
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
@@ -97,7 +114,7 @@
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               content = update.state.doc.toString();
-              if (!applyingServerText) scheduleSave();
+              if (!applyingServerText) queueLocalUpdate(update.changes);
             }
             if (update.docChanged || update.selectionSet)
               updateSelectedText(update.state);
@@ -159,8 +176,8 @@
 
   async function switchWorkspace(root) {
     if (root === selectedRoot) return;
-    if (selectedPath && selectedIsMarkdown && content !== lastSaved)
-      await saveNow();
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    stopCollaboration();
 
     selectedRoot = root;
     dailyNoteFolder = readDailyNoteFolder(root);
@@ -189,8 +206,8 @@
     path,
     { historyMode = 'push', rememberNavigation = true } = {}
   ) {
-    if (selectedPath && selectedIsMarkdown && content !== lastSaved)
-      await saveNow();
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    stopCollaboration();
 
     const root = selectedRoot;
     const previousEntry = currentNavigationEntry();
@@ -222,7 +239,9 @@
       const buffered = sessionStorage.getItem(storageKey(root, path));
       const nextContent = buffered ?? file.content;
 
-      showFile(root, path, nextContent, file.content);
+      showFile(root, path, nextContent, file.content, file.version, {
+        collaborate: !buffered
+      });
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
       rememberNavigationEntry(previousEntry, path, {
         historyMode,
@@ -233,7 +252,7 @@
     } catch (err) {
       const buffered = sessionStorage.getItem(storageKey(root, path));
       if (buffered) {
-        showFile(root, path, buffered, '');
+        showFile(root, path, buffered, '', 0, { collaborate: false });
         status = '[Offline - Retrying]';
         rememberNavigationEntry(previousEntry, path, {
           historyMode,
@@ -253,7 +272,8 @@
     const root = selectedRoot;
     const previousEntry = currentNavigationEntry();
 
-    if (selectedPath && content !== lastSaved) await saveNow();
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    stopCollaboration();
 
     selectedPath = path;
     selectedFileKind = 'markdown';
@@ -269,7 +289,7 @@
         `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
       );
       if (root !== selectedRoot || selectedPath !== path) return;
-      showFile(root, path, file.content, file.content);
+      showFile(root, path, file.content, file.content, file.version);
       status = '[Saved]';
       rememberNavigationEntry(previousEntry, path);
       updateNavigationState(path);
@@ -289,14 +309,14 @@
           body: JSON.stringify({ root, path, content: nextContent })
         });
         if (root !== selectedRoot || selectedPath !== path) return;
-        showFile(root, path, nextContent, nextContent);
+        showFile(root, path, nextContent, nextContent, 0);
         status = '[Saved]';
         rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
         await loadTree(root);
       } catch (saveErr) {
         sessionStorage.setItem(storageKey(root, path), nextContent);
-        showFile(root, path, nextContent, '');
+        showFile(root, path, nextContent, '', 0, { collaborate: false });
         error = saveErr.message;
         status = '[Offline - Retrying]';
         rememberNavigationEntry(previousEntry, path);
@@ -317,16 +337,26 @@
     return `${folder}/${year}-${month}-${day}.md`;
   }
 
-  function showFile(root, path, nextContent, savedContent) {
+  function showFile(
+    root,
+    path,
+    nextContent,
+    savedContent,
+    version = 0,
+    { collaborate = true } = {}
+  ) {
     selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
     fileCache.set(rootPathKey(root, path), nextContent);
     expandToPath(path);
     setEditorContent(nextContent);
+    resetCollaboration(version);
+    if (collaborate) openDocumentEvents(root, path, version);
   }
 
   function showMediaFile(path) {
+    stopCollaboration();
     content = '';
     lastSaved = '';
     selectedText = '';
@@ -344,15 +374,145 @@
     updateSelectedText(editorView.state);
   }
 
-  function scheduleSave() {
+  function resetCollaboration(version = 0) {
+    documentVersion = Number(version) || 0;
+    pendingUpdates = [];
+    inFlightUpdates = [];
+    sendingUpdates = false;
+    sendPromise = Promise.resolve();
+    collaborationEnabled = false;
+    sendRun += 1;
+    clearTimeout(saveTimer);
+  }
+
+  function stopCollaboration() {
+    closeDocumentEvents();
+    resetCollaboration(0);
+  }
+
+  function closeDocumentEvents() {
+    documentEvents?.close();
+    documentEvents = null;
+  }
+
+  function openDocumentEvents(root, path, version = 0) {
+    closeDocumentEvents();
+    documentVersion = Number(version) || 0;
+    collaborationEnabled = true;
+
+    const source = new EventSource(
+      `/api/workspace/events?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}&since=${documentVersion}`
+    );
+    documentEvents = source;
+    source.onopen = () => {
+      if (root === selectedRoot && path === selectedPath && !hasUnsavedChanges()) {
+        error = '';
+        status = '[Saved]';
+      }
+    };
+    source.onmessage = (message) => {
+      try {
+        handleDocumentEvent(root, path, JSON.parse(message.data));
+      } catch (err) {
+        if (root === selectedRoot && path === selectedPath) error = err.message;
+      }
+    };
+    source.onerror = () => {
+      if (root === selectedRoot && path === selectedPath) {
+        status = '[Offline - Retrying]';
+      }
+    };
+  }
+
+  function handleDocumentEvent(root, path, event) {
+    if (
+      root !== selectedRoot ||
+      path !== selectedPath ||
+      !selectedIsMarkdown ||
+      !event ||
+      event.version <= documentVersion
+    )
+      return;
+
+    for (const update of event.updates || []) {
+      if (update.clientID === CLIENT_ID) {
+        acknowledgeUpdate(update);
+      } else {
+        applyRemoteUpdate(update);
+      }
+    }
+
+    documentVersion = event.version;
+    if (pendingUpdates.length) {
+      status = '[Syncing...]';
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(flushPendingUpdates, 0);
+    } else if (
+      !inFlightUpdates.length &&
+      !sendingUpdates &&
+      content === editorView.state.doc.toString()
+    ) {
+      lastSaved = content;
+      status = '[Saved]';
+    }
+  }
+
+  function acknowledgeUpdate(update) {
+    pendingUpdates = pendingUpdates.filter((item) => item.id !== update.id);
+    inFlightUpdates = inFlightUpdates.filter((item) => item.id !== update.id);
+  }
+
+  function applyRemoteUpdate(update) {
+    const unconfirmed = [...inFlightUpdates, ...pendingUpdates];
+    const { changesForEditor, rebasedUpdates } = rebaseRemoteUpdate(
+      update,
+      unconfirmed,
+      newCollabUpdate
+    );
+
+    applyingServerText = true;
+    editorView.dispatch({ changes: changesForEditor });
+    applyingServerText = false;
+    content = editorView.state.doc.toString();
+
+    if (!unconfirmed.length) return;
+
+    pendingUpdates = rebasedUpdates;
+    inFlightUpdates = [];
+    sendingUpdates = false;
+    sendRun += 1;
+  }
+
+  function newCollabUpdate(changes) {
+    updateSequence += 1;
+    return createCollabUpdate(
+      changes,
+      CLIENT_ID,
+      `${CLIENT_ID}:${updateSequence}`
+    );
+  }
+
+  function queueLocalUpdate(changes) {
     if (!selectedPath || !selectedIsMarkdown) return;
+    pendingUpdates = [...pendingUpdates, newCollabUpdate(changes)];
     status = '[Syncing...]';
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveNow, 700);
+    saveTimer = setTimeout(flushPendingUpdates, 150);
   }
 
   async function saveNow() {
     clearTimeout(saveTimer);
+    if (!selectedPath || !selectedIsMarkdown) return;
+    if (collaborationEnabled && (pendingUpdates.length || inFlightUpdates.length)) {
+      await flushPendingUpdates();
+      return;
+    }
+    if (content === lastSaved) return;
+
+    await saveWholeFile();
+  }
+
+  async function saveWholeFile() {
     if (!selectedPath || !selectedIsMarkdown || content === lastSaved) return;
 
     const root = selectedRoot;
@@ -385,13 +545,71 @@
     }
   }
 
+  async function flushPendingUpdates() {
+    clearTimeout(saveTimer);
+    if (sendingUpdates) return sendPromise;
+    if (
+      !collaborationEnabled ||
+      !selectedPath ||
+      !selectedIsMarkdown ||
+      !pendingUpdates.length
+    )
+      return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+    const version = documentVersion;
+    const updates = pendingUpdates;
+    const run = ++sendRun;
+
+    pendingUpdates = [];
+    inFlightUpdates = updates;
+    sendingUpdates = true;
+    status = '[Syncing...]';
+
+    sendPromise = (async () => {
+      const result = await requestJson('/api/workspace/updates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, path, version, updates })
+      });
+      if (run !== sendRun || root !== selectedRoot || path !== selectedPath)
+        return;
+
+      documentVersion = Math.max(documentVersion, result.version);
+      inFlightUpdates = [];
+      sendingUpdates = false;
+      sessionStorage.removeItem(storageKey(root, path));
+      if (pendingUpdates.length) {
+        await flushPendingUpdates();
+      } else {
+        lastSaved = content;
+        fileCache.set(rootPathKey(root, path), content);
+        status = '[Saved]';
+        await loadTree(root);
+      }
+    })().catch((err) => {
+      if (run !== sendRun || root !== selectedRoot || path !== selectedPath)
+        return;
+
+      pendingUpdates = [...inFlightUpdates, ...pendingUpdates];
+      inFlightUpdates = [];
+      sendingUpdates = false;
+      sessionStorage.setItem(storageKey(root, path), content);
+      error = err.message;
+      status = '[Offline - Retrying]';
+      if (err.status !== 409) queueRetry();
+    });
+    return sendPromise;
+  }
+
   async function syncWorkspace() {
     const root = selectedRoot;
     const path = selectedPath;
     status = '[Syncing...]';
     error = '';
 
-    if (path && selectedIsMarkdown && content !== lastSaved) await saveNow();
+    if (path && hasUnsavedChanges()) await saveNow();
     if (root !== selectedRoot) return;
 
     fileCache = new Map();
@@ -407,7 +625,7 @@
 
   async function showDiff() {
     if (!selectedPath || !selectedIsMarkdown) return;
-    if (content !== lastSaved) await saveNow();
+    if (hasUnsavedChanges()) await saveNow();
 
     const root = selectedRoot;
     const path = selectedPath;
@@ -447,6 +665,13 @@
       )
         queueRetry();
     }, 2000);
+  }
+
+  function hasUnsavedChanges() {
+    return (
+      selectedIsMarkdown &&
+      (content !== lastSaved || pendingUpdates.length || inFlightUpdates.length)
+    );
   }
 
   function updateSelectedText(state) {
@@ -1139,7 +1364,7 @@
         </div>
         <button
           class="save-button"
-          disabled={!selectedPath || !selectedIsMarkdown || content === lastSaved}
+          disabled={!selectedPath || !selectedIsMarkdown || !hasUnsavedChanges()}
           on:click={saveNow}
         >
           Save
