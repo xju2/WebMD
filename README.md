@@ -24,8 +24,11 @@ The Vite dev server also binds to `127.0.0.1` and proxies `/api` to the backend.
 - `WORKSPACE_ROOTS`: optional path-delimited list of Markdown workspaces.
 - `PORT`: backend port, defaults to `3000`.
 - `VITE_API_PROXY_TARGET`: optional dev proxy target, set by `npm run dev`.
-
-AI provider settings are planned but not wired in this pass. Keep provider keys server-side when that milestone lands.
+- `AI_PROVIDER`: optional `ollama` or `openai`, defaults to `openai` when `OPENAI_API_KEY` is set and `ollama` otherwise.
+- `AI_MODEL`: optional model override. Ollama defaults to `llama3.2`; OpenAI defaults to `gpt-5.6`.
+- `OLLAMA_BASE_URL`: optional Ollama URL, defaults to `http://127.0.0.1:11434`.
+- `OPENAI_API_KEY`: required for `AI_PROVIDER=openai`; never sent to the browser.
+- `OPENAI_BASE_URL`: optional OpenAI-compatible base URL, defaults to `https://api.openai.com/v1`.
 
 ## Scripts
 

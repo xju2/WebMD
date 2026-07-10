@@ -16,9 +16,10 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 
 ## Current Status
 
-- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, raw git diff preview, and MVP collaborative editing.
+- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, raw git diff preview, MVP collaborative editing, and streamed AI chat.
 - Collaborative editing now uses server-owned document versions, CM6 `ChangeSet` updates through `POST /api/workspace/updates`, atomic disk snapshots, SSE update replay through `GET /api/workspace/events`, and client-side rebasing for pending local edits.
-- Next: add AI chat after the collaborative document state.
+- AI chat keeps provider keys server-side, streams from Ollama or OpenAI-compatible Responses providers, and sends active document or selected-text context from the workspace.
+- Next: add inline AI diff edits.
 
 ## Milestones
 
@@ -102,12 +103,14 @@ Done when:
 
 ### 5. AI Chat
 
+Status: Done.
+
 Tasks:
-- Add AI provider configuration for Ollama and remote API providers.
-- Implement `POST /api/ai/chat` as an SSE stream.
-- Send selected text, active document path, and prompt text to the server.
-- Keep provider secrets out of the browser.
-- Render streamed chat output in the sidebar.
+- [x] Add AI provider configuration for Ollama and remote API providers.
+- [x] Implement `POST /api/ai/chat` as an SSE stream.
+- [x] Send selected text, active document path, and prompt text to the server.
+- [x] Keep provider secrets out of the browser.
+- [x] Render streamed chat output in the sidebar.
 
 Done when:
 - The user can highlight text, ask a question, and receive streamed AI output.
@@ -146,7 +149,7 @@ Done when:
 4. [x] Wire debounced save and offline recovery.
 5. [x] Add collaboration endpoints after single-user editing works.
 6. [x] Wire CodeMirror collaboration clients to the backend update/event endpoints.
-7. [ ] Add AI chat after collaboration has a stable document state.
+7. [x] Add AI chat after collaboration has a stable document state.
 8. [ ] Add inline diff edits last.
 
 ## Deferred Until Needed

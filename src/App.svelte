@@ -33,6 +33,11 @@
   let searchHistory = [];
   let searchResults = [];
   let searchStatus = '';
+  let chatPrompt = '';
+  let chatMessages = [];
+  let chatStatus = '';
+  let chatStreaming = false;
+  let chatAbort;
   let viewMode = 'edit';
   let diffFiles = [];
   let diffStatus = '';
@@ -96,6 +101,7 @@
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
     closeDocumentEvents();
+    chatAbort?.abort();
     editorView?.destroy();
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
@@ -137,6 +143,83 @@
       throw error;
     }
     return payload;
+  }
+
+  async function sendChat() {
+    const prompt = chatPrompt.trim();
+    if (!prompt || chatStreaming) return;
+
+    chatPrompt = '';
+    chatStatus = 'Thinking...';
+    chatStreaming = true;
+    chatAbort?.abort();
+    chatAbort = new AbortController();
+    chatMessages = [
+      ...chatMessages,
+      { role: 'user', text: prompt },
+      { role: 'assistant', text: '' }
+    ];
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: chatAbort.signal,
+        body: JSON.stringify({
+          root: selectedRoot,
+          path: selectedIsMarkdown ? selectedPath : '',
+          selectedText,
+          prompt
+        })
+      });
+      if (!response.ok || !response.body) throw new Error(response.statusText);
+
+      await readSseStream(response.body, (event) => {
+        if (event.text) appendAssistantText(event.text);
+        if (event.error) throw new Error(event.error);
+      });
+      chatStatus = '';
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        appendAssistantText(`\n\n${err.message}`);
+        chatStatus = 'AI request failed';
+      }
+    } finally {
+      chatStreaming = false;
+    }
+  }
+
+  async function readSseStream(body, onEvent) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop() || '';
+
+      for (const block of blocks) {
+        const data = block
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n');
+        if (data) onEvent(JSON.parse(data));
+      }
+    }
+  }
+
+  function appendAssistantText(text) {
+    const next = [...chatMessages];
+    const index = next.length - 1;
+    next[index] = {
+      role: 'assistant',
+      text: `${next[index]?.text || ''}${text}`
+    };
+    chatMessages = next;
   }
 
   async function loadRoots() {
@@ -1286,6 +1369,39 @@
         {/if}
       </div>
     {/if}
+
+    <section class="ai-panel" aria-label="AI chat">
+      <div class="ai-messages" aria-live="polite">
+        {#if chatMessages.length}
+          {#each chatMessages as message}
+            <article class={`ai-message ai-message-${message.role}`}>
+              <strong>{message.role === 'user' ? 'You' : 'AI'}</strong>
+              <p>{message.text || (chatStreaming ? '...' : '')}</p>
+            </article>
+          {/each}
+        {:else}
+          <p class="empty-copy">Ask about the current note or selection.</p>
+        {/if}
+      </div>
+      <form
+        class="ai-form"
+        on:submit|preventDefault={sendChat}
+      >
+        <textarea
+          aria-label="Ask AI"
+          bind:value={chatPrompt}
+          disabled={chatStreaming}
+          placeholder={selectedText ? 'Ask about the selection' : 'Ask about this note'}
+          rows="2"
+        ></textarea>
+        <button disabled={!chatPrompt.trim() || chatStreaming} type="submit">
+          {chatStreaming ? '...' : 'Ask'}
+        </button>
+      </form>
+      {#if chatStatus}
+        <p class="ai-status">{chatStatus}</p>
+      {/if}
+    </section>
   </aside>
 
   <section class="workspace">

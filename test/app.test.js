@@ -91,3 +91,42 @@ test('accepts document updates and exposes them as SSE events', async () => {
     server.close();
   }
 });
+
+test('streams AI chat through the selected workspace document', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nContext line\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[1].content, /Context line/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('{"message":{"content":"Done"}}\n')
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md', prompt: 'Summarize' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /data: .*"text":"Done"/);
+  } finally {
+    server.close();
+  }
+});

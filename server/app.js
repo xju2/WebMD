@@ -2,12 +2,18 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { streamAiChat } from './ai.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, '..', 'dist');
 
-export async function createApp({ workspaceRoot, workspaceRoots }) {
+export async function createApp({
+  workspaceRoot,
+  workspaceRoots,
+  aiEnv = process.env,
+  aiFetch = fetch
+}) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
   const workspaces = await createWorkspaceRegistry(roots);
   const app = express();
@@ -75,6 +81,39 @@ export async function createApp({ workspaceRoot, workspaceRoots }) {
         .get(req.body.root)
         .applyUpdates(req.body.path, req.body.version, req.body.updates)
     );
+  }));
+
+  app.post('/api/ai/chat', asyncHandler(async (req, res) => {
+    const workspace = workspaces.get(req.body.root);
+    const document = req.body.path
+      ? await workspace.loadFile(req.body.path)
+      : { content: '' };
+    const stream = streamAiChat({
+      prompt: req.body.prompt,
+      selectedText: req.body.selectedText,
+      path: req.body.path,
+      documentText: document.content,
+      env: aiEnv,
+      fetchImpl: aiFetch
+    });
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+
+    try {
+      for await (const text of stream) {
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    } catch (error) {
+      res.write(
+        `data: ${JSON.stringify({ error: error.message || 'AI request failed.' })}\n\n`
+      );
+    } finally {
+      res.end();
+    }
   }));
 
   if (existsSync(distDir)) {

@@ -11,7 +11,7 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test",
-    "lint": "node --check server/index.js && node --check server/app.js && node --check server/workspace.js && node --check scripts/dev.mjs",
+    "lint": "node --check server/index.js && node --check server/app.js && node --check server/workspace.js && node --check server/ai.js && node --check scripts/dev.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

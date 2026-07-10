@@ -339,6 +339,94 @@ button {
   font-weight: 680;
 }
 
+.ai-panel {
+  display: grid;
+  flex: 0 0 min(42%, 320px);
+  min-height: 180px;
+  border-top: 1px solid #d9dee7;
+  background: #f7f9fb;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+}
+
+.ai-messages {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.ai-message {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+  color: #273246;
+}
+
+.ai-message strong {
+  color: #657286;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.ai-message p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ai-message-assistant p {
+  color: #172033;
+}
+
+.ai-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  border-top: 1px solid #e1e5eb;
+}
+
+.ai-form textarea {
+  width: 100%;
+  min-width: 0;
+  resize: none;
+  padding: 8px 9px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  color: #172033;
+  font: inherit;
+}
+
+.ai-form textarea:focus {
+  border-color: #7da0ca;
+  outline: 2px solid #c7d8ee;
+}
+
+.ai-form button {
+  width: 48px;
+  border: 1px solid #9fb2ca;
+  border-radius: 6px;
+  background: #174b82;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.ai-form button:disabled {
+  border-color: #c9d0da;
+  background: #eef1f5;
+  color: #8994a5;
+  cursor: default;
+}
+
+.ai-status {
+  margin: 0;
+  padding: 0 10px 8px;
+  color: #657286;
+  font-size: 0.8rem;
+}
+
 .search-result {
   display: grid;
   gap: 3px;
