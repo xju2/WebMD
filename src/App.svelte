@@ -42,6 +42,8 @@
   let searchTimer;
   let searchRun = 0;
   let fileCache = new Map();
+  let navigationBackStack = [];
+  let navigationForwardStack = [];
   let applyingServerText = false;
 
   $: workspaceTree = cleanTree(tree);
@@ -54,6 +56,8 @@
   $: fileCount = workspaceFiles.length;
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
+  $: canNavigateBack = navigationBackStack.length > 0;
+  $: canNavigateForward = navigationForwardStack.length > 0;
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
@@ -175,15 +179,21 @@
     expandedDirs = new Set();
     loadedTreeOnce = false;
     fileCache = new Map();
+    navigationBackStack = [];
+    navigationForwardStack = [];
     setEditorContent('');
     await loadTree();
   }
 
-  async function openFile(path, { historyMode = 'push' } = {}) {
+  async function openFile(
+    path,
+    { historyMode = 'push', rememberNavigation = true } = {}
+  ) {
     if (selectedPath && selectedIsMarkdown && content !== lastSaved)
       await saveNow();
 
     const root = selectedRoot;
+    const previousEntry = currentNavigationEntry();
     const fileKind = fileKindForPath(path);
     selectedPath = path;
     selectedFileKind = fileKind;
@@ -194,6 +204,10 @@
     if (fileKind !== 'markdown') {
       showMediaFile(path);
       status = '[Read-only]';
+      rememberNavigationEntry(previousEntry, path, {
+        historyMode,
+        rememberNavigation
+      });
       updateNavigationState(path, historyMode);
       return;
     }
@@ -210,6 +224,10 @@
 
       showFile(root, path, nextContent, file.content);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
+      rememberNavigationEntry(previousEntry, path, {
+        historyMode,
+        rememberNavigation
+      });
       updateNavigationState(path, historyMode);
       if (buffered) queueRetry();
     } catch (err) {
@@ -217,6 +235,10 @@
       if (buffered) {
         showFile(root, path, buffered, '');
         status = '[Offline - Retrying]';
+        rememberNavigationEntry(previousEntry, path, {
+          historyMode,
+          rememberNavigation
+        });
         updateNavigationState(path, historyMode);
         queueRetry();
       } else {
@@ -229,6 +251,7 @@
   async function openTodayNote() {
     const path = todayNotePath();
     const root = selectedRoot;
+    const previousEntry = currentNavigationEntry();
 
     if (selectedPath && content !== lastSaved) await saveNow();
 
@@ -248,6 +271,7 @@
       if (root !== selectedRoot || selectedPath !== path) return;
       showFile(root, path, file.content, file.content);
       status = '[Saved]';
+      rememberNavigationEntry(previousEntry, path);
       updateNavigationState(path);
     } catch (err) {
       if (root !== selectedRoot || selectedPath !== path) return;
@@ -267,6 +291,7 @@
         if (root !== selectedRoot || selectedPath !== path) return;
         showFile(root, path, nextContent, nextContent);
         status = '[Saved]';
+        rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
         await loadTree(root);
       } catch (saveErr) {
@@ -274,6 +299,7 @@
         showFile(root, path, nextContent, '');
         error = saveErr.message;
         status = '[Offline - Retrying]';
+        rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
         queueRetry();
       }
@@ -484,7 +510,58 @@
     if (!path) return;
 
     if (state.root && state.root !== selectedRoot) return;
-    await openFile(path, { historyMode: 'none' });
+    await openFile(path, { historyMode: 'none', rememberNavigation: false });
+  }
+
+  async function navigateBack() {
+    await navigateHistory('back');
+  }
+
+  async function navigateForward() {
+    await navigateHistory('forward');
+  }
+
+  async function navigateHistory(direction) {
+    const from = currentNavigationEntry();
+    const source =
+      direction === 'back' ? navigationBackStack : navigationForwardStack;
+    const target = source[source.length - 1];
+    if (!from || !target || target.root !== selectedRoot) return;
+
+    if (direction === 'back') {
+      navigationBackStack = navigationBackStack.slice(0, -1);
+      navigationForwardStack = [...navigationForwardStack, from];
+    } else {
+      navigationForwardStack = navigationForwardStack.slice(0, -1);
+      navigationBackStack = [...navigationBackStack, from];
+    }
+
+    await openFile(target.path, {
+      historyMode: 'replace',
+      rememberNavigation: false
+    });
+  }
+
+  function currentNavigationEntry() {
+    return selectedPath ? { root: selectedRoot, path: selectedPath } : null;
+  }
+
+  function rememberNavigationEntry(
+    previousEntry,
+    targetPath,
+    { historyMode = 'push', rememberNavigation = true } = {}
+  ) {
+    if (!rememberNavigation || historyMode !== 'push' || !previousEntry) return;
+
+    const targetEntry = { root: selectedRoot, path: targetPath };
+    if (
+      previousEntry.root === targetEntry.root &&
+      previousEntry.path === targetEntry.path
+    )
+      return;
+
+    navigationBackStack = [...navigationBackStack, previousEntry].slice(-100);
+    navigationForwardStack = [];
   }
 
   function updateNavigationState(path, mode = 'push') {
@@ -977,6 +1054,28 @@
         >
           Files
         </button>
+        <div class="navigation-controls" aria-label="File navigation">
+          <button
+            aria-label="Go back"
+            class="history-button"
+            disabled={!canNavigateBack}
+            title="Go back"
+            type="button"
+            on:click={navigateBack}
+          >
+            <span aria-hidden="true">&lt;</span>
+          </button>
+          <button
+            aria-label="Go forward"
+            class="history-button"
+            disabled={!canNavigateForward}
+            title="Go forward"
+            type="button"
+            on:click={navigateForward}
+          >
+            <span aria-hidden="true">&gt;</span>
+          </button>
+        </div>
         <button
           aria-label="Show current file in sidebar"
           class="current-file"

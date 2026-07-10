@@ -450,6 +450,39 @@ button {
   color: #123f75;
 }
 
+.navigation-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.history-button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 760;
+}
+
+.history-button:hover {
+  border-color: #9fb2ca;
+  background: #eef2f6;
+  color: #123f75;
+}
+
+.history-button:disabled {
+  border-color: #d8dee7;
+  background: #f3f5f8;
+  color: #a5adba;
+  cursor: default;
+}
+
 .current-file {
   min-width: 0;
   overflow: hidden;
