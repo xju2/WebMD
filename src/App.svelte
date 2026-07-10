@@ -8,7 +8,7 @@
     rebaseRemoteUpdate,
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
-  import { parseUnifiedDiff } from './diff.js';
+  import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { renderMarkdown } from './markdown.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
@@ -38,6 +38,10 @@
   let chatStatus = '';
   let chatStreaming = false;
   let chatAbort;
+  let inlineEditStatus = '';
+  let inlineEditLoading = false;
+  let inlineEditPreview = null;
+  let selectedRange = null;
   let viewMode = 'edit';
   let diffFiles = [];
   let diffStatus = '';
@@ -79,6 +83,12 @@
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
   $: canNavigateBack = navigationBackStack.length > 0;
   $: canNavigateForward = navigationForwardStack.length > 0;
+  $: canInlineEdit = Boolean(
+    selectedPath &&
+      selectedIsMarkdown &&
+      selectedRange &&
+      selectedRange.from !== selectedRange.to
+  );
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
@@ -131,7 +141,12 @@
   }
 
   async function requestJson(url, options) {
-    const response = await fetch(url, options);
+    let response;
+    try {
+      response = await fetch(url, options);
+    } catch {
+      throw new Error('Server unavailable. Check the SSH tunnel and backend.');
+    }
     const payload = response.headers
       .get('content-type')
       ?.includes('application/json')
@@ -143,6 +158,16 @@
       throw error;
     }
     return payload;
+  }
+
+  async function responseErrorMessage(response) {
+    try {
+      const payload = await response.json();
+      if (payload?.error) return payload.error;
+    } catch {
+      // Fall back to the HTTP status text below.
+    }
+    return response.statusText || `HTTP ${response.status}`;
   }
 
   async function sendChat() {
@@ -161,18 +186,25 @@
     ];
 
     try {
-      const response = await fetch('/api/ai/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: chatAbort.signal,
-        body: JSON.stringify({
-          root: selectedRoot,
-          path: selectedIsMarkdown ? selectedPath : '',
-          selectedText,
-          prompt
-        })
-      });
-      if (!response.ok || !response.body) throw new Error(response.statusText);
+      let response;
+      try {
+        response = await fetch('/api/ai/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: chatAbort.signal,
+          body: JSON.stringify({
+            root: selectedRoot,
+            path: selectedIsMarkdown ? selectedPath : '',
+            selectedText,
+            prompt
+          })
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw new Error('Server unavailable. Check the SSH tunnel and backend.');
+      }
+      if (!response.ok) throw new Error(await responseErrorMessage(response));
+      if (!response.body) throw new Error('AI provider did not stream.');
 
       await readSseStream(response.body, (event) => {
         if (event.text) appendAssistantText(event.text);
@@ -220,6 +252,103 @@
       text: `${next[index]?.text || ''}${text}`
     };
     chatMessages = next;
+  }
+
+  function clearInlineEdit() {
+    inlineEditPreview = null;
+    inlineEditStatus = '';
+  }
+
+  async function requestInlineEdit() {
+    const instruction = chatPrompt.trim();
+    if (!instruction || inlineEditLoading || !canInlineEdit) return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+    const range = { from: selectedRange.from, to: selectedRange.to };
+    const original = editorView.state.sliceDoc(range.from, range.to);
+
+    inlineEditLoading = true;
+    inlineEditStatus = 'Drafting edit...';
+    inlineEditPreview = null;
+    error = '';
+
+    try {
+      const result = await requestJson('/api/ai/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          path,
+          selectedText: original,
+          instruction
+        })
+      });
+      if (root !== selectedRoot || path !== selectedPath) return;
+
+      const replacement = result.replacement ?? '';
+      inlineEditPreview = {
+        root,
+        path,
+        range,
+        original,
+        replacement,
+        diffFiles: [
+          buildReplacementDiffFile(original, replacement, 'AI edit preview')
+        ]
+      };
+      inlineEditStatus =
+        original === replacement ? 'AI returned unchanged text' : 'Review edit';
+      chatPrompt = '';
+      setViewMode('edit');
+    } catch (err) {
+      inlineEditStatus = 'AI edit failed';
+      error = err.message;
+    } finally {
+      inlineEditLoading = false;
+    }
+  }
+
+  function acceptInlineEdit() {
+    const preview = inlineEditPreview;
+    if (!preview) return;
+    if (preview.root !== selectedRoot || preview.path !== selectedPath) {
+      error = 'AI edit no longer matches the open file.';
+      return;
+    }
+
+    const current = editorView.state.sliceDoc(
+      preview.range.from,
+      preview.range.to
+    );
+    if (current !== preview.original) {
+      error = 'Selected text changed before the AI edit was accepted.';
+      inlineEditStatus = 'Reject and retry the edit';
+      return;
+    }
+
+    setViewMode('edit');
+    editorView.dispatch({
+      changes: {
+        from: preview.range.from,
+        to: preview.range.to,
+        insert: preview.replacement
+      },
+      selection: {
+        anchor: preview.range.from,
+        head: preview.range.from + preview.replacement.length
+      },
+      effects: EditorView.scrollIntoView(preview.range.from, { y: 'center' })
+    });
+    editorView.focus();
+    inlineEditPreview = null;
+    inlineEditStatus = '';
+  }
+
+  function rejectInlineEdit() {
+    inlineEditPreview = null;
+    inlineEditStatus = '';
+    editorView?.focus();
   }
 
   async function loadRoots() {
@@ -271,6 +400,7 @@
     lastSaved = '';
     status = '[Saved]';
     error = '';
+    clearInlineEdit();
     searchQuery = '';
     searchResults = [];
     searchStatus = '';
@@ -300,6 +430,7 @@
     diffFiles = [];
     diffStatus = '';
     error = '';
+    clearInlineEdit();
 
     if (fileKind !== 'markdown') {
       showMediaFile(path);
@@ -362,8 +493,10 @@
     selectedFileKind = 'markdown';
     diffFiles = [];
     diffStatus = '';
+    clearInlineEdit();
     viewMode = 'edit';
     selectedText = '';
+    selectedRange = null;
     status = '[Syncing...]';
     error = '';
 
@@ -443,6 +576,8 @@
     content = '';
     lastSaved = '';
     selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
     viewMode = 'preview';
     expandToPath(path);
     setEditorContent('');
@@ -714,6 +849,8 @@
     const path = selectedPath;
     viewMode = 'diff';
     selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
     diffFiles = [];
     diffStatus = 'Loading diff...';
     error = '';
@@ -759,9 +896,13 @@
 
   function updateSelectedText(state) {
     const selection = state.selection.main;
-    selectedText = selection.empty
-      ? ''
-      : state.sliceDoc(selection.from, selection.to);
+    if (selection.empty) {
+      selectedText = '';
+      selectedRange = null;
+      return;
+    }
+    selectedText = state.sliceDoc(selection.from, selection.to);
+    selectedRange = { from: selection.from, to: selection.to };
   }
 
   function updateBrowserSelectedText() {
@@ -769,6 +910,14 @@
     const text = selection?.toString() ?? '';
     const anchorNode = selection?.anchorNode;
     const focusNode = selection?.focusNode;
+
+    if (
+      anchorNode &&
+      focusNode &&
+      editorHost?.contains(anchorNode) &&
+      editorHost.contains(focusNode)
+    )
+      return;
 
     if (
       text &&
@@ -779,8 +928,10 @@
       appShell.contains(focusNode)
     ) {
       selectedText = text;
+      selectedRange = null;
     } else if (!text) {
       selectedText = '';
+      selectedRange = null;
     }
   }
 
@@ -1124,6 +1275,7 @@
   function setViewMode(mode) {
     viewMode = mode;
     selectedText = '';
+    selectedRange = null;
     if (mode === 'edit')
       requestAnimationFrame(() => editorView?.requestMeasure());
   }
@@ -1390,16 +1542,29 @@
         <textarea
           aria-label="Ask AI"
           bind:value={chatPrompt}
-          disabled={chatStreaming}
+          disabled={chatStreaming || inlineEditLoading}
           placeholder={selectedText ? 'Ask about the selection' : 'Ask about this note'}
           rows="2"
         ></textarea>
-        <button disabled={!chatPrompt.trim() || chatStreaming} type="submit">
+        <button
+          disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
+          type="submit"
+        >
           {chatStreaming ? '...' : 'Ask'}
         </button>
+        <button
+          disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading || !canInlineEdit}
+          title={canInlineEdit
+            ? 'Preview edit for selected text'
+            : 'Select text in the editor'}
+          type="button"
+          on:click={requestInlineEdit}
+        >
+          {inlineEditLoading ? '...' : 'Edit'}
+        </button>
       </form>
-      {#if chatStatus}
-        <p class="ai-status">{chatStatus}</p>
+      {#if chatStatus || inlineEditStatus}
+        <p class="ai-status">{chatStatus || inlineEditStatus}</p>
       {/if}
     </section>
   </aside>
@@ -1612,6 +1777,24 @@
               </a>
             </object>
           {/if}
+        </section>
+      {/if}
+      {#if inlineEditPreview && inlineEditPreview.root === selectedRoot && inlineEditPreview.path === selectedPath}
+        <section class="inline-edit-panel" aria-label="AI edit preview">
+          <header class="inline-edit-header">
+            <strong>AI edit preview</strong>
+            <div class="inline-edit-actions">
+              <button type="button" on:click={rejectInlineEdit}>Reject</button>
+              <button class="primary" type="button" on:click={acceptInlineEdit}>
+                Accept
+              </button>
+            </div>
+          </header>
+          <div class="inline-edit-diff">
+            {#each inlineEditPreview.diffFiles as file}
+              {@render diffFile(file)}
+            {/each}
+          </div>
         </section>
       {/if}
     </div>

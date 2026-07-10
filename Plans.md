@@ -19,7 +19,12 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 - Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, raw git diff preview, MVP collaborative editing, and streamed AI chat.
 - Collaborative editing now uses server-owned document versions, CM6 `ChangeSet` updates through `POST /api/workspace/updates`, atomic disk snapshots, SSE update replay through `GET /api/workspace/events`, and client-side rebasing for pending local edits.
 - AI chat keeps provider keys server-side, streams from Ollama or OpenAI-compatible Responses providers, and sends active document or selected-text context from the workspace.
-- Next: add inline AI diff edits.
+- Inline AI diff edits now request replacement text server-side, show a diff
+  preview in the editor, and apply accepted edits through the CodeMirror update
+  path.
+- Hardening added SSH tunnel startup docs, clearer server-unavailable errors,
+  and a smoke test that starts the real server against a temporary workspace.
+- No remaining planned implementation items.
 
 ## Milestones
 
@@ -118,12 +123,14 @@ Done when:
 
 ### 6. Inline AI Diff Edits
 
+Status: Done.
+
 Tasks:
-- Add an inline edit command using the current selection.
-- Ask the AI provider for replacement text.
-- Render a diff preview against the selected text.
-- Add accept and reject actions.
-- Apply accepted edits through the same editor update path as manual typing.
+- [x] Add an inline edit command using the current selection.
+- [x] Ask the AI provider for replacement text.
+- [x] Render a diff preview against the selected text.
+- [x] Add accept and reject actions.
+- [x] Apply accepted edits through the same editor update path as manual typing.
 
 Done when:
 - AI never mutates the document without user approval.
@@ -131,11 +138,13 @@ Done when:
 
 ### 7. Hardening
 
+Status: Done.
+
 Tasks:
-- Add user-facing error states for unavailable server, failed saves, invalid paths, and AI failures.
-- Add browser checks for desktop and mobile layouts.
-- Add docs for SSH tunnel startup.
-- Add a minimal smoke test that starts the server against a temp workspace.
+- [x] Add user-facing error states for unavailable server, failed saves, invalid paths, and AI failures.
+- [x] Add browser checks for desktop and mobile layouts.
+- [x] Add docs for SSH tunnel startup.
+- [x] Add a minimal smoke test that starts the server against a temp workspace.
 
 Done when:
 - A fresh clone can run the app using the documented commands.
@@ -150,7 +159,7 @@ Done when:
 5. [x] Add collaboration endpoints after single-user editing works.
 6. [x] Wire CodeMirror collaboration clients to the backend update/event endpoints.
 7. [x] Add AI chat after collaboration has a stable document state.
-8. [ ] Add inline diff edits last.
+8. [x] Add inline diff edits last.
 
 ## Deferred Until Needed
 

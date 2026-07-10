@@ -54,6 +54,54 @@ export function parseUnifiedDiff(diff = '') {
   return files.filter((item) => item.hunks.length);
 }
 
+export function buildReplacementDiffFile(
+  original = '',
+  replacement = '',
+  title = 'AI edit preview'
+) {
+  const oldLines = splitDiffText(original);
+  const newLines = splitDiffText(replacement);
+  const lines =
+    original === replacement
+      ? oldLines.map((text, index) => ({
+          kind: 'context',
+          oldNumber: index + 1,
+          newNumber: index + 1,
+          text
+        }))
+      : [
+          ...oldLines.map((text, index) => ({
+            kind: 'removed',
+            oldNumber: index + 1,
+            newNumber: '',
+            text
+          })),
+          ...newLines.map((text, index) => ({
+            kind: 'added',
+            oldNumber: '',
+            newNumber: index + 1,
+            text
+          }))
+        ];
+
+  return {
+    title,
+    hunks: [
+      {
+        header: `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+        summary: original === replacement ? 'No changes' : '',
+        lines
+      }
+    ]
+  };
+}
+
+function splitDiffText(text) {
+  const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  return lines;
+}
+
 function parseDiffLine(line, oldNumber, newNumber) {
   if (line.startsWith('+')) {
     return { kind: 'added', oldNumber: '', newNumber, text: line.slice(1) };

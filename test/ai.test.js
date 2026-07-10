@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { streamAiChat } from '../server/ai.js';
+import { createAiEdit, streamAiChat } from '../server/ai.js';
 
 function streamResponse(text) {
   return new Response(
@@ -63,4 +63,37 @@ test('streams Ollama chat chunks', async () => {
   );
 
   assert.equal(text, 'Hi there');
+});
+
+test('creates AI edit replacement text from the selected Markdown', async () => {
+  const result = await createAiEdit({
+    instruction: 'Make it clearer',
+    selectedText: 'rough text',
+    path: '/note.md',
+    documentText: '# Note\nrough text\n',
+    env: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+    fetchImpl: async (_url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.messages[0].role, 'system');
+      assert.match(body.messages[0].content, /Return only the replacement/);
+      assert.match(body.messages[1].content, /rough text/);
+      assert.match(body.messages[1].content, /Make it clearer/);
+      return streamResponse('{"message":{"content":"clear text"}}\n');
+    }
+  });
+
+  assert.deepEqual(result, { replacement: 'clear text' });
+});
+
+test('rejects AI edits without selected text', async () => {
+  await assert.rejects(
+    () =>
+      createAiEdit({
+        instruction: 'Improve',
+        selectedText: '',
+        env: { AI_PROVIDER: 'ollama' },
+        fetchImpl: async () => streamResponse('')
+      }),
+    /Selected text is required/
+  );
 });

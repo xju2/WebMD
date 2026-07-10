@@ -130,3 +130,50 @@ test('streams AI chat through the selected workspace document', async () => {
     server.close();
   }
 });
+
+test('returns AI edit replacement for the selected workspace text', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[1].content, /# Note/);
+        assert.match(body.messages[1].content, /rough text/);
+        assert.match(body.messages[1].content, /Make it concise/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  '{"message":{"content":"concise text"}}\n'
+                )
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/note.md',
+        selectedText: 'rough text',
+        instruction: 'Make it concise'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { replacement: 'concise text' });
+  } finally {
+    server.close();
+  }
+});

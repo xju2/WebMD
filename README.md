@@ -18,6 +18,25 @@ WORKSPACE_ROOTS="/absolute/path/to/notes:/absolute/path/to/other-notes" npm run 
 The backend refuses to start without `WORKSPACE_ROOT` or `WORKSPACE_ROOTS` and always binds to `127.0.0.1`.
 The Vite dev server also binds to `127.0.0.1` and proxies `/api` to the backend.
 
+## SSH Tunnel
+
+On the remote server:
+
+```bash
+npm install
+npm run build
+WORKSPACE_ROOT=/absolute/path/to/notes PORT=3000 npm start
+```
+
+From your local machine:
+
+```bash
+ssh -N -L 3000:127.0.0.1:3000 user@remote-host
+```
+
+Then open `http://127.0.0.1:3000` locally. The app still binds only to
+`127.0.0.1` on the remote host, so the SSH tunnel remains the access boundary.
+
 ## Environment
 
 - `WORKSPACE_ROOT`: required absolute path to the Markdown workspace.

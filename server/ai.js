@@ -20,14 +20,32 @@ export async function* streamAiChat({
 
   const config = aiConfig(env);
   const messages = chatMessages({ prompt, selectedText, path, documentText });
+  yield* streamAiProvider(config, messages, fetchImpl);
+}
 
-  if (config.provider === 'openai') {
-    yield* streamOpenAI(config, messages, fetchImpl);
-  } else if (config.provider === 'ollama') {
-    yield* streamOllama(config, messages, fetchImpl);
-  } else {
-    throw new WorkspaceError(400, `Unsupported AI_PROVIDER: ${config.provider}.`);
+export async function createAiEdit({
+  instruction,
+  selectedText = '',
+  path = '',
+  documentText = '',
+  env = process.env,
+  fetchImpl = fetch
+}) {
+  if (typeof instruction !== 'string' || !instruction.trim()) {
+    throw new WorkspaceError(400, 'Edit instruction is required.');
   }
+  if (typeof selectedText !== 'string' || !selectedText.length) {
+    throw new WorkspaceError(400, 'Selected text is required for AI edits.');
+  }
+
+  const config = aiConfig(env);
+  const messages = editMessages({ instruction, selectedText, path, documentText });
+  let replacement = '';
+  for await (const chunk of streamAiProvider(config, messages, fetchImpl)) {
+    replacement += chunk;
+  }
+
+  return { replacement: stripSingleFencedBlock(replacement) };
 }
 
 function aiConfig(env) {
@@ -71,6 +89,26 @@ function chatMessages({ prompt, selectedText, path, documentText }) {
   ];
 }
 
+function editMessages({ instruction, selectedText, path, documentText }) {
+  const documentContext = documentText?.trim()
+    ? `Current document ${path || ''}:\n${trimContext(documentText)}`
+    : path
+      ? `Active document: ${path}`
+      : 'No active document.';
+
+  return [
+    {
+      role: 'developer',
+      content:
+        'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.'
+    },
+    {
+      role: 'user',
+      content: `${documentContext}\n\nSelected text to replace:\n${selectedText}\n\nEdit instruction:\n${instruction.trim()}`
+    }
+  ];
+}
+
 function trimContext(text) {
   return text.length > MAX_CONTEXT_CHARS
     ? `${text.slice(0, MAX_CONTEXT_CHARS)}\n\n[Context truncated]`
@@ -101,6 +139,22 @@ async function* streamOpenAI(config, messages, fetchImpl) {
       yield event.delta;
     }
   }
+}
+
+function streamAiProvider(config, messages, fetchImpl) {
+  if (config.provider === 'openai') {
+    return streamOpenAI(config, messages, fetchImpl);
+  }
+  if (config.provider === 'ollama') {
+    return streamOllama(config, messages, fetchImpl);
+  }
+  throw new WorkspaceError(400, `Unsupported AI_PROVIDER: ${config.provider}.`);
+}
+
+function stripSingleFencedBlock(text) {
+  const trimmed = text.trim();
+  const match = trimmed.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
+  return match ? match[1] : text;
 }
 
 async function* streamOllama(config, messages, fetchImpl) {

@@ -380,7 +380,7 @@ button {
 
 .ai-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   padding: 8px 10px 10px;
   border-top: 1px solid #e1e5eb;
@@ -925,6 +925,84 @@ button {
   background: #fbfcfd;
 }
 
+.inline-edit-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  left: 18px;
+  z-index: 4;
+  display: grid;
+  max-height: min(48%, 420px);
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 14px 32px rgb(21 32 51 / 18%);
+}
+
+.inline-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dfe6ee;
+  background: #f7f9fb;
+}
+
+.inline-edit-header strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #172033;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-edit-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.inline-edit-actions button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 720;
+}
+
+.inline-edit-actions button:hover {
+  border-color: #9fb2ca;
+  background: #eef2f6;
+  color: #123f75;
+}
+
+.inline-edit-actions button.primary {
+  border-color: #9fb2ca;
+  background: #174b82;
+  color: #ffffff;
+}
+
+.inline-edit-diff {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #fbfcfd;
+}
+
+.inline-edit-diff .diff-file {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
 .diff-file {
   overflow: hidden;
   border: 1px solid #dfe6ee;
@@ -1089,6 +1167,13 @@ button {
 
   .diff-pane {
     padding: 18px 16px 64px;
+  }
+
+  .inline-edit-panel {
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    max-height: 58%;
   }
 
   .diff-line {

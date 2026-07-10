@@ -2,7 +2,7 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { streamAiChat } from './ai.js';
+import { createAiEdit, streamAiChat } from './ai.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -114,6 +114,24 @@ export async function createApp({
     } finally {
       res.end();
     }
+  }));
+
+  app.post('/api/ai/edit', asyncHandler(async (req, res) => {
+    const workspace = workspaces.get(req.body.root);
+    const document = req.body.path
+      ? await workspace.loadFile(req.body.path)
+      : { content: '' };
+
+    res.json(
+      await createAiEdit({
+        instruction: req.body.instruction,
+        selectedText: req.body.selectedText,
+        path: req.body.path,
+        documentText: document.content,
+        env: aiEnv,
+        fetchImpl: aiFetch
+      })
+    );
   }));
 
   if (existsSync(distDir)) {
