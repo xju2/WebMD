@@ -9,6 +9,7 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
+  import { layoutGraph } from './graph.js';
   import { renderMarkdown } from './markdown.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
@@ -44,6 +45,14 @@
     changes: []
   };
   let overviewStatus = 'Loading workspace...';
+  let graphData = { nodes: [], edges: [], unresolved: 0 };
+  let graphView = { nodes: [], edges: [] };
+  let graphScope = 'wiki';
+  let graphStatus = '';
+  let graphViewport = { x: 0, y: 0, width: 1000, height: 700 };
+  let graphSvg;
+  let graphPointer;
+  let hoveredGraphPath = '';
   let chatPrompt = '';
   let chatMessages = [];
   let chatStatus = '';
@@ -418,6 +427,9 @@
     selectedFileKind = 'markdown';
     content = '';
     lastSaved = '';
+    viewMode = 'edit';
+    graphData = { nodes: [], edges: [], unresolved: 0 };
+    graphView = { nodes: [], edges: [] };
     status = '[Saved]';
     error = '';
     clearInlineEdit();
@@ -862,6 +874,11 @@
       return;
     }
     await loadOverview(root);
+    if (viewMode === 'graph') {
+      await loadGraph();
+      status = '[Saved]';
+      return;
+    }
     if (path && content === lastSaved)
       await openFile(path, { historyMode: 'replace' });
     else if (!path) status = '[Saved]';
@@ -898,6 +915,120 @@
         error = err.message;
       }
     }
+  }
+
+  async function showGraph() {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    viewMode = 'graph';
+    graphScope = selectedPath && selectedIsMarkdown ? 'local' : 'wiki';
+    graphStatus = 'Loading graph...';
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+
+    await loadGraph();
+  }
+
+  async function loadGraph() {
+    graphStatus = 'Loading graph...';
+    try {
+      graphData = await requestJson(
+        `/api/workspace/graph?root=${encodeURIComponent(selectedRoot)}`
+      );
+      graphStatus = '';
+      updateGraphLayout();
+    } catch (err) {
+      graphStatus = err.message;
+    }
+  }
+
+  function updateGraphLayout() {
+    graphView = layoutGraph(graphData, graphScope, selectedPath);
+    resetGraphViewport();
+  }
+
+  function chooseGraphScope(event) {
+    graphScope = event.currentTarget.value;
+    updateGraphLayout();
+  }
+
+  function resetGraphViewport() {
+    if (!graphView.nodes.length) {
+      graphViewport = { x: 0, y: 0, width: 1000, height: 700 };
+      return;
+    }
+    const xs = graphView.nodes.map((node) => node.x);
+    const ys = graphView.nodes.map((node) => node.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const centerY = (Math.min(...ys) + Math.max(...ys)) / 2;
+    let width = Math.max(500, maxX - minX + 320);
+    let height = Math.max(280, Math.max(...ys) - Math.min(...ys) + 120);
+    if (width / height < 1.6) width = height * 1.6;
+    else height = width / 1.6;
+    graphViewport = {
+      x: minX - 70,
+      y: centerY - height / 2,
+      width,
+      height
+    };
+  }
+
+  function zoomGraph(event) {
+    const rect = graphSvg.getBoundingClientRect();
+    const requested = event.deltaY > 0 ? 1.12 : 0.88;
+    const width = Math.max(250, Math.min(3000, graphViewport.width * requested));
+    const scale = width / graphViewport.width;
+    const pointerX = graphViewport.x + ((event.clientX - rect.left) / rect.width) * graphViewport.width;
+    const pointerY = graphViewport.y + ((event.clientY - rect.top) / rect.height) * graphViewport.height;
+    graphViewport = {
+      x: pointerX - (pointerX - graphViewport.x) * scale,
+      y: pointerY - (pointerY - graphViewport.y) * scale,
+      width,
+      height: graphViewport.height * scale
+    };
+  }
+
+  function startGraphPan(event) {
+    if (event.button !== 0) return;
+    graphSvg.setPointerCapture(event.pointerId);
+    graphPointer = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewport: graphViewport
+    };
+  }
+
+  function moveGraphPointer(event) {
+    if (!graphPointer || graphPointer.pointerId !== event.pointerId) return;
+    const rect = graphSvg.getBoundingClientRect();
+    const dx = event.clientX - graphPointer.clientX;
+    const dy = event.clientY - graphPointer.clientY;
+    graphViewport = {
+      ...graphPointer.viewport,
+      x: graphPointer.viewport.x - (dx / rect.width) * graphPointer.viewport.width,
+      y: graphPointer.viewport.y - (dy / rect.height) * graphPointer.viewport.height
+    };
+  }
+
+  function endGraphPointer(event) {
+    if (!graphPointer || graphPointer.pointerId !== event.pointerId) return;
+    if (graphSvg.hasPointerCapture(event.pointerId))
+      graphSvg.releasePointerCapture(event.pointerId);
+    graphPointer = null;
+  }
+
+  async function openGraphNode(node) {
+    await openFile(node.path);
+    setViewMode('edit');
+  }
+
+  function graphEdgeState(edge) {
+    if (!hoveredGraphPath) return '';
+    return edge.source.path === hoveredGraphPath || edge.target.path === hoveredGraphPath
+      ? 'active'
+      : 'dimmed';
   }
 
   function queueRetry() {
@@ -1763,6 +1894,14 @@
           >
             Diff
           </button>
+          <button
+            class:active={viewMode === 'graph'}
+            disabled={!workspaceRoots.length}
+            type="button"
+            on:click={showGraph}
+          >
+            Graph
+          </button>
         </div>
         <button
           class="save-button"
@@ -1779,7 +1918,7 @@
     {/if}
 
     <div class:empty={!selectedPath} class="editor-frame">
-      {#if !selectedPath}
+      {#if !selectedPath && viewMode !== 'graph'}
         <section class="workspace-home" aria-label="Workspace Home">
           <header class="home-intro">
             <div>
@@ -1881,6 +2020,91 @@
         class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
         class="editor-host"
       ></div>
+      {#if viewMode === 'graph'}
+        <section class="graph-pane" aria-label="Workspace graph">
+          <header class="graph-toolbar">
+            <div>
+              <strong>Knowledge graph</strong>
+              <span>{graphView.nodes.length} notes · {graphView.edges.length} links</span>
+            </div>
+            <div class="graph-controls">
+              <label>
+                Scope
+                <select value={graphScope} on:change={chooseGraphScope}>
+                  <option value="wiki">Wiki</option>
+                  <option value="local" disabled={!selectedPath || !selectedIsMarkdown}>Local</option>
+                  <option value="all">All notes</option>
+                </select>
+              </label>
+              <button type="button" on:click={resetGraphViewport}>Reset view</button>
+            </div>
+          </header>
+          <div class="graph-canvas">
+            {#if graphStatus}
+              <p class="graph-empty">{graphStatus}</p>
+            {:else if !graphView.nodes.length}
+              <p class="graph-empty">No notes in this graph scope.</p>
+            {:else}
+              <svg
+                bind:this={graphSvg}
+                aria-label="Interactive note graph"
+                role="img"
+                viewBox={`${graphViewport.x} ${graphViewport.y} ${graphViewport.width} ${graphViewport.height}`}
+                on:pointerdown={startGraphPan}
+                on:pointermove={moveGraphPointer}
+                on:pointerup={endGraphPointer}
+                on:pointercancel={endGraphPointer}
+                on:wheel|preventDefault={zoomGraph}
+              >
+                <rect class="graph-background" x="-5000" y="-5000" width="10000" height="10000" />
+                <g class="graph-edges">
+                  {#each graphView.edges as edge}
+                    <line
+                      class:active={graphEdgeState(edge) === 'active'}
+                      class:dimmed={graphEdgeState(edge) === 'dimmed'}
+                      x1={edge.source.x}
+                      y1={edge.source.y}
+                      x2={edge.target.x}
+                      y2={edge.target.y}
+                    />
+                  {/each}
+                </g>
+                <g class="graph-nodes">
+                  {#each graphView.nodes as node}
+                    <g
+                      aria-label={node.path}
+                      class:connected={hoveredGraphPath === node.path}
+                      class={`graph-node graph-node-${node.group}`}
+                      role="link"
+                      tabindex="0"
+                      transform={`translate(${node.x} ${node.y})`}
+                      on:keydown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          openGraphNode(node);
+                        }
+                      }}
+                      on:mouseenter={() => (hoveredGraphPath = node.path)}
+                      on:mouseleave={() => (hoveredGraphPath = '')}
+                      on:pointerdown|stopPropagation={() => {}}
+                      on:pointerup|stopPropagation={() => openGraphNode(node)}
+                    >
+                      <circle r={node.radius} />
+                      {#if node.degree >= 20 || hoveredGraphPath === node.path || node.path === selectedPath}
+                        <text x={node.radius + 5} y="4">{node.name}</text>
+                      {/if}
+                      <title>{node.path}</title>
+                    </g>
+                  {/each}
+                </g>
+              </svg>
+            {/if}
+          </div>
+          {#if graphData.unresolved}
+            <footer>{graphData.unresolved} unresolved wiki-link mentions are not drawn.</footer>
+          {/if}
+        </section>
+      {/if}
       {#if selectedPath && selectedIsMarkdown}
         <article
           aria-label="Rendered Markdown preview"
@@ -1971,7 +2195,7 @@
             {/each}
           {/if}
         </section>
-      {:else if selectedPath}
+      {:else if selectedPath && viewMode !== 'graph'}
         <section
           aria-label="Read-only media preview"
           class:image={selectedFileKind === 'image'}

@@ -118,6 +118,29 @@ test('searches visible paths and markdown content from an index', async () => {
   ]);
 });
 
+test('indexes resolved wiki links and invalidates after saves', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'wiki'));
+  await fs.writeFile(path.join(root, 'a.md'), '[[wiki/b|B]] [[missing]]\n');
+  await fs.writeFile(path.join(root, 'wiki', 'b.md'), '[[a]]\n');
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(await workspace.graph(), {
+    nodes: [
+      { path: '/a.md', name: 'a', group: 'root' },
+      { path: '/wiki/b.md', name: 'b', group: 'wiki' }
+    ],
+    edges: [
+      { source: '/a.md', target: '/wiki/b.md' },
+      { source: '/wiki/b.md', target: '/a.md' }
+    ],
+    unresolved: 1
+  });
+
+  await workspace.saveFile('/a.md', '# No links\n');
+  assert.equal((await workspace.graph()).edges.length, 1);
+});
+
 test('invalidates the search index after saving markdown', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), 'old phrase\n');

@@ -903,6 +903,156 @@ button {
   line-height: 1.5;
 }
 
+.graph-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: #f7f9fb;
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #dfe6ee;
+  background: #ffffff;
+}
+
+.graph-toolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.graph-toolbar strong {
+  color: #172033;
+}
+
+.graph-toolbar span,
+.graph-pane footer {
+  color: #6b7789;
+  font-size: 0.78rem;
+}
+
+.graph-controls,
+.graph-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-controls label {
+  color: #637083;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.graph-controls select,
+.graph-controls button {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font: inherit;
+}
+
+.graph-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.graph-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.graph-canvas svg:active {
+  cursor: grabbing;
+}
+
+.graph-background {
+  fill: #f7f9fb;
+}
+
+.graph-edges line {
+  stroke: #b8c3d1;
+  stroke-opacity: 0.48;
+  stroke-width: 1.1;
+  transition: stroke-opacity 120ms;
+}
+
+.graph-edges line.active {
+  stroke: #174b82;
+  stroke-opacity: 0.9;
+  stroke-width: 2;
+}
+
+.graph-edges line.dimmed {
+  stroke-opacity: 0.08;
+}
+
+.graph-node circle {
+  fill: #71839b;
+  stroke: #ffffff;
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.graph-node.connected circle {
+  fill: #174b82;
+  stroke-width: 3;
+}
+
+.graph-node-topics circle { fill: #2563a6; }
+.graph-node-concepts circle { fill: #7656b8; }
+.graph-node-entities circle { fill: #a15c36; }
+.graph-node-source-notes circle { fill: #33816a; }
+.graph-node-syntheses circle,
+.graph-node-comparisons circle { fill: #b07b1d; }
+.graph-node-raw circle { fill: #8994a5; }
+.graph-node-meta circle { fill: #5f6b7c; }
+
+.graph-node text {
+  fill: #273246;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  paint-order: stroke;
+  pointer-events: auto;
+  stroke: #f7f9fb;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.graph-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: #778296;
+}
+
+.graph-pane footer {
+  padding: 7px 16px;
+  border-top: 1px solid #dfe6ee;
+  background: #ffffff;
+}
+
 .preview-pane {
   height: 100%;
   overflow: auto;
@@ -1360,12 +1510,27 @@ button {
   }
 
   .topbar {
+    flex-wrap: wrap;
     gap: 10px;
     padding: 8px 14px;
   }
 
+  .file-heading,
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-actions {
+    justify-content: space-between;
+  }
+
+  .view-toggle {
+    flex: 1 1 auto;
+  }
+
   .view-toggle button {
-    min-width: 56px;
+    min-width: 0;
+    flex: 1 1 0;
   }
 
   .preview-pane {
@@ -1386,6 +1551,11 @@ button {
 
   .home-grid {
     grid-template-columns: 1fr;
+  }
+
+  .graph-toolbar {
+    align-items: start;
+    flex-direction: column;
   }
 
   .inline-edit-panel {

@@ -187,8 +187,14 @@ workspace is a repository. Recently opened paths remain browser-local because
 they are UI history rather than workspace content.
 
 The first version contains Today, Continue, Recently modified, and Workspace
-changes. Workspace-wide AI summaries, backlink analysis, charts, and activity
-metrics remain deferred until the underlying retrieval or link index exists.
+changes. Workspace-wide AI summaries, charts, and activity metrics remain
+deferred until their underlying data exists.
+
+`GET /api/workspace/graph` builds a server-side index of Markdown notes and
+resolved wiki links, caches it until the workspace changes, and returns only
+compact node and edge metadata. The client renders Wiki, Local, and All scopes
+as an interactive native SVG graph, so note bodies and large workspace assets
+do not cross a high-latency SSH tunnel.
 
 #### File Tree Retrieval
 * **Endpoint:** `GET /api/workspace/tree`

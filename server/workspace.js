@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_EVENTS = 1000;
@@ -27,13 +28,16 @@ export class WorkspaceError extends Error {
 export async function createWorkspace(workspaceRoot) {
   const root = await fs.realpath(workspaceRoot);
   let searchIndex;
+  let graphIndex;
   const documents = new Map();
 
   return {
     root,
+    graph: async () => (graphIndex ??= await buildWorkspaceGraph(root)),
     overview: () => readOverview(root),
     readTree: async () => {
       searchIndex = null;
+      graphIndex = null;
       return readTree(root, root);
     },
     loadFile: (filePath) => loadFile(root, documents, filePath),
@@ -42,6 +46,7 @@ export async function createWorkspace(workspaceRoot) {
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
       searchIndex = null;
+      graphIndex = null;
       return result;
     },
     applyUpdates: async (filePath, version, updates) => {
@@ -53,6 +58,7 @@ export async function createWorkspace(workspaceRoot) {
         updates
       );
       searchIndex = null;
+      graphIndex = null;
       return result;
     },
     subscribeEvents: (filePath, since, send) =>
@@ -63,6 +69,50 @@ export async function createWorkspace(workspaceRoot) {
     },
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
+}
+
+async function buildWorkspaceGraph(root) {
+  const files = (await readSearchFiles(root, root)).filter(
+    (file) => file.fileKind === 'markdown'
+  ).sort((a, b) => a.path.localeCompare(b.path));
+  const paths = files.map((file) => file.path);
+  const pathSet = new Set(paths);
+  const edges = new Map();
+  let unresolved = 0;
+
+  for (const file of files) {
+    for (const match of file.content.matchAll(/!?\[\[([^\]]+)\]\]/g)) {
+      const target = match[1].split('|')[0].trim();
+      const resolved = resolveWikiLinkPath(target, file.path, paths);
+      if (resolved && pathSet.has(resolved)) {
+        edges.set(`${file.path}\0${resolved}`, {
+          source: file.path,
+          target: resolved
+        });
+      } else if (!/\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i.test(target.split('#')[0])) {
+        unresolved += 1;
+      }
+    }
+  }
+
+  return {
+    nodes: files.map((file) => ({
+      path: file.path,
+      name: path.basename(file.path).replace(/\.(md|markdown)$/i, ''),
+      group: graphGroup(file.path)
+    })),
+    edges: [...edges.values()].sort((a, b) =>
+      `${a.source}\0${a.target}`.localeCompare(`${b.source}\0${b.target}`)
+    ),
+    unresolved
+  };
+}
+
+function graphGroup(filePath) {
+  const parts = filePath.split('/').filter(Boolean);
+  if (parts.length === 1) return 'root';
+  if (parts[0] === 'wiki') return parts.length > 2 ? parts[1] : 'wiki';
+  return parts[0] || 'root';
 }
 
 async function readOverview(root) {
