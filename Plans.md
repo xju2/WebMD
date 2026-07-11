@@ -16,7 +16,7 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 
 ## Current Status
 
-- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily notes, wiki links, raw git diff preview, MVP collaborative editing, and streamed AI chat.
+- Done: Vite/Svelte frontend, Express backend bound to `127.0.0.1`, multi-root workspaces, safe file APIs, atomic saves, CodeMirror editing, failed-save `sessionStorage` recovery, workspace search, Markdown preview, media preview, daily-note calendar, wiki links, raw git diff preview, MVP collaborative editing, and streamed AI chat.
 - Collaborative editing now uses server-owned document versions, CM6 `ChangeSet` updates through `POST /api/workspace/updates`, atomic disk snapshots, SSE update replay through `GET /api/workspace/events`, and client-side rebasing for pending local edits.
 - AI chat keeps provider keys server-side, streams from Ollama or OpenAI-compatible Responses providers, and sends active document or selected-text context from the workspace.
 - Inline AI diff edits now request replacement text server-side, show a diff
@@ -174,4 +174,3 @@ Done when:
 - Plugin system.
 - Mobile-specific editor redesign.
 - User/account management.
-- Move the daily-note folder selector out of the always-visible global rail once there is a settings/preferences surface; it is useful setup but distracting after the first choice.

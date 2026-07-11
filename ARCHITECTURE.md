@@ -190,6 +190,10 @@ The first version contains Today, Continue, Recently modified, and Workspace
 changes. Workspace-wide AI summaries, charts, and activity metrics remain
 deferred until their underlying data exists.
 
+Daily notes have a separate Calendar view launched from the global rail. It
+uses the selected daily-note folder and browser-local dates, marks existing
+date-named Markdown files, and lets a date either open its note or create it.
+
 `GET /api/workspace/graph` builds a server-side index of Markdown notes and
 resolved wiki links, caches it until the workspace changes, and returns only
 compact node and edge metadata. The client renders Wiki, Local, and All scopes

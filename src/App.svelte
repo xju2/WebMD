@@ -4,6 +4,7 @@
   import { EditorView } from '@codemirror/view';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
+  import { calendarDays as buildCalendarDays, shiftMonth } from './calendar.js';
   import {
     rebaseRemoteUpdate,
     updateFromChangeSet as createCollabUpdate
@@ -18,6 +19,7 @@
   const RECENT_FILES_KEY = 'webmd:recent-files';
   const RECENT_FILES_LIMIT = 5;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
+  const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
     `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -67,6 +69,7 @@
   let diffStatus = '';
   let sidebarVisible = true;
   let dailyNoteFolder = '/';
+  let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
   let appShell;
@@ -98,6 +101,12 @@
     (file) => file.fileKind === 'markdown'
   );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
+  $: calendarDays = buildCalendarDays(calendarMonth);
+  $: calendarMonthName = calendarMonth.toLocaleDateString([], {
+    month: 'long',
+    year: 'numeric'
+  });
+  $: dailyNotePaths = new Set(markdownFiles.map((file) => file.path));
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
   $: continueFiles = recentPaths
@@ -516,8 +525,8 @@
     }
   }
 
-  async function openTodayNote() {
-    const path = todayNotePath();
+  async function openDailyNote(date = new Date()) {
+    const path = todayNotePath(date);
     const root = selectedRoot;
     const previousEntry = currentNavigationEntry();
 
@@ -588,6 +597,37 @@
       : '/';
     const folder = parent === '/' ? '' : parent;
     return `${folder}/${year}-${month}-${day}.md`;
+  }
+
+  async function showCalendar() {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    viewMode = 'calendar';
+    calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+  }
+
+  function moveCalendarMonth(amount) {
+    calendarMonth = shiftMonth(calendarMonth, amount);
+  }
+
+  function showCurrentMonth() {
+    calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  }
+
+  function calendarDayPath(day) {
+    return todayNotePath(day.date);
+  }
+
+  function calendarDayLabel(day) {
+    return new Intl.DateTimeFormat([], {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
+    }).format(day.date);
   }
 
   function showFile(
@@ -874,6 +914,10 @@
       return;
     }
     await loadOverview(root);
+    if (viewMode === 'calendar') {
+      status = '[Saved]';
+      return;
+    }
     if (viewMode === 'graph') {
       await loadGraph();
       status = '[Saved]';
@@ -1380,6 +1424,7 @@
 
   function chooseDailyNoteFolder(folder) {
     dailyNoteFolder = folder;
+    calendarMonth = new Date(calendarMonth);
     try {
       localStorage.setItem(dailyNoteFolderStorageKey(selectedRoot), folder);
     } catch {
@@ -1595,27 +1640,16 @@
 >
   <nav class="global-bar" aria-label="Global actions">
     <button
-      aria-label="Add today's daily note"
-      class="global-action"
+      aria-label="Open daily notes calendar"
+      class:active={viewMode === 'calendar'}
+      class="global-action calendar-launcher"
       disabled={!workspaceRoots.length}
-      title="Add today's daily note"
+      title="Daily notes calendar"
       type="button"
-      on:click={openTodayNote}
+      on:click={showCalendar}
     >
-      +
+      Cal
     </button>
-    <select
-      aria-label="Daily notes folder"
-      class="global-folder-select"
-      disabled={!workspaceRoots.length}
-      title={`Daily notes folder: ${dailyNoteFolder}`}
-      value={dailyNoteFolder}
-      on:change={(event) => chooseDailyNoteFolder(event.currentTarget.value)}
-    >
-      {#each dailyNoteFolders as folder}
-        <option value={folder}>{folder}</option>
-      {/each}
-    </select>
   </nav>
 
   <aside
@@ -1865,7 +1899,7 @@
           type="button"
           on:dblclick={revealSelectedFileInSidebar}
         >
-          {selectedPath || 'Workspace Home'}
+          {viewMode === 'calendar' ? 'Daily Notes' : selectedPath || 'Workspace Home'}
         </button>
       </div>
       <div class="topbar-actions">
@@ -1918,7 +1952,7 @@
     {/if}
 
     <div class:empty={!selectedPath} class="editor-frame">
-      {#if !selectedPath && viewMode !== 'graph'}
+      {#if !selectedPath && viewMode !== 'graph' && viewMode !== 'calendar'}
         <section class="workspace-home" aria-label="Workspace Home">
           <header class="home-intro">
             <div>
@@ -1944,7 +1978,7 @@
               <h2>Today</h2>
               <p>Start or continue today’s research note.</p>
               <small>{todayNotePath()}</small>
-              <button class="home-primary" type="button" on:click={openTodayNote}>
+              <button class="home-primary" type="button" on:click={openDailyNote}>
                 Open today’s note
               </button>
             </article>
@@ -2020,6 +2054,58 @@
         class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
         class="editor-host"
       ></div>
+      {#if viewMode === 'calendar'}
+        <section class="calendar-pane" aria-label="Daily notes calendar">
+          <header class="calendar-toolbar">
+            <div class="calendar-month-nav">
+              <button aria-label="Previous month" type="button" on:click={() => moveCalendarMonth(-1)}>
+                ‹
+              </button>
+              <h2>{calendarMonthName}</h2>
+              <button aria-label="Next month" type="button" on:click={() => moveCalendarMonth(1)}>
+                ›
+              </button>
+            </div>
+            <div class="calendar-controls">
+              <label>
+                Folder
+                <select
+                  aria-label="Daily notes folder"
+                  value={dailyNoteFolder}
+                  on:change={(event) => chooseDailyNoteFolder(event.currentTarget.value)}
+                >
+                  {#each dailyNoteFolders as folder}
+                    <option value={folder}>{folder}</option>
+                  {/each}
+                </select>
+              </label>
+              <button type="button" on:click={showCurrentMonth}>Today</button>
+            </div>
+          </header>
+          <div class="calendar-grid" aria-label={calendarMonthName}>
+            {#each WEEK_DAYS as weekday}
+              <span class="calendar-weekday">{weekday}</span>
+            {/each}
+            {#each calendarDays as day}
+              {@const path = calendarDayPath(day)}
+              {@const hasNote = dailyNotePaths.has(path)}
+              <button
+                aria-label={`${hasNote ? 'Open' : 'Create'} note for ${calendarDayLabel(day)}`}
+                class:outside-month={!day.currentMonth}
+                class:today={day.today}
+                class:has-note={hasNote}
+                class="calendar-day"
+                title={`${hasNote ? 'Open' : 'Create'} ${path}`}
+                type="button"
+                on:click={() => openDailyNote(day.date)}
+              >
+                <span>{day.date.getDate()}</span>
+                {#if hasNote}<i aria-label="Note exists"></i>{/if}
+              </button>
+            {/each}
+          </div>
+        </section>
+      {/if}
       {#if viewMode === 'graph'}
         <section class="graph-pane" aria-label="Workspace graph">
           <header class="graph-toolbar">
@@ -2195,7 +2281,7 @@
             {/each}
           {/if}
         </section>
-      {:else if selectedPath && viewMode !== 'graph'}
+      {:else if selectedPath && viewMode !== 'graph' && viewMode !== 'calendar'}
         <section
           aria-label="Read-only media preview"
           class:image={selectedFileKind === 'image'}
