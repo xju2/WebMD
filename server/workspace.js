@@ -277,16 +277,42 @@ async function diffFile(root, filePath) {
   const relative = path.relative(root, absolute).replaceAll(path.sep, '/');
 
   try {
-    const { stdout } = await execFileAsync('git', ['diff', '--', relative], {
+    const { stdout: status } = await execFileAsync(
+      'git',
+      ['status', '--porcelain=v1', '--untracked-files=all', '--', relative],
+      { cwd: root, maxBuffer: 10 * 1024 * 1024 }
+    );
+    if (status.startsWith('?? ')) {
+      return { path: normalized, diff: await diffUntrackedFile(root, relative) };
+    }
+
+    const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--', relative], {
       cwd: root,
       maxBuffer: 10 * 1024 * 1024
     });
     return { path: normalized, diff: stdout };
   } catch (error) {
+    if (/unknown revision|bad revision|ambiguous argument 'HEAD'/.test(error.stderr || '')) {
+      return { path: normalized, diff: await diffUntrackedFile(root, relative) };
+    }
     throw new WorkspaceError(
       400,
       error.stderr?.trim() || error.message || 'Unable to read git diff.'
     );
+  }
+}
+
+async function diffUntrackedFile(root, relative) {
+  try {
+    return (
+      await execFileAsync('git', ['diff', '--no-index', '--', '/dev/null', relative], {
+        cwd: root,
+        maxBuffer: 10 * 1024 * 1024
+      })
+    ).stdout;
+  } catch (error) {
+    if (error.code === 1) return error.stdout;
+    throw error;
   }
 }
 

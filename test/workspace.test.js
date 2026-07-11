@@ -224,20 +224,45 @@ test('rejects missing folders through symlink escapes', async () => {
   );
 });
 
-test('returns git diff for a markdown file', async () => {
+test('returns unstaged, staged, and untracked git diffs', async () => {
   const root = await tempRoot();
   const note = path.join(root, 'note.md');
+  const staged = path.join(root, 'staged.md');
+  const untracked = path.join(root, 'untracked.md');
   await fs.writeFile(note, 'old\n');
+  await fs.writeFile(staged, 'old staged\n');
   await execFileAsync('git', ['init'], { cwd: root });
-  await execFileAsync('git', ['add', 'note.md'], { cwd: root });
+  await execFileAsync('git', ['add', 'note.md', 'staged.md'], { cwd: root });
+  await execFileAsync(
+    'git',
+    [
+      '-c',
+      'user.name=Test',
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-m',
+      'base'
+    ],
+    { cwd: root }
+  );
   await fs.writeFile(note, 'new\n');
+  await fs.writeFile(staged, 'new staged\n');
+  await execFileAsync('git', ['add', 'staged.md'], { cwd: root });
+  await fs.writeFile(untracked, 'new untracked\n');
 
   const workspace = await createWorkspace(root);
-  const result = await workspace.diffFile('/note.md');
+  const unstagedResult = await workspace.diffFile('/note.md');
+  const stagedResult = await workspace.diffFile('/staged.md');
+  const untrackedResult = await workspace.diffFile('/untracked.md');
 
-  assert.equal(result.path, '/note.md');
-  assert.match(result.diff, /^-old$/m);
-  assert.match(result.diff, /^\+new$/m);
+  assert.match(unstagedResult.diff, /^-old$/m);
+  assert.match(unstagedResult.diff, /^\+new$/m);
+  assert.match(stagedResult.diff, /^-old staged$/m);
+  assert.match(stagedResult.diff, /^\+new staged$/m);
+  assert.match(untrackedResult.diff, /^\+new untracked$/m);
 });
 
 test('applies versioned document updates and writes a snapshot', async () => {

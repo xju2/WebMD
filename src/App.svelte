@@ -963,6 +963,11 @@
     }
   }
 
+  async function openWorkspaceChange(path) {
+    await openFile(path);
+    if (selectedPath === path && !error) await showDiff();
+  }
+
   async function showGraph() {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
     viewMode = 'graph';
@@ -2066,7 +2071,7 @@
                     <button
                       disabled={!findFileNode(workspaceTree, change.path)}
                       type="button"
-                      on:click={() => openFile(change.path)}
+                      on:click={() => openWorkspaceChange(change.path)}
                     >
                       <span>{change.name}</span>
                       <small>{gitStatusLabel(change.status)}</small>
