@@ -24,6 +24,10 @@ export async function createApp({
     res.json(workspaces.options);
   });
 
+  app.get('/api/workspace/overview', asyncHandler(async (req, res) => {
+    res.json(await workspaces.get(req.query.root).overview());
+  }));
+
   app.get('/api/workspace/tree', asyncHandler(async (req, res) => {
     res.json(await workspaces.get(req.query.root).readTree());
   }));

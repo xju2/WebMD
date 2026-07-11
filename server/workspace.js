@@ -31,6 +31,7 @@ export async function createWorkspace(workspaceRoot) {
 
   return {
     root,
+    overview: () => readOverview(root),
     readTree: async () => {
       searchIndex = null;
       return readTree(root, root);
@@ -62,6 +63,85 @@ export async function createWorkspace(workspaceRoot) {
     },
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
+}
+
+async function readOverview(root) {
+  const files = await readOverviewFiles(root, root);
+  const markdownFiles = files.filter((file) => file.fileKind === 'markdown');
+
+  return {
+    fileCount: files.length,
+    markdownCount: markdownFiles.length,
+    recent: markdownFiles
+      .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt))
+      .slice(0, 6),
+    ...(await readGitChanges(root))
+  };
+}
+
+async function readOverviewFiles(root, dir, prefix = '') {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries) {
+    if (isHiddenSearchEntry(entry.name)) continue;
+
+    const absolute = path.join(dir, entry.name);
+    const real = await realpathOrNull(absolute);
+    if (!real || !isInside(root, real)) continue;
+
+    const filePath = `${prefix}/${entry.name}`.replaceAll(path.sep, '/');
+    if (entry.isDirectory()) {
+      files.push(...(await readOverviewFiles(root, absolute, filePath)));
+      continue;
+    }
+
+    const fileKind = fileKindForPath(entry.name);
+    if (!entry.isFile() || !fileKind) continue;
+    const stat = await fs.stat(real);
+    files.push({
+      name: entry.name,
+      path: filePath,
+      fileKind,
+      modifiedAt: stat.mtime.toISOString()
+    });
+  }
+
+  return files;
+}
+
+async function readGitChanges(root) {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      { cwd: root, maxBuffer: 10 * 1024 * 1024 }
+    );
+    const entries = stdout.split('\0');
+    const changes = [];
+
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      if (!entry) continue;
+      const status = entry.slice(0, 2);
+      const filePath = entry.slice(3);
+      if (/[RC]/.test(status)) index += 1;
+      if (
+        fileKindForPath(filePath) === 'markdown' &&
+        !filePath.split('/').some((part) => part.startsWith('.') || part === 'node_modules')
+      ) {
+        changes.push({
+          name: path.basename(filePath),
+          path: `/${filePath.replaceAll(path.sep, '/')}`,
+          status
+        });
+      }
+    }
+
+    return { gitAvailable: true, changes: changes.slice(0, 20) };
+  } catch {
+    return { gitAvailable: false, changes: [] };
+  }
 }
 
 export function normalizeWorkspacePath(filePath) {

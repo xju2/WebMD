@@ -52,6 +52,28 @@ test('searches through the selected workspace root', async () => {
   assert.equal((await workspaces.get().searchFiles('needle'))[0].path, '/note.md');
 });
 
+test('returns a workspace overview', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'older.md'), 'old\n');
+  await fs.writeFile(path.join(root, 'recent.md'), 'new\n');
+  await fs.writeFile(path.join(root, 'image.png'), 'png');
+  await fs.utimes(path.join(root, 'older.md'), new Date(1), new Date(1));
+
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/workspace/overview`);
+    assert.equal(response.status, 200);
+    const overview = await response.json();
+    assert.equal(overview.fileCount, 3);
+    assert.equal(overview.markdownCount, 2);
+    assert.equal(overview.recent[0].path, '/recent.md');
+    assert.equal(overview.gitAvailable, false);
+  } finally {
+    server.close();
+  }
+});
+
 test('accepts document updates and exposes them as SSE events', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), 'old');

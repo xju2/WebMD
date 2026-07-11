@@ -174,6 +174,22 @@ Client Browser               SSH Tunnel               Node.js Server            
 
 ### 6.1 Workspace Core Operations
 
+#### Workspace Home
+
+The editor's no-file state is the Workspace Home. It stays inside `App.svelte`
+instead of adding a router or a second application. It supports the core
+research loop—capture, resume, and review—by reusing the existing file-opening,
+daily-note, search, and workspace-switching flows.
+
+`GET /api/workspace/overview` returns supported-file counts, the six most
+recently modified Markdown notes, and changed Markdown paths from Git when the
+workspace is a repository. Recently opened paths remain browser-local because
+they are UI history rather than workspace content.
+
+The first version contains Today, Continue, Recently modified, and Workspace
+changes. Workspace-wide AI summaries, backlink analysis, charts, and activity
+metrics remain deferred until the underlying retrieval or link index exists.
+
 #### File Tree Retrieval
 * **Endpoint:** `GET /api/workspace/tree`
 * **Success Signature (`200 OK`):**

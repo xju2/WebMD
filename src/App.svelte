@@ -14,6 +14,8 @@
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const SEARCH_HISTORY_LIMIT = 8;
+  const RECENT_FILES_KEY = 'webmd:recent-files';
+  const RECENT_FILES_LIMIT = 5;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
@@ -33,6 +35,15 @@
   let searchHistory = [];
   let searchResults = [];
   let searchStatus = '';
+  let recentPaths = [];
+  let overview = {
+    fileCount: 0,
+    markdownCount: 0,
+    recent: [],
+    gitAvailable: false,
+    changes: []
+  };
+  let overviewStatus = 'Loading workspace...';
   let chatPrompt = '';
   let chatMessages = [];
   let chatStatus = '';
@@ -52,6 +63,7 @@
   let appShell;
   let editorHost;
   let treeHost;
+  let searchInput;
   let editorView;
   let saveTimer;
   let retryTimer;
@@ -79,6 +91,11 @@
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
+  $: continueFiles = recentPaths
+    .map((path) => findFileNode(workspaceTree, path))
+    .filter(Boolean);
+  $: activeWorkspaceName =
+    workspaceRoots.find((root) => root.id === selectedRoot)?.name || 'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
   $: canNavigateBack = navigationBackStack.length > 0;
@@ -356,7 +373,9 @@
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
       dailyNoteFolder = readDailyNoteFolder(selectedRoot);
+      recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
+      await loadOverview(selectedRoot);
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
     } catch (err) {
@@ -393,6 +412,7 @@
 
     selectedRoot = root;
     dailyNoteFolder = readDailyNoteFolder(root);
+    recentPaths = readRecentFiles(root);
     tree = [];
     selectedPath = '';
     selectedFileKind = 'markdown';
@@ -413,6 +433,7 @@
     navigationForwardStack = [];
     setEditorContent('');
     await loadTree();
+    await loadOverview();
   }
 
   async function openFile(
@@ -434,6 +455,7 @@
 
     if (fileKind !== 'markdown') {
       showMediaFile(path);
+      rememberRecentFile(path);
       status = '[Read-only]';
       rememberNavigationEntry(previousEntry, path, {
         historyMode,
@@ -456,6 +478,7 @@
       showFile(root, path, nextContent, file.content, file.version, {
         collaborate: !buffered
       });
+      rememberRecentFile(path);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
       rememberNavigationEntry(previousEntry, path, {
         historyMode,
@@ -506,6 +529,7 @@
       );
       if (root !== selectedRoot || selectedPath !== path) return;
       showFile(root, path, file.content, file.content, file.version);
+      rememberRecentFile(path);
       status = '[Saved]';
       rememberNavigationEntry(previousEntry, path);
       updateNavigationState(path);
@@ -526,6 +550,7 @@
         });
         if (root !== selectedRoot || selectedPath !== path) return;
         showFile(root, path, nextContent, nextContent, 0);
+        rememberRecentFile(path);
         status = '[Saved]';
         rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
@@ -836,6 +861,7 @@
       status = '[Offline - Retrying]';
       return;
     }
+    await loadOverview(root);
     if (path && content === lastSaved)
       await openFile(path, { historyMode: 'replace' });
     else if (!path) status = '[Saved]';
@@ -937,6 +963,100 @@
 
   function storageKey(root, path) {
     return `webmd:unsaved:${rootPathKey(root, path)}`;
+  }
+
+  async function showHome() {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    stopCollaboration();
+    selectedPath = '';
+    selectedFileKind = 'markdown';
+    content = '';
+    lastSaved = '';
+    viewMode = 'edit';
+    diffFiles = [];
+    diffStatus = '';
+    error = '';
+    selectedText = '';
+    selectedRange = null;
+    navigationBackStack = [];
+    navigationForwardStack = [];
+    clearInlineEdit();
+    setEditorContent('');
+    history.replaceState({ root: selectedRoot }, '', location.pathname + location.search);
+    status = '[Saved]';
+    await loadOverview();
+  }
+
+  async function focusWorkspaceSearch() {
+    sidebarVisible = true;
+    await tick();
+    searchInput?.focus();
+  }
+
+  async function loadOverview(root = selectedRoot) {
+    overviewStatus = 'Loading workspace...';
+    try {
+      const nextOverview = await requestJson(
+        `/api/workspace/overview?root=${encodeURIComponent(root)}`
+      );
+      if (root === selectedRoot) {
+        overview = nextOverview;
+        overviewStatus = '';
+      }
+    } catch (err) {
+      if (root === selectedRoot) overviewStatus = err.message;
+    }
+  }
+
+  function rememberRecentFile(path) {
+    recentPaths = [path, ...recentPaths.filter((item) => item !== path)].slice(
+      0,
+      RECENT_FILES_LIMIT
+    );
+    try {
+      localStorage.setItem(
+        recentFilesStorageKey(selectedRoot),
+        JSON.stringify(recentPaths)
+      );
+    } catch {
+      // Ignore storage failures; recent files still work this session.
+    }
+  }
+
+  function readRecentFiles(root) {
+    try {
+      const value = JSON.parse(
+        localStorage.getItem(recentFilesStorageKey(root)) || '[]'
+      );
+      return Array.isArray(value)
+        ? value
+            .filter((item) => typeof item === 'string')
+            .slice(0, RECENT_FILES_LIMIT)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function recentFilesStorageKey(root) {
+    return `${RECENT_FILES_KEY}:${root}`;
+  }
+
+  function formatTimestamp(value) {
+    return new Intl.DateTimeFormat([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    }).format(new Date(value));
+  }
+
+  function gitStatusLabel(value) {
+    if (value === '??') return 'New';
+    if (value.includes('D')) return 'Deleted';
+    if (value.includes('R')) return 'Renamed';
+    if (value.includes('A')) return 'Added';
+    return 'Modified';
   }
 
   function rootPathKey(root, path) {
@@ -1373,7 +1493,7 @@
     aria-label="Workspace files"
   >
     <div class="brand-row">
-      <div class="brand">WebMD</div>
+      <button class="brand" type="button" on:click={showHome}>WebMD</button>
       {#if workspaceRoots.length}
         <select
           aria-label="Switch folder"
@@ -1405,6 +1525,7 @@
     <div class="sidebar-search">
       <input
         aria-label="Search files and contents"
+        bind:this={searchInput}
         bind:value={searchQuery}
         name="webmd-search"
         on:blur={() => rememberSearch(searchQuery)}
@@ -1613,7 +1734,7 @@
           type="button"
           on:dblclick={revealSelectedFileInSidebar}
         >
-          {selectedPath || 'No file selected'}
+          {selectedPath || 'Workspace Home'}
         </button>
       </div>
       <div class="topbar-actions">
@@ -1659,7 +1780,101 @@
 
     <div class:empty={!selectedPath} class="editor-frame">
       {#if !selectedPath}
-        <div class="empty-state">Open a file from Files.</div>
+        <section class="workspace-home" aria-label="Workspace Home">
+          <header class="home-intro">
+            <div>
+              <p class="home-eyebrow">{activeWorkspaceName}</p>
+              <h1>Workspace Home</h1>
+              <p>Capture, resume, and review your research.</p>
+            </div>
+            <div class="home-counts" aria-label="Workspace file counts">
+              <strong>{overview.markdownCount}</strong>
+              <span>notes</span>
+              <strong>{overview.fileCount}</strong>
+              <span>files</span>
+            </div>
+          </header>
+
+          {#if overviewStatus}
+            <p class="home-status">{overviewStatus}</p>
+          {/if}
+
+          <div class="home-grid">
+            <article class="home-card home-today">
+              <p class="home-card-label">Capture</p>
+              <h2>Today</h2>
+              <p>Start or continue today’s research note.</p>
+              <small>{todayNotePath()}</small>
+              <button class="home-primary" type="button" on:click={openTodayNote}>
+                Open today’s note
+              </button>
+            </article>
+
+            <article class="home-card">
+              <div class="home-card-heading">
+                <div>
+                  <p class="home-card-label">Resume</p>
+                  <h2>Continue</h2>
+                </div>
+                <button class="home-link" type="button" on:click={focusWorkspaceSearch}>
+                  Find
+                </button>
+              </div>
+              {#if continueFiles.length}
+                <div class="home-list">
+                  {#each continueFiles as file}
+                    <button type="button" on:click={() => openFile(file.path)}>
+                      <span>{file.name}</span>
+                      <small>{file.path}</small>
+                    </button>
+                  {/each}
+                </div>
+              {:else}
+                <p class="home-empty">Open a note and it will stay within reach here.</p>
+              {/if}
+            </article>
+
+            <article class="home-card">
+              <p class="home-card-label">Review</p>
+              <h2>Recently modified</h2>
+              {#if overview.recent.length}
+                <div class="home-list">
+                  {#each overview.recent as file}
+                    <button type="button" on:click={() => openFile(file.path)}>
+                      <span>{file.name}</span>
+                      <small>{formatTimestamp(file.modifiedAt)}</small>
+                    </button>
+                  {/each}
+                </div>
+              {:else if !overviewStatus}
+                <p class="home-empty">No Markdown notes yet.</p>
+              {/if}
+            </article>
+
+            <article class="home-card">
+              <p class="home-card-label">Review</p>
+              <h2>Workspace changes</h2>
+              {#if !overview.gitAvailable}
+                <p class="home-empty">Git status is unavailable for this workspace.</p>
+              {:else if overview.changes.length}
+                <div class="home-list">
+                  {#each overview.changes as change}
+                    <button
+                      disabled={!findFileNode(workspaceTree, change.path)}
+                      type="button"
+                      on:click={() => openFile(change.path)}
+                    >
+                      <span>{change.name}</span>
+                      <small>{gitStatusLabel(change.status)}</small>
+                    </button>
+                  {/each}
+                </div>
+              {:else}
+                <p class="home-empty">No uncommitted Markdown changes.</p>
+              {/if}
+            </article>
+          </div>
+        </section>
       {/if}
       <div
         bind:this={editorHost}
