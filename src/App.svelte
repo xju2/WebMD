@@ -2009,7 +2009,7 @@
               <h2>Today</h2>
               <p>Start or continue today’s research note.</p>
               <small>{todayNotePath()}</small>
-              <button class="home-primary" type="button" on:click={openDailyNote}>
+              <button class="home-primary" type="button" on:click={() => openDailyNote()}>
                 Open today’s note
               </button>
             </article>
