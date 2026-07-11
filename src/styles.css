@@ -109,7 +109,7 @@ button {
 }
 
 .sidebar.chat-open > :not(.ai-panel),
-.ai-panel-hidden {
+.ai-panel.ai-panel-hidden {
   display: none;
 }
 
