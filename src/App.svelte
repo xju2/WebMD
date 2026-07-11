@@ -68,6 +68,7 @@
   let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
+  let sidebarView = 'files';
   let dailyNoteFolder = '/';
   let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let expandedDirs = new Set();
@@ -1164,8 +1165,18 @@
 
   async function focusWorkspaceSearch() {
     sidebarVisible = true;
+    sidebarView = 'files';
     await tick();
     searchInput?.focus();
+  }
+
+  function toggleSidebar(view) {
+    if (sidebarVisible && sidebarView === view) {
+      sidebarVisible = false;
+      return;
+    }
+    sidebarView = view;
+    sidebarVisible = true;
   }
 
   async function loadOverview(root = selectedRoot) {
@@ -1475,6 +1486,7 @@
     if (!selectedPath) return;
 
     sidebarVisible = true;
+    sidebarView = 'files';
     searchQuery = '';
     expandToPath(selectedPath);
     await tick();
@@ -1640,6 +1652,19 @@
 >
   <nav class="global-bar" aria-label="Global actions">
     <button
+      aria-label={sidebarVisible && sidebarView === 'files'
+        ? 'Hide files'
+        : 'Show files'}
+      aria-pressed={sidebarVisible && sidebarView === 'files'}
+      class:active={sidebarVisible && sidebarView === 'files'}
+      class="global-action"
+      title="Files"
+      type="button"
+      on:click={() => toggleSidebar('files')}
+    >
+      Files
+    </button>
+    <button
       aria-label="Open daily notes calendar"
       class:active={viewMode === 'calendar'}
       class="global-action calendar-launcher"
@@ -1650,12 +1675,26 @@
     >
       Cal
     </button>
+    <button
+      aria-label={sidebarVisible && sidebarView === 'chat'
+        ? 'Hide AI chat'
+        : 'Show AI chat'}
+      aria-pressed={sidebarVisible && sidebarView === 'chat'}
+      class:active={sidebarVisible && sidebarView === 'chat'}
+      class="global-action"
+      title="AI chat"
+      type="button"
+      on:click={() => toggleSidebar('chat')}
+    >
+      AI
+    </button>
   </nav>
 
   <aside
+    class:chat-open={sidebarView === 'chat'}
     class:sidebar-closed={!sidebarVisible}
     class="sidebar"
-    aria-label="Workspace files"
+    aria-label={sidebarView === 'files' ? 'Workspace files' : 'AI chat'}
   >
     <div class="brand-row">
       <button class="brand" type="button" on:click={showHome}>WebMD</button>
@@ -1807,8 +1846,10 @@
         {/if}
       </div>
     {/if}
-
-    <section class="ai-panel" aria-label="AI chat">
+    <section class:ai-panel-hidden={sidebarView !== 'chat'} class="ai-panel">
+      <div class="sidebar-title ai-title">
+        <span>AI chat</span>
+      </div>
       <div class="ai-messages" aria-live="polite">
         {#if chatMessages.length}
           {#each chatMessages as message}
@@ -1858,17 +1899,6 @@
   <section class="workspace">
     <header class="topbar">
       <div class="file-heading">
-        <button
-          aria-label={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
-          aria-pressed={sidebarVisible}
-          class:active={sidebarVisible}
-          class="sidebar-toggle"
-          title={sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
-          type="button"
-          on:click={() => (sidebarVisible = !sidebarVisible)}
-        >
-          Files
-        </button>
         <div class="navigation-controls" aria-label="File navigation">
           <button
             aria-label="Go back"

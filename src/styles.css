@@ -70,6 +70,10 @@ button {
   line-height: 1;
 }
 
+.global-action:first-child {
+  font-size: 0.72rem;
+}
+
 .global-action:hover {
   border-color: #5d7598;
   background: #2b4267;
@@ -101,6 +105,11 @@ button {
 }
 
 .sidebar.sidebar-closed {
+  display: none;
+}
+
+.sidebar.chat-open > :not(.ai-panel),
+.ai-panel-hidden {
   display: none;
 }
 
@@ -342,11 +351,14 @@ button {
 
 .ai-panel {
   display: grid;
-  flex: 0 0 min(42%, 320px);
-  min-height: 180px;
-  border-top: 1px solid #d9dee7;
+  flex: 1 1 auto;
+  min-height: 0;
   background: #f7f9fb;
-  grid-template-rows: minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+}
+
+.ai-title {
+  padding-top: 18px;
 }
 
 .ai-messages {
@@ -517,26 +529,6 @@ button {
   min-width: 0;
   align-items: center;
   gap: 10px;
-}
-
-.sidebar-toggle {
-  flex: 0 0 auto;
-  width: 62px;
-  height: 34px;
-  border: 1px solid #cbd4df;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #273246;
-  cursor: pointer;
-  font-size: 0.88rem;
-  font-weight: 720;
-}
-
-.sidebar-toggle:hover,
-.sidebar-toggle.active {
-  border-color: #9fb2ca;
-  background: #eef2f6;
-  color: #123f75;
 }
 
 .navigation-controls {
