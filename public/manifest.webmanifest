@@ -1,0 +1,17 @@
+{
+  "name": "WebMD",
+  "short_name": "WebMD",
+  "description": "A private Markdown workspace.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#172033",
+  "icons": [
+    {
+      "src": "/webmd-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

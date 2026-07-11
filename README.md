@@ -37,6 +37,19 @@ ssh -N -L 3000:127.0.0.1:3000 user@remote-host
 Then open `http://127.0.0.1:3000` locally. The app still binds only to
 `127.0.0.1` on the remote host, so the SSH tunnel remains the access boundary.
 
+## iPhone access
+
+For persistent private access without keeping an SSH app open, install Tailscale
+on the server and iPhone, sign both into the same tailnet, and run on the server:
+
+```bash
+tailscale serve --bg http://127.0.0.1:3000
+```
+
+Open the HTTPS URL printed by Tailscale in Safari. Use **Share → Add to Home
+Screen**, enable **Open as Web App**, and tap **Add**. Keep Tailscale connected
+on the phone; do not use Tailscale Funnel, which would make WebMD public.
+
 ## Environment
 
 - `WORKSPACE_ROOT`: required absolute path to the Markdown workspace.
