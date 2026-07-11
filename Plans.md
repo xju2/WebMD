@@ -166,6 +166,10 @@ Done when:
 - Separate app authentication.
 - Database-backed revision storage.
 - Side-by-side diff rendering and commit history browsing.
+- Graph exploration upgrades: keep `All notes` literal, add a `Hide unlinked`
+  filter if daily or raw notes create noise, and consider an optional lazy-loaded
+  Three.js 3D Explore mode only if users want visual discovery. Keep the native
+  2D graph as the primary research interface.
 - Markdown preview engine upgrade: keep the small renderer for now; consider `markdown-it` with lazy preview loading for fuller Markdown, images, and simple media embeds, or a unified/remark pipeline only if custom attachment/media transforms become central. Keep PDF viewing and annotations separate, likely via a PDF viewer path plus app-level annotation data keyed by file, page, and range/rect.
 - Plugin system.
 - Mobile-specific editor redesign.
