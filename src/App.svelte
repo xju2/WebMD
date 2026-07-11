@@ -639,6 +639,7 @@
     version = 0,
     { collaborate = true } = {}
   ) {
+    if (viewMode === 'calendar' || viewMode === 'graph') viewMode = 'edit';
     selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
