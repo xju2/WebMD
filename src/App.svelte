@@ -4,7 +4,11 @@
   import { EditorView } from '@codemirror/view';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
-  import { calendarDays as buildCalendarDays, shiftMonth } from './calendar.js';
+  import {
+    calendarDays as buildCalendarDays,
+    dailyNotePath as buildDailyNotePath,
+    shiftMonth
+  } from './calendar.js';
   import {
     rebaseRemoteUpdate,
     updateFromChangeSet as createCollabUpdate
@@ -19,6 +23,7 @@
   const RECENT_FILES_KEY = 'webmd:recent-files';
   const RECENT_FILES_LIMIT = 5;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
+  const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
@@ -102,6 +107,14 @@
     (file) => file.fileKind === 'markdown'
   );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
+  $: activeDailyNoteFolder = dailyNoteFolders.includes(dailyNoteFolder)
+    ? dailyNoteFolder
+    : '/';
+  $: dailyNoteFolderMissing =
+    dailyNoteFolder !== '/' && activeDailyNoteFolder !== dailyNoteFolder;
+  $: dailyNoteFolderOptions = dailyNoteFolderMissing
+    ? [dailyNoteFolder, ...dailyNoteFolders]
+    : dailyNoteFolders;
   $: calendarDays = buildCalendarDays(calendarMonth);
   $: calendarMonthName = calendarMonth.toLocaleDateString([], {
     month: 'long',
@@ -391,7 +404,7 @@
     try {
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
-      dailyNoteFolder = readDailyNoteFolder(selectedRoot);
+      dailyNoteFolder = readDailyNoteFolder();
       recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
       await loadOverview(selectedRoot);
@@ -409,12 +422,6 @@
       );
       if (root === selectedRoot) {
         tree = nextTree;
-        if (
-          !['/', ...collectVisibleDirectories(nextTree)].includes(
-            dailyNoteFolder
-          )
-        )
-          chooseDailyNoteFolder('/');
         error = '';
       }
       return true;
@@ -430,7 +437,6 @@
     stopCollaboration();
 
     selectedRoot = root;
-    dailyNoteFolder = readDailyNoteFolder(root);
     recentPaths = readRecentFiles(root);
     tree = [];
     selectedPath = '';
@@ -590,14 +596,7 @@
   }
 
   function todayNotePath(date = new Date()) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const parent = dailyNoteFolders.includes(dailyNoteFolder)
-      ? dailyNoteFolder
-      : '/';
-    const folder = parent === '/' ? '' : parent;
-    return `${folder}/${year}-${month}-${day}.md`;
+    return buildDailyNotePath(date, activeDailyNoteFolder);
   }
 
   async function showCalendar() {
@@ -1443,22 +1442,26 @@
     dailyNoteFolder = folder;
     calendarMonth = new Date(calendarMonth);
     try {
-      localStorage.setItem(dailyNoteFolderStorageKey(selectedRoot), folder);
+      localStorage.setItem(DAILY_NOTE_FOLDER_KEY, folder);
     } catch {
       // Ignore storage failures; the selected folder still works this session.
     }
   }
 
-  function readDailyNoteFolder(root) {
+  function readDailyNoteFolder() {
     try {
-      return localStorage.getItem(dailyNoteFolderStorageKey(root)) || '/';
+      return (
+        localStorage.getItem(DAILY_NOTE_FOLDER_KEY) ||
+        workspaceRoots
+          .map((root) =>
+            localStorage.getItem(`${LEGACY_DAILY_NOTE_FOLDER_PREFIX}${root.id}`)
+          )
+          .find((folder) => folder && folder !== '/') ||
+        '/'
+      );
     } catch {
       return '/';
     }
-  }
-
-  function dailyNoteFolderStorageKey(root) {
-    return `${DAILY_NOTE_FOLDER_KEY}:${root}`;
   }
 
   function toggleFolder(path) {
@@ -2175,13 +2178,20 @@
                   value={dailyNoteFolder}
                   on:change={(event) => chooseDailyNoteFolder(event.currentTarget.value)}
                 >
-                  {#each dailyNoteFolders as folder}
-                    <option value={folder}>{folder}</option>
+                  {#each dailyNoteFolderOptions as folder}
+                    <option value={folder} disabled={folder === dailyNoteFolder && dailyNoteFolderMissing}>
+                      {folder}{folder === dailyNoteFolder && dailyNoteFolderMissing ? ' (missing here)' : ''}
+                    </option>
                   {/each}
                 </select>
               </label>
               <button type="button" on:click={showCurrentMonth}>Today</button>
             </div>
+            {#if dailyNoteFolderMissing}
+              <p class="calendar-folder-warning">
+                Using / because {dailyNoteFolder} is not in this connection.
+              </p>
+            {/if}
           </header>
           <div class="calendar-grid" aria-label={calendarMonthName}>
             {#each WEEK_DAYS as weekday}
