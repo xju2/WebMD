@@ -1628,6 +1628,71 @@
   {/each}
 {/snippet}
 
+{#snippet markdownBlocks(blocks)}
+  {#each blocks as block}
+    {#if block.type === 'heading'}
+      <svelte:element this={`h${block.level}`}>
+        {@render inline(block.children)}
+      </svelte:element>
+    {:else if block.type === 'paragraph'}
+      <p>{@render inline(block.children)}</p>
+    {:else if block.type === 'quote'}
+      <blockquote>{@render inline(block.children)}</blockquote>
+    {:else if block.type === 'callout'}
+      <aside class={`callout callout-${block.variant}`}>
+        <p class="callout-title">{@render inline(block.title)}</p>
+        {#if block.children.length}
+          <div class="callout-body">{@render markdownBlocks(block.children)}</div>
+        {/if}
+      </aside>
+    {:else if block.type === 'rule'}
+      <hr />
+    {:else if block.type === 'code'}
+      <pre><code>{block.text}</code></pre>
+    {:else if block.type === 'diff'}
+      {#each block.files as file}
+        {@render diffFile(file)}
+      {/each}
+    {:else if block.type === 'table'}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              {#each block.headers as header, column}
+                <th class={`align-${block.alignments[column]}`}>
+                  {@render inline(header)}
+                </th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each block.rows as row}
+              <tr>
+                {#each row as cell, column}
+                  <td class={`align-${block.alignments[column]}`}>
+                    {@render inline(cell)}
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {:else if block.type === 'list'}
+      <svelte:element this={block.ordered ? 'ol' : 'ul'}>
+        {#each block.items as item}
+          <li class:task={item.task}>
+            {#if item.task}
+              <input checked={item.checked} disabled type="checkbox" />
+            {/if}
+            <span>{@render inline(item.children)}</span>
+          </li>
+        {/each}
+      </svelte:element>
+    {/if}
+  {/each}
+{/snippet}
+
 {#snippet diffFile(file)}
   <article class="diff-file">
     <header class="diff-file-header">{file.title}</header>
@@ -2234,72 +2299,7 @@
           class="preview-pane"
         >
           {#if renderedBlocks.length}
-            {#each renderedBlocks as block}
-              {#if block.type === 'heading'}
-                <svelte:element this={`h${block.level}`}>
-                  {@render inline(block.children)}
-                </svelte:element>
-              {:else if block.type === 'paragraph'}
-                <p>{@render inline(block.children)}</p>
-              {:else if block.type === 'quote'}
-                <blockquote>{@render inline(block.children)}</blockquote>
-              {:else if block.type === 'callout'}
-                <aside class={`callout callout-${block.variant}`}>
-                  <p class="callout-title">{@render inline(block.title)}</p>
-                  {#if block.children.length}
-                    <p class="callout-body">{@render inline(block.children)}</p>
-                  {/if}
-                </aside>
-              {:else if block.type === 'rule'}
-                <hr />
-              {:else if block.type === 'code'}
-                <pre><code>{block.text}</code></pre>
-              {:else if block.type === 'diff'}
-                {#each block.files as file}
-                  {@render diffFile(file)}
-                {/each}
-              {:else if block.type === 'table'}
-                <div class="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        {#each block.headers as header, column}
-                          <th class={`align-${block.alignments[column]}`}>
-                            {@render inline(header)}
-                          </th>
-                        {/each}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each block.rows as row}
-                        <tr>
-                          {#each row as cell, column}
-                            <td class={`align-${block.alignments[column]}`}>
-                              {@render inline(cell)}
-                            </td>
-                          {/each}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-              {:else if block.type === 'list'}
-                <svelte:element this={block.ordered ? 'ol' : 'ul'}>
-                  {#each block.items as item}
-                    <li class:task={item.task}>
-                      {#if item.task}
-                        <input
-                          checked={item.checked}
-                          disabled
-                          type="checkbox"
-                        />
-                      {/if}
-                      <span>{@render inline(item.children)}</span>
-                    </li>
-                  {/each}
-                </svelte:element>
-              {/if}
-            {/each}
+            {@render markdownBlocks(renderedBlocks)}
           {:else}
             <p class="preview-empty">Empty file</p>
           {/if}

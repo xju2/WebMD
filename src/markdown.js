@@ -245,7 +245,7 @@ function parseQuote(lines) {
     type: 'callout',
     variant,
     title: parseInline(title),
-    children: parseInline(lines.slice(1).join(' ').trim())
+    children: renderMarkdown(lines.slice(1).join('\n'))
   };
 }
 

@@ -87,11 +87,26 @@ test('renders supported callout blockquotes', () => {
   assert.equal(blocks[0].type, 'callout');
   assert.equal(blocks[0].variant, 'note');
   assert.equal(blocks[0].title[0].text, 'My Note');
-  assert.equal(blocks[0].children[1].type, 'strong');
+  assert.equal(blocks[0].children[0].children[1].type, 'strong');
   assert.equal(blocks[1].type, 'callout');
   assert.equal(blocks[1].variant, 'tldr');
   assert.equal(blocks[1].title[0].text, 'TLDR');
   assert.equal(blocks[2].type, 'quote');
+});
+
+test('renders markdown blocks inside callouts', () => {
+  const blocks = renderMarkdown(`> [!info] HITS dataset **e8481\\_s4149** info:
+> - identifier                : 2950990
+> - nFiles                    : 49,984
+`);
+
+  assert.equal(blocks[0].type, 'callout');
+  assert.equal(blocks[0].title[1].type, 'strong');
+  assert.equal(blocks[0].children[0].type, 'list');
+  assert.deepEqual(
+    blocks[0].children[0].items.map((item) => item.children[0].text),
+    ['identifier                : 2950990', 'nFiles                    : 49,984']
+  );
 });
 
 test('auto-links bare URLs', () => {
