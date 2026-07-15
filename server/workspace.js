@@ -17,6 +17,14 @@ const IMAGE_EXTENSIONS = new Set([
   '.svg',
   '.webp'
 ]);
+const IMAGE_MIME_EXTENSIONS = new Map([
+  ['image/avif', '.avif'],
+  ['image/gif', '.gif'],
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/svg+xml', '.svg'],
+  ['image/webp', '.webp']
+]);
 
 export class WorkspaceError extends Error {
   constructor(status, message) {
@@ -42,6 +50,11 @@ export async function createWorkspace(workspaceRoot) {
     },
     loadFile: (filePath) => loadFile(root, documents, filePath),
     loadMediaFile: (filePath) => loadMediaFile(root, filePath),
+    saveImageFile: async (image) => {
+      const result = await saveImageFile(root, image);
+      searchIndex = null;
+      return result;
+    },
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
@@ -268,6 +281,34 @@ async function loadMediaFile(root, filePath) {
 
   if (!stat.isFile()) throw new WorkspaceError(400, 'Path points to a directory.');
   return { path: normalized, absolute, fileKind };
+}
+
+async function saveImageFile(root, { folder = '/assets', name, mimeType, data } = {}) {
+  const extension = imageExtensionFor(name, mimeType);
+  if (!extension) throw new WorkspaceError(400, 'Only image files are supported.');
+  if (typeof data !== 'string' || !data) {
+    throw new WorkspaceError(400, 'Image data is required.');
+  }
+
+  const buffer = Buffer.from(data, 'base64');
+  if (!buffer.length) throw new WorkspaceError(400, 'Image data is required.');
+
+  const directory = normalizeWorkspaceFolder(folder);
+  const stem = cleanFileStem(name) || timestampStem();
+
+  for (let index = 0; index < 1000; index += 1) {
+    const suffix = index ? `-${index + 1}` : '';
+    const filePath = `${directory === '/' ? '' : directory}/${stem}${suffix}${extension}`;
+    const absolute = await resolvePath(root, filePath, { forWrite: true });
+    try {
+      await fs.writeFile(absolute, buffer, { flag: 'wx' });
+      return { path: normalizeWorkspacePath(filePath) };
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
+
+  throw new WorkspaceError(409, 'Could not choose a unique image name.');
 }
 
 async function diffFile(root, filePath) {
@@ -642,6 +683,36 @@ function assertMedia(filePath) {
     throw new WorkspaceError(400, 'Only image and PDF files are supported.');
   }
   return fileKind;
+}
+
+function imageExtensionFor(name, mimeType) {
+  const mimeExtension = IMAGE_MIME_EXTENSIONS.get(String(mimeType || '').toLowerCase());
+  if (mimeExtension) return mimeExtension;
+  const extension = path.extname(name || '').toLowerCase();
+  if (IMAGE_EXTENSIONS.has(extension)) return extension;
+  return '';
+}
+
+function cleanFileStem(name) {
+  return path
+    .basename(name || '', path.extname(name || ''))
+    .replace(/^\.+/, '')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+function timestampStem() {
+  return `image-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
+}
+
+function normalizeWorkspaceFolder(folder) {
+  if (!folder || folder === '/') return '/';
+  const value = String(folder);
+  const normalized = normalizeWorkspacePath(
+    `${value.startsWith('/') ? value : `/${value}`}/_`
+  );
+  return path.posix.dirname(normalized) || '/';
 }
 
 function isMarkdownPath(filePath) {

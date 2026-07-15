@@ -524,6 +524,27 @@ button {
   gap: 8px;
 }
 
+.asset-folder-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #637083;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.asset-folder-control input {
+  width: 120px;
+  height: 34px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  font: inherit;
+}
+
 .file-heading {
   display: flex;
   min-width: 0;
@@ -1246,6 +1267,16 @@ button {
 .preview-pane a.wiki-link {
   font-weight: 650;
   text-decoration-style: dotted;
+}
+
+.preview-pane .embedded-image {
+  display: block;
+  max-width: min(100%, 960px);
+  max-height: 70vh;
+  margin: 0.8em 0;
+  border: 1px solid #dfe6ee;
+  background: #ffffff;
+  object-fit: contain;
 }
 
 .preview-pane blockquote {

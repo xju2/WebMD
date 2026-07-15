@@ -18,7 +18,7 @@ export async function createApp({
   const workspaces = await createWorkspaceRegistry(roots);
   const app = express();
 
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: '25mb' }));
 
   app.get('/api/workspace/roots', (_req, res) => {
     res.json(workspaces.options);
@@ -81,6 +81,10 @@ export async function createApp({
     res.json(
       await workspaces.get(req.body.root).saveFile(req.body.path, req.body.content)
     );
+  }));
+
+  app.post('/api/workspace/images', asyncHandler(async (req, res) => {
+    res.json(await workspaces.get(req.body.root).saveImageFile(req.body));
   }));
 
   app.post('/api/workspace/updates', asyncHandler(async (req, res) => {

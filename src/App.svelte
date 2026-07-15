@@ -24,6 +24,8 @@
   const RECENT_FILES_LIMIT = 5;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
+  const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
+  const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
@@ -75,6 +77,7 @@
   let sidebarVisible = true;
   let sidebarView = 'files';
   let dailyNoteFolder = '/';
+  let imageAssetFolder = '/assets';
   let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
@@ -176,6 +179,9 @@
           basicSetup,
           markdown(),
           EditorView.lineWrapping,
+          EditorView.domEventHandlers({
+            paste: handleEditorPaste
+          }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               content = update.state.doc.toString();
@@ -405,6 +411,7 @@
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
       dailyNoteFolder = readDailyNoteFolder();
+      imageAssetFolder = readImageAssetFolder();
       recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
       await loadOverview(selectedRoot);
@@ -668,6 +675,68 @@
     });
     applyingServerText = false;
     updateSelectedText(editorView.state);
+  }
+
+  function handleEditorPaste(event) {
+    if (!selectedPath || !selectedIsMarkdown) return false;
+    const file = pastedImageFile(event.clipboardData);
+    if (!file) return false;
+
+    event.preventDefault();
+    pasteImageFile(file);
+    return true;
+  }
+
+  function pastedImageFile(data) {
+    const file = [...(data?.files || [])].find((item) =>
+      item.type.startsWith('image/')
+    );
+    if (file) return file;
+
+    return [...(data?.items || [])]
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      ?.getAsFile();
+  }
+
+  async function pasteImageFile(file) {
+    const root = selectedRoot;
+    const path = selectedPath;
+    status = '[Syncing...]';
+    error = '';
+
+    try {
+      const result = await requestJson('/api/workspace/images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          folder: imageAssetFolder,
+          name: file.name,
+          mimeType: file.type,
+          data: await fileToBase64(file)
+        })
+      });
+      if (root !== selectedRoot || path !== selectedPath) return;
+
+      const target = result.path.replace(/^\//, '');
+      editorView.dispatch(editorView.state.replaceSelection(`![[${target}]]`));
+      editorView.focus();
+      await loadTree(root);
+    } catch (err) {
+      if (root === selectedRoot && path === selectedPath) {
+        error = err.message;
+        status = hasUnsavedChanges() ? '[Offline - Retrying]' : '[Saved]';
+      }
+    }
+  }
+
+  async function fileToBase64(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return btoa(binary);
   }
 
   function resetCollaboration(version = 0) {
@@ -1258,6 +1327,20 @@
     return `/api/workspace/media?root=${encodeURIComponent(selectedRoot)}&path=${encodeURIComponent(path)}`;
   }
 
+  function embeddedMediaPath(target) {
+    const filePath = target.split('#')[0].trim();
+    if (!IMAGE_EXTENSIONS.test(filePath)) return '';
+
+    if (filePath.includes('/')) return normalizeWorkspaceFilePath(filePath);
+
+    const matches = workspaceFiles.filter(
+      (file) => file.fileKind === 'image' && basename(file.path) === filePath
+    );
+    return matches.length === 1
+      ? matches[0].path
+      : joinWorkspacePath(imageAssetFolder, filePath);
+  }
+
   function wikiLinkHref(target) {
     const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
     return path ? `#${encodeURI(path)}` : '';
@@ -1363,10 +1446,21 @@
     return path.split('/').pop() || path;
   }
 
+  function joinWorkspacePath(folder, name) {
+    return normalizeWorkspaceFilePath(`${folder === '/' ? '' : folder}/${name}`);
+  }
+
+  function normalizeWorkspaceFilePath(path) {
+    const parts = (path.startsWith('/') ? path : `/${path}`)
+      .split('/')
+      .filter((part) => part && part !== '.');
+    return parts.length && !parts.includes('..') ? `/${parts.join('/')}` : '';
+  }
+
   function fileKindForPath(path) {
     return (
       findFileNode(workspaceTree, path)?.fileKind ||
-      (/\.(avif|gif|jpe?g|png|svg|webp)$/i.test(path)
+      (IMAGE_EXTENSIONS.test(path)
         ? 'image'
         : /\.pdf$/i.test(path)
           ? 'pdf'
@@ -1448,6 +1542,15 @@
     }
   }
 
+  function chooseImageAssetFolder(folder) {
+    imageAssetFolder = normalizeWorkspaceFolder(folder) || '/assets';
+    try {
+      localStorage.setItem(IMAGE_ASSET_FOLDER_KEY, imageAssetFolder);
+    } catch {
+      // Ignore storage failures; pasted images still use the selected folder.
+    }
+  }
+
   function readDailyNoteFolder() {
     try {
       return (
@@ -1462,6 +1565,21 @@
     } catch {
       return '/';
     }
+  }
+
+  function readImageAssetFolder() {
+    try {
+      return normalizeWorkspaceFolder(
+        localStorage.getItem(IMAGE_ASSET_FOLDER_KEY) || '/assets'
+      );
+    } catch {
+      return '/assets';
+    }
+  }
+
+  function normalizeWorkspaceFolder(folder) {
+    const normalized = normalizeWorkspaceFilePath(`${folder || '/assets'}/_`);
+    return normalized ? normalized.slice(0, normalized.lastIndexOf('/')) || '/' : '';
   }
 
   function toggleFolder(path) {
@@ -1621,6 +1739,17 @@
         on:click={(event) => openWikiLink(event, segment.target)}
         >{segment.text}</a
       >
+    {:else if segment.type === 'wikiEmbed'}
+      {@const imagePath = embeddedMediaPath(segment.target)}
+      {#if imagePath}
+        <img
+          alt={segment.text}
+          class="embedded-image"
+          src={mediaUrl(imagePath)}
+        />
+      {:else}
+        {segment.text}
+      {/if}
     {:else if segment.type === 'strong'}
       <strong>{segment.text}</strong>
     {:else if segment.type === 'em'}
@@ -2007,6 +2136,14 @@
         </button>
       </div>
       <div class="topbar-actions">
+        <label class="asset-folder-control">
+          Assets
+          <input
+            aria-label="Image asset folder"
+            value={imageAssetFolder}
+            on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
+          />
+        </label>
         <div class="view-toggle" aria-label="View mode">
           <button
             class:active={viewMode === 'edit' && selectedIsMarkdown}

@@ -129,3 +129,11 @@ test('parses wiki links as workspace references', () => {
     text: 'yesterday'
   });
 });
+
+test('parses embedded wiki links for media previews', () => {
+  assert.deepEqual(parseInline('![[assets/image.png|plot]]')[0], {
+    type: 'wikiEmbed',
+    target: 'assets/image.png',
+    text: 'plot'
+  });
+});

@@ -114,6 +114,30 @@ test('accepts document updates and exposes them as SSE events', async () => {
   }
 });
 
+test('saves pasted images through the workspace API', async () => {
+  const root = await tempRoot();
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/workspace/images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: '/assets',
+        name: 'clip.png',
+        mimeType: 'image/png',
+        data: Buffer.from('png').toString('base64')
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { path: '/assets/clip.png' });
+    assert.equal(await fs.readFile(path.join(root, 'assets', 'clip.png'), 'utf8'), 'png');
+  } finally {
+    server.close();
+  }
+});
+
 test('streams AI chat through the selected workspace document', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nContext line\n');
