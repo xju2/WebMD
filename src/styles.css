@@ -1220,7 +1220,10 @@ button {
 }
 
 .preview-pane {
+  width: 100%;
+  max-width: 82ch;
   height: 100%;
+  margin: 0 auto;
   overflow: auto;
   overflow-wrap: anywhere;
   padding: 26px 34px 80px;
