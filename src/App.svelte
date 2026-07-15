@@ -187,6 +187,8 @@
           markdown(),
           EditorView.lineWrapping,
           EditorView.domEventHandlers({
+            dragover: handleEditorDragOver,
+            drop: handleEditorDrop,
             paste: handleEditorPaste
           }),
           EditorView.updateListener.of((update) => {
@@ -686,48 +688,75 @@
 
   function handleEditorPaste(event) {
     if (!selectedPath || !selectedIsMarkdown) return false;
-    const file = pastedImageFile(event.clipboardData);
-    if (!file) return false;
+    const files = dataTransferImageFiles(event.clipboardData);
+    if (!files.length) return false;
 
     event.preventDefault();
-    pasteImageFile(file);
+    pasteImageFiles(files, editorView.state.selection.main);
     return true;
   }
 
-  function pastedImageFile(data) {
-    const file = [...(data?.files || [])].find((item) =>
-      item.type.startsWith('image/')
-    );
-    if (file) return file;
-
-    return [...(data?.items || [])]
-      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
-      ?.getAsFile();
+  function handleEditorDragOver(event) {
+    if (selectedPath && selectedIsMarkdown && dataTransferImageFiles(event.dataTransfer).length) {
+      event.preventDefault();
+      return true;
+    }
+    return false;
   }
 
-  async function pasteImageFile(file) {
+  function handleEditorDrop(event, view) {
+    if (!selectedPath || !selectedIsMarkdown) return false;
+    const files = dataTransferImageFiles(event.dataTransfer);
+    if (!files.length) return false;
+
+    event.preventDefault();
+    const position =
+      view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
+      view.state.selection.main.head;
+    pasteImageFiles(files, { from: position, to: position });
+    return true;
+  }
+
+  function dataTransferImageFiles(data) {
+    const files = [...(data?.files || [])].filter(isImageFile);
+    if (files.length) return files;
+
+    return [...(data?.items || [])]
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter(isImageFile);
+  }
+
+  function isImageFile(file) {
+    return file?.type?.startsWith('image/');
+  }
+
+  async function pasteImageFiles(files, range) {
     const root = selectedRoot;
     const path = selectedPath;
     status = '[Syncing...]';
     error = '';
 
     try {
-      const result = await requestJson('/api/workspace/images', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          root,
-          folder: imageAssetFolder,
-          notePath: path,
-          name: file.name,
-          mimeType: file.type,
-          data: await fileToBase64(file)
-        })
-      });
+      const embeds = [];
+      for (const file of files) {
+        const result = await requestJson('/api/workspace/images', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            root,
+            folder: imageAssetFolder,
+            notePath: path,
+            name: file.name,
+            mimeType: file.type,
+            data: await fileToBase64(file)
+          })
+        });
+        embeds.push(`![[${result.path.replace(/^\//, '')}]]`);
+      }
       if (root !== selectedRoot || path !== selectedPath) return;
 
-      const target = result.path.replace(/^\//, '');
-      editorView.dispatch(editorView.state.replaceSelection(`![[${target}]]`));
+      insertImageEmbeds(embeds, range);
       editorView.focus();
       await loadTree(root);
     } catch (err) {
@@ -736,6 +765,18 @@
         status = hasUnsavedChanges() ? '[Offline - Retrying]' : '[Saved]';
       }
     }
+  }
+
+  function insertImageEmbeds(embeds, range) {
+    const insert = embeds.join('\n');
+    const length = editorView.state.doc.length;
+    const from = Math.max(0, Math.min(range.from, length));
+    const to = Math.max(from, Math.min(range.to, length));
+    editorView.dispatch({
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length },
+      effects: EditorView.scrollIntoView(from, { y: 'center' })
+    });
   }
 
   async function fileToBase64(file) {
