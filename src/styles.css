@@ -1457,7 +1457,10 @@ button {
 }
 
 .diff-pane {
+  width: 100%;
+  max-width: calc(82ch + 104px);
   height: 100%;
+  margin: 0 auto;
   overflow: auto;
   padding: 22px 24px 80px;
   background: #fbfcfd;
