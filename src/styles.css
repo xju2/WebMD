@@ -725,6 +725,8 @@ button {
 }
 
 .cm-content {
+  max-width: 82ch;
+  margin: 0 auto;
   padding: 22px 24px 72px;
 }
 
