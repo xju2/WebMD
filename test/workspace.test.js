@@ -179,22 +179,27 @@ test('saves pasted images into the requested folder', async () => {
 
   const first = await workspace.saveImageFile({
     folder: 'assets',
+    notePath: '/2026-07-15.md',
     name: 'My Plot.png',
     mimeType: 'image/png',
     data: Buffer.from('png').toString('base64')
   });
   const second = await workspace.saveImageFile({
     folder: 'assets',
+    notePath: '/2026-07-15.md',
     name: 'My Plot.png',
     mimeType: 'image/png',
     data: Buffer.from('next').toString('base64')
   });
 
-  assert.equal(first.path, '/assets/My-Plot.png');
-  assert.equal(second.path, '/assets/My-Plot-2.png');
-  assert.equal(await fs.readFile(path.join(root, 'assets', 'My-Plot.png'), 'utf8'), 'png');
+  assert.equal(first.path, '/assets/2026-07-15-01.png');
+  assert.equal(second.path, '/assets/2026-07-15-02.png');
   assert.equal(
-    await fs.readFile(path.join(root, 'assets', 'My-Plot-2.png'), 'utf8'),
+    await fs.readFile(path.join(root, 'assets', '2026-07-15-01.png'), 'utf8'),
+    'png'
+  );
+  assert.equal(
+    await fs.readFile(path.join(root, 'assets', '2026-07-15-02.png'), 'utf8'),
     'next'
   );
 });

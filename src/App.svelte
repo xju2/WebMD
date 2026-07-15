@@ -718,6 +718,7 @@
         body: JSON.stringify({
           root,
           folder: imageAssetFolder,
+          notePath: path,
           name: file.name,
           mimeType: file.type,
           data: await fileToBase64(file)

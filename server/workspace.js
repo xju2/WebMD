@@ -320,7 +320,10 @@ async function createFolder(root, folderPath) {
   return { path: normalized };
 }
 
-async function saveImageFile(root, { folder = '/assets', name, mimeType, data } = {}) {
+async function saveImageFile(
+  root,
+  { folder = '/assets', notePath, name, mimeType, data } = {}
+) {
   const extension = imageExtensionFor(name, mimeType);
   if (!extension) throw new WorkspaceError(400, 'Only image files are supported.');
   if (typeof data !== 'string' || !data) {
@@ -331,10 +334,15 @@ async function saveImageFile(root, { folder = '/assets', name, mimeType, data } 
   if (!buffer.length) throw new WorkspaceError(400, 'Image data is required.');
 
   const directory = normalizeWorkspaceFolder(folder);
-  const stem = cleanFileStem(name) || timestampStem();
+  const noteStem = noteFileStem(notePath);
+  const stem = noteStem || cleanFileStem(name) || timestampStem();
 
   for (let index = 0; index < 1000; index += 1) {
-    const suffix = index ? `-${index + 1}` : '';
+    const suffix = noteStem
+      ? `-${String(index + 1).padStart(2, '0')}`
+      : index
+        ? `-${index + 1}`
+        : '';
     const filePath = `${directory === '/' ? '' : directory}/${stem}${suffix}${extension}`;
     const absolute = await resolvePath(root, filePath, { forWrite: true });
     try {
@@ -737,6 +745,16 @@ function cleanFileStem(name) {
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80);
+}
+
+function noteFileStem(filePath) {
+  try {
+    const normalized = normalizeWorkspacePath(filePath);
+    if (!isMarkdownPath(normalized)) return '';
+    return cleanFileStem(path.basename(normalized, path.extname(normalized)));
+  } catch {
+    return '';
+  }
 }
 
 function timestampStem() {

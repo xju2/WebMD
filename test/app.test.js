@@ -124,6 +124,7 @@ test('saves pasted images through the workspace API', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         folder: '/assets',
+        notePath: '/2026-07-15.md',
         name: 'clip.png',
         mimeType: 'image/png',
         data: Buffer.from('png').toString('base64')
@@ -131,8 +132,11 @@ test('saves pasted images through the workspace API', async () => {
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { path: '/assets/clip.png' });
-    assert.equal(await fs.readFile(path.join(root, 'assets', 'clip.png'), 'utf8'), 'png');
+    assert.deepEqual(await response.json(), { path: '/assets/2026-07-15-01.png' });
+    assert.equal(
+      await fs.readFile(path.join(root, 'assets', '2026-07-15-01.png'), 'utf8'),
+      'png'
+    );
   } finally {
     server.close();
   }
