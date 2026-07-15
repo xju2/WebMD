@@ -528,13 +528,23 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   color: #637083;
   font-size: 0.82rem;
   font-weight: 700;
 }
 
+.asset-folder-control label,
+.asset-folder-new {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.asset-folder-control select,
 .asset-folder-control input {
-  width: 120px;
+  width: 130px;
   height: 34px;
   min-width: 0;
   padding: 0 9px;
@@ -543,6 +553,23 @@ button {
   background: #ffffff;
   color: #273246;
   font: inherit;
+}
+
+.asset-folder-new button {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 720;
+}
+
+.asset-folder-new button:disabled {
+  color: #8994a5;
+  cursor: default;
 }
 
 .file-heading {
@@ -1671,6 +1698,11 @@ button {
 
   .topbar-actions {
     justify-content: space-between;
+  }
+
+  .asset-folder-control {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
   }
 
   .view-toggle {

@@ -237,6 +237,19 @@ test('creates missing folders when saving markdown', async () => {
   );
 });
 
+test('creates folders for asset dropdown options', async () => {
+  const root = await tempRoot();
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(await workspace.createFolder('assets/screenshots'), {
+    path: '/assets/screenshots'
+  });
+
+  const tree = await workspace.readTree();
+  assert.equal(tree[0].path, '/assets');
+  assert.equal(tree[0].children[0].path, '/assets/screenshots');
+});
+
 test('rejects missing folders through symlink escapes', async () => {
   const root = await tempRoot();
   const outside = await tempRoot();

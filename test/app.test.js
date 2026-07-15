@@ -138,6 +138,28 @@ test('saves pasted images through the workspace API', async () => {
   }
 });
 
+test('creates folders through the workspace API', async () => {
+  const root = await tempRoot();
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/workspace/folders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/assets/screenshots' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { path: '/assets/screenshots' });
+    assert.equal(
+      (await fs.stat(path.join(root, 'assets', 'screenshots'))).isDirectory(),
+      true
+    );
+  } finally {
+    server.close();
+  }
+});
+
 test('streams AI chat through the selected workspace document', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nContext line\n');

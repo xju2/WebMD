@@ -83,6 +83,10 @@ export async function createApp({
     );
   }));
 
+  app.post('/api/workspace/folders', asyncHandler(async (req, res) => {
+    res.json(await workspaces.get(req.body.root).createFolder(req.body.path));
+  }));
+
   app.post('/api/workspace/images', asyncHandler(async (req, res) => {
     res.json(await workspaces.get(req.body.root).saveImageFile(req.body));
   }));

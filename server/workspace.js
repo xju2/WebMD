@@ -50,6 +50,11 @@ export async function createWorkspace(workspaceRoot) {
     },
     loadFile: (filePath) => loadFile(root, documents, filePath),
     loadMediaFile: (filePath) => loadMediaFile(root, filePath),
+    createFolder: async (folderPath) => {
+      const result = await createFolder(root, folderPath);
+      searchIndex = null;
+      return result;
+    },
     saveImageFile: async (image) => {
       const result = await saveImageFile(root, image);
       searchIndex = null;
@@ -281,6 +286,38 @@ async function loadMediaFile(root, filePath) {
 
   if (!stat.isFile()) throw new WorkspaceError(400, 'Path points to a directory.');
   return { path: normalized, absolute, fileKind };
+}
+
+async function createFolder(root, folderPath) {
+  const normalized = normalizeWorkspaceFolder(folderPath);
+  if (normalized === '/') return { path: '/' };
+
+  const target = path.resolve(root, `.${normalized}`);
+  if (!isInside(root, target)) {
+    throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+  }
+  await ensureWriteParent(root, path.dirname(target));
+
+  let stat;
+  try {
+    stat = await fs.lstat(target);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+    await fs.mkdir(target);
+    return { path: normalized };
+  }
+
+  if (stat.isSymbolicLink()) {
+    const real = await fs.realpath(target);
+    if (!isInside(root, real)) {
+      throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+    }
+    stat = await fs.stat(real);
+  }
+  if (!stat.isDirectory()) {
+    throw new WorkspaceError(400, 'Path is not a directory.');
+  }
+  return { path: normalized };
 }
 
 async function saveImageFile(root, { folder = '/assets', name, mimeType, data } = {}) {

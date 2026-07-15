@@ -25,6 +25,7 @@
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
+  const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const CLIENT_ID =
@@ -78,6 +79,8 @@
   let sidebarView = 'files';
   let dailyNoteFolder = '/';
   let imageAssetFolder = '/assets';
+  let imageAssetFolderDraft = '';
+  let creatingImageAssetFolder = false;
   let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
@@ -110,6 +113,7 @@
     (file) => file.fileKind === 'markdown'
   );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
+  $: imageAssetFolders = dailyNoteFolders;
   $: activeDailyNoteFolder = dailyNoteFolders.includes(dailyNoteFolder)
     ? dailyNoteFolder
     : '/';
@@ -118,6 +122,9 @@
   $: dailyNoteFolderOptions = dailyNoteFolderMissing
     ? [dailyNoteFolder, ...dailyNoteFolders]
     : dailyNoteFolders;
+  $: imageAssetFolderOptions = imageAssetFolders.includes(imageAssetFolder)
+    ? imageAssetFolders
+    : [imageAssetFolder, ...imageAssetFolders];
   $: calendarDays = buildCalendarDays(calendarMonth);
   $: calendarMonthName = calendarMonth.toLocaleDateString([], {
     month: 'long',
@@ -1543,12 +1550,48 @@
   }
 
   function chooseImageAssetFolder(folder) {
+    if (folder === NEW_IMAGE_ASSET_FOLDER) {
+      creatingImageAssetFolder = true;
+      imageAssetFolderDraft = '';
+      return;
+    }
+
+    setImageAssetFolder(folder);
+    creatingImageAssetFolder = false;
+  }
+
+  function setImageAssetFolder(folder) {
     imageAssetFolder = normalizeWorkspaceFolder(folder) || '/assets';
     try {
       localStorage.setItem(IMAGE_ASSET_FOLDER_KEY, imageAssetFolder);
     } catch {
       // Ignore storage failures; pasted images still use the selected folder.
     }
+  }
+
+  async function createImageAssetFolder() {
+    const folder = newImageAssetFolderPath();
+    if (!folder) return;
+
+    try {
+      const result = await requestJson('/api/workspace/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root: selectedRoot, path: folder })
+      });
+      setImageAssetFolder(result.path);
+      imageAssetFolderDraft = '';
+      creatingImageAssetFolder = false;
+      await loadTree(selectedRoot);
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  function newImageAssetFolderPath() {
+    return imageAssetFolderDraft.trim()
+      ? normalizeWorkspaceFolder(imageAssetFolderDraft)
+      : '';
   }
 
   function readDailyNoteFolder() {
@@ -2136,14 +2179,36 @@
         </button>
       </div>
       <div class="topbar-actions">
-        <label class="asset-folder-control">
-          Assets
-          <input
-            aria-label="Image asset folder"
-            value={imageAssetFolder}
-            on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
-          />
-        </label>
+        <div class="asset-folder-control">
+          <label>
+            Assets
+            <select
+              aria-label="Image asset folder"
+              value={imageAssetFolder}
+              on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
+            >
+              {#each imageAssetFolderOptions as folder}
+                <option value={folder}>{folder}</option>
+              {/each}
+              <option value={NEW_IMAGE_ASSET_FOLDER}>New folder...</option>
+            </select>
+          </label>
+          {#if creatingImageAssetFolder}
+            <form class="asset-folder-new" on:submit|preventDefault={createImageAssetFolder}>
+              <input
+                aria-label="New image asset folder"
+                bind:value={imageAssetFolderDraft}
+                placeholder="/assets"
+              />
+              <button
+                disabled={!newImageAssetFolderPath()}
+                type="submit"
+              >
+                Create
+              </button>
+            </form>
+          {/if}
+        </div>
         <div class="view-toggle" aria-label="View mode">
           <button
             class:active={viewMode === 'edit' && selectedIsMarkdown}
