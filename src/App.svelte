@@ -1986,12 +1986,23 @@
 >
   <nav class="global-bar" aria-label="Global actions">
     <button
+      aria-label="Open dashboard"
+      class:active={!selectedPath && viewMode === 'edit'}
+      class="global-action global-action-text"
+      disabled={!workspaceRoots.length}
+      title="Dashboard"
+      type="button"
+      on:click={showHome}
+    >
+      Home
+    </button>
+    <button
       aria-label={sidebarVisible && sidebarView === 'files'
         ? 'Hide files'
         : 'Show files'}
       aria-pressed={sidebarVisible && sidebarView === 'files'}
       class:active={sidebarVisible && sidebarView === 'files'}
-      class="global-action"
+      class="global-action global-action-text"
       title="Files"
       type="button"
       on:click={() => toggleSidebar('files')}
