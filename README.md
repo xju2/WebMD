@@ -62,6 +62,38 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `OPENAI_API_KEY`: required for `AI_PROVIDER=openai`; never sent to the browser.
 - `OPENAI_BASE_URL`: optional OpenAI-compatible base URL, defaults to `https://api.openai.com/v1`.
 
+## Daily brief integration
+
+WebMD displays the latest Codex-generated daily brief from:
+
+```text
+raw/dailybrief/latest.md
+```
+
+The scheduled Codex task should write plain Markdown there. A dated history copy
+such as `raw/dailybrief/2026-07-16.md` is optional.
+
+Recommended Markdown shape:
+
+```markdown
+# Daily Brief - 2026-07-16
+
+_Generated: 2026-07-16 07:30 America/Los_Angeles_
+
+## Focus
+- ...
+
+## Updates
+- ...
+
+## Follow-ups
+- [ ] ...
+
+## Sources
+- raw/dailynotes/2026-07-16.md
+- raw/projects/example.md
+```
+
 ## Scripts
 
 - `npm run dev`: start backend and frontend locally.

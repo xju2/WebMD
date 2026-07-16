@@ -55,6 +55,9 @@
     changes: []
   };
   let overviewStatus = 'Loading workspace...';
+  let dailyBrief = { path: '/raw/dailybrief/latest.md', content: '' };
+  let dailyBriefStatus = '';
+  let dailyBriefGenerating = false;
   let graphData = { nodes: [], edges: [], unresolved: 0 };
   let graphView = { nodes: [], edges: [] };
   let graphScope = 'wiki';
@@ -151,6 +154,9 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: dailyBriefBlocks = dailyBrief.content
+    ? renderMarkdown(dailyBrief.content)
+    : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
@@ -424,6 +430,7 @@
       recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
       await loadOverview(selectedRoot);
+      await loadDailyBrief(selectedRoot);
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
     } catch (err) {
@@ -462,6 +469,9 @@
     viewMode = 'edit';
     graphData = { nodes: [], edges: [], unresolved: 0 };
     graphView = { nodes: [], edges: [] };
+    dailyBrief = { path: '/raw/dailybrief/latest.md', content: '' };
+    dailyBriefStatus = '';
+    dailyBriefGenerating = false;
     status = '[Saved]';
     error = '';
     clearInlineEdit();
@@ -478,6 +488,7 @@
     setEditorContent('');
     await loadTree();
     await loadOverview();
+    await loadDailyBrief();
   }
 
   async function openFile(
@@ -1033,6 +1044,7 @@
       return;
     }
     await loadOverview(root);
+    await loadDailyBrief(root);
     if (viewMode === 'calendar') {
       status = '[Saved]';
       return;
@@ -1284,6 +1296,7 @@
     history.replaceState({ root: selectedRoot }, '', location.pathname + location.search);
     status = '[Saved]';
     await loadOverview();
+    await loadDailyBrief();
   }
 
   async function focusWorkspaceSearch() {
@@ -1314,6 +1327,39 @@
       }
     } catch (err) {
       if (root === selectedRoot) overviewStatus = err.message;
+    }
+  }
+
+  async function loadDailyBrief(root = selectedRoot) {
+    dailyBriefStatus = 'Loading daily brief...';
+    try {
+      const brief = await requestJson(
+        `/api/workspace/daily-brief?root=${encodeURIComponent(root)}`
+      );
+      if (root === selectedRoot) {
+        dailyBrief = brief;
+        dailyBriefStatus = brief.content ? '' : 'No daily brief yet';
+      }
+    } catch (err) {
+      if (root === selectedRoot) dailyBriefStatus = err.message;
+    }
+  }
+
+  async function refreshDailyBrief() {
+    if (dailyBriefGenerating) return;
+    dailyBriefGenerating = true;
+    dailyBriefStatus = 'Loading daily brief...';
+    error = '';
+
+    try {
+      await loadDailyBrief(selectedRoot);
+      await loadTree(selectedRoot);
+      await loadOverview(selectedRoot);
+    } catch (err) {
+      dailyBriefStatus = 'Daily brief reload failed';
+      error = err.message;
+    } finally {
+      dailyBriefGenerating = false;
     }
   }
 
@@ -2329,6 +2375,37 @@
               <button class="home-primary" type="button" on:click={() => openDailyNote()}>
                 Open today’s note
               </button>
+            </article>
+
+            <article class="home-card home-brief">
+              <div class="home-card-heading">
+                <div>
+                  <p class="home-card-label">Review</p>
+                  <h2>Daily brief</h2>
+                </div>
+                <button
+                  class="home-link"
+                  disabled={dailyBriefGenerating}
+                  type="button"
+                  on:click={refreshDailyBrief}
+                >
+                  {dailyBriefGenerating ? 'Loading...' : 'Reload'}
+                </button>
+              </div>
+              {#if dailyBriefBlocks.length}
+                <div class="home-brief-preview">
+                  {@render markdownBlocks(dailyBriefBlocks)}
+                </div>
+                <button
+                  class="home-secondary"
+                  type="button"
+                  on:click={() => openFile(dailyBrief.path)}
+                >
+                  Open brief
+                </button>
+              {:else}
+                <p class="home-empty">{dailyBriefStatus || 'No daily brief yet.'}</p>
+              {/if}
             </article>
 
             <article class="home-card">

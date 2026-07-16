@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAiEdit, streamAiChat } from './ai.js';
+import { readDailyBrief } from './daily-brief.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,6 +57,10 @@ export async function createApp({
 
   app.get('/api/workspace/diff', asyncHandler(async (req, res) => {
     res.json(await workspaces.get(req.query.root).diffFile(req.query.path));
+  }));
+
+  app.get('/api/workspace/daily-brief', asyncHandler(async (req, res) => {
+    res.json(await readDailyBrief(workspaces.get(req.query.root)));
   }));
 
   app.get('/api/workspace/events', asyncHandler(async (req, res) => {

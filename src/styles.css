@@ -836,6 +836,10 @@ button {
   border-top: 3px solid #174b82;
 }
 
+.home-brief {
+  border-top: 3px solid #33816a;
+}
+
 .home-today > p:not(.home-card-label) {
   margin-top: 10px;
   color: #536176;
@@ -866,6 +870,23 @@ button {
   background: #123f75;
 }
 
+.home-secondary {
+  min-height: 34px;
+  margin-top: 14px;
+  padding: 0 12px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #174b82;
+  cursor: pointer;
+  font-weight: 720;
+}
+
+.home-secondary:hover {
+  border-color: #9fb2ca;
+  background: #eef3f8;
+}
+
 .home-card-heading {
   display: flex;
   align-items: start;
@@ -880,6 +901,59 @@ button {
   color: #174b82;
   cursor: pointer;
   font-weight: 700;
+}
+
+.home-link:disabled {
+  color: #8994a5;
+  cursor: default;
+}
+
+.home-brief-preview {
+  max-height: 360px;
+  margin-top: 14px;
+  overflow: auto;
+  color: #273246;
+  line-height: 1.55;
+}
+
+.home-brief-preview > :first-child {
+  margin-top: 0;
+}
+
+.home-brief-preview h1 {
+  display: none;
+}
+
+.home-brief-preview h2 {
+  margin: 0.9em 0 0.25em;
+  color: #172033;
+  font-size: 0.96rem;
+}
+
+.home-brief-preview p,
+.home-brief-preview ul,
+.home-brief-preview ol {
+  margin: 0.55em 0;
+}
+
+.home-brief-preview ul,
+.home-brief-preview ol {
+  padding-left: 1.25em;
+}
+
+.home-brief-preview li {
+  margin: 0.2em 0;
+}
+
+.home-brief-preview code {
+  border-radius: 4px;
+  background: #edf2f7;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.9em;
+}
+
+.home-brief-preview :not(pre) > code {
+  padding: 0.1em 0.3em;
 }
 
 .home-list {
