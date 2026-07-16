@@ -24,6 +24,7 @@
   const RECENT_FILES_LIMIT = 5;
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
+  const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
@@ -87,13 +88,15 @@
   let diffStatus = '';
   let sidebarVisible = true;
   let sidebarView = 'files';
-  let dailyNoteFolder = '/';
+  let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
+  let dailyNoteFolderStored = false;
   let imageAssetFolder = '/assets';
   let imageAssetFolderDraft = '';
   let creatingImageAssetFolder = false;
   let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
+  let treeLoaded = false;
   let appShell;
   let editorHost;
   let treeHost;
@@ -124,9 +127,10 @@
   );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
   $: imageAssetFolders = dailyNoteFolders;
-  $: activeDailyNoteFolder = dailyNoteFolders.includes(dailyNoteFolder)
-    ? dailyNoteFolder
-    : '/';
+  $: activeDailyNoteFolder =
+    !treeLoaded || dailyNoteFolders.includes(dailyNoteFolder)
+      ? dailyNoteFolder
+      : '/';
   $: dailyNoteFolderMissing =
     dailyNoteFolder !== '/' && activeDailyNoteFolder !== dailyNoteFolder;
   $: dailyNoteFolderOptions = dailyNoteFolderMissing
@@ -435,10 +439,12 @@
     try {
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
-      dailyNoteFolder = readDailyNoteFolder();
+      ({ folder: dailyNoteFolder, stored: dailyNoteFolderStored } =
+        readDailyNoteFolder());
       imageAssetFolder = readImageAssetFolder();
       recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
+      reconcileDailyNoteFolder();
       await loadOverview(selectedRoot);
       await loadDailyBrief(selectedRoot);
       const path = navigationPathFromLocation();
@@ -455,6 +461,7 @@
       );
       if (root === selectedRoot) {
         tree = nextTree;
+        treeLoaded = true;
         error = '';
       }
       return true;
@@ -492,11 +499,13 @@
     diffStatus = '';
     expandedDirs = new Set();
     loadedTreeOnce = false;
+    treeLoaded = false;
     fileCache = new Map();
     navigationBackStack = [];
     navigationForwardStack = [];
     setEditorContent('');
     await loadTree();
+    reconcileDailyNoteFolder();
     await loadOverview();
     await loadDailyBrief();
   }
@@ -1617,6 +1626,7 @@
 
   function chooseDailyNoteFolder(folder) {
     dailyNoteFolder = folder;
+    dailyNoteFolderStored = true;
     calendarMonth = new Date(calendarMonth);
     try {
       localStorage.setItem(DAILY_NOTE_FOLDER_KEY, folder);
@@ -1672,18 +1682,26 @@
 
   function readDailyNoteFolder() {
     try {
-      return (
+      const folder =
         localStorage.getItem(DAILY_NOTE_FOLDER_KEY) ||
         workspaceRoots
           .map((root) =>
             localStorage.getItem(`${LEGACY_DAILY_NOTE_FOLDER_PREFIX}${root.id}`)
           )
           .find((folder) => folder && folder !== '/') ||
-        '/'
-      );
+        '';
+      return {
+        folder: folder || DEFAULT_DAILY_NOTE_FOLDER,
+        stored: Boolean(folder)
+      };
     } catch {
-      return '/';
+      return { folder: DEFAULT_DAILY_NOTE_FOLDER, stored: false };
     }
+  }
+
+  function reconcileDailyNoteFolder() {
+    if (!dailyNoteFolderStored && !dailyNoteFolders.includes(dailyNoteFolder))
+      dailyNoteFolder = '/';
   }
 
   function readImageAssetFolder() {
