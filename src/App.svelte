@@ -27,6 +27,13 @@
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
+  const DAILY_BRIEF_SECTION_TITLES = [
+    'Focus',
+    'Updates',
+    'Follow-ups',
+    'Recommendations',
+    'Sources'
+  ];
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
@@ -154,9 +161,12 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
-  $: dailyBriefBlocks = dailyBrief.content
-    ? renderMarkdown(dailyBrief.content)
-    : [];
+  $: dailyBriefSections = parseDailyBriefSections(dailyBrief.content);
+  $: dailyBriefBlocks = dailyBriefSections.length
+    ? []
+    : dailyBrief.content
+      ? renderMarkdown(dailyBrief.content)
+      : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
@@ -1092,11 +1102,6 @@
     }
   }
 
-  async function openWorkspaceChange(path) {
-    await openFile(path);
-    if (selectedPath === path && !error) await showDiff();
-  }
-
   async function showGraph() {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
     viewMode = 'graph';
@@ -1395,23 +1400,6 @@
 
   function recentFilesStorageKey(root) {
     return `${RECENT_FILES_KEY}:${root}`;
-  }
-
-  function formatTimestamp(value) {
-    return new Intl.DateTimeFormat([], {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    }).format(new Date(value));
-  }
-
-  function gitStatusLabel(value) {
-    if (value === '??') return 'New';
-    if (value.includes('D')) return 'Deleted';
-    if (value.includes('R')) return 'Renamed';
-    if (value.includes('A')) return 'Added';
-    return 'Modified';
   }
 
   function rootPathKey(root, path) {
@@ -1827,6 +1815,49 @@
     } catch {
       // Ignore storage failures; removing from the visible list is enough.
     }
+  }
+
+  function parseDailyBriefSections(markdown) {
+    if (!markdown.trim()) return [];
+
+    const sections = new Map();
+    let current = '';
+    let lines = [];
+
+    for (const line of markdown.split('\n')) {
+      const match = line.match(/^##\s+(.+?)\s*#*\s*$/);
+      if (match) {
+        saveBriefSection(sections, current, lines);
+        current = normalizeBriefSectionTitle(match[1]);
+        lines = [];
+      } else if (current) {
+        lines.push(line);
+      }
+    }
+    saveBriefSection(sections, current, lines);
+
+    return DAILY_BRIEF_SECTION_TITLES.map((title) => ({
+      title,
+      content: sections.get(title) || ''
+    })).filter((section) => section.content);
+  }
+
+  function saveBriefSection(sections, title, lines) {
+    if (!title || !DAILY_BRIEF_SECTION_TITLES.includes(title)) return;
+    const content = lines.join('\n').trim();
+    if (content) sections.set(title, content);
+  }
+
+  function normalizeBriefSectionTitle(title) {
+    const compact = title.toLowerCase().replace(/[^a-z]/g, '');
+    if (compact === 'focus') return 'Focus';
+    if (compact === 'updates') return 'Updates';
+    if (compact === 'followups') return 'Follow-ups';
+    if (compact === 'recommendationsonnewideasordirections')
+      return 'Recommendations';
+    if (compact === 'recommendations') return 'Recommendations';
+    if (compact === 'sources') return 'Sources';
+    return '';
   }
 
   function selectEditorRange(from, to) {
@@ -2413,37 +2444,6 @@
               </button>
             </article>
 
-            <article class="home-card home-brief">
-              <div class="home-card-heading">
-                <div>
-                  <p class="home-card-label">Review</p>
-                  <h2>Daily brief</h2>
-                </div>
-                <button
-                  class="home-link"
-                  disabled={dailyBriefGenerating}
-                  type="button"
-                  on:click={refreshDailyBrief}
-                >
-                  {dailyBriefGenerating ? 'Loading...' : 'Reload'}
-                </button>
-              </div>
-              {#if dailyBriefBlocks.length}
-                <div class="home-brief-preview">
-                  {@render markdownBlocks(dailyBriefBlocks)}
-                </div>
-                <button
-                  class="home-secondary"
-                  type="button"
-                  on:click={() => openFile(dailyBrief.path)}
-                >
-                  Open brief
-                </button>
-              {:else}
-                <p class="home-empty">{dailyBriefStatus || 'No daily brief yet.'}</p>
-              {/if}
-            </article>
-
             <article class="home-card">
               <div class="home-card-heading">
                 <div>
@@ -2468,43 +2468,50 @@
               {/if}
             </article>
 
-            <article class="home-card">
-              <p class="home-card-label">Review</p>
-              <h2>Recently modified</h2>
-              {#if overview.recent.length}
-                <div class="home-list">
-                  {#each overview.recent as file}
-                    <button type="button" on:click={() => openFile(file.path)}>
-                      <span>{file.name}</span>
-                      <small>{formatTimestamp(file.modifiedAt)}</small>
-                    </button>
+            <article class="home-card home-brief">
+              <div class="home-card-heading">
+                <div>
+                  <p class="home-card-label">Review</p>
+                  <h2>Daily brief</h2>
+                </div>
+                <button
+                  class="home-link"
+                  disabled={dailyBriefGenerating}
+                  type="button"
+                  on:click={refreshDailyBrief}
+                >
+                  {dailyBriefGenerating ? 'Loading...' : 'Reload'}
+                </button>
+              </div>
+              {#if dailyBriefSections.length}
+                <div class="home-brief-sections">
+                  {#each dailyBriefSections as section}
+                    <section class="home-brief-section">
+                      <h3>{section.title}</h3>
+                      {@render markdownBlocks(renderMarkdown(section.content))}
+                    </section>
                   {/each}
                 </div>
-              {:else if !overviewStatus}
-                <p class="home-empty">No Markdown notes yet.</p>
-              {/if}
-            </article>
-
-            <article class="home-card">
-              <p class="home-card-label">Review</p>
-              <h2>Workspace changes</h2>
-              {#if !overview.gitAvailable}
-                <p class="home-empty">Git status is unavailable for this workspace.</p>
-              {:else if overview.changes.length}
-                <div class="home-list">
-                  {#each overview.changes as change}
-                    <button
-                      disabled={!findFileNode(workspaceTree, change.path)}
-                      type="button"
-                      on:click={() => openWorkspaceChange(change.path)}
-                    >
-                      <span>{change.name}</span>
-                      <small>{gitStatusLabel(change.status)}</small>
-                    </button>
-                  {/each}
+                <button
+                  class="home-secondary"
+                  type="button"
+                  on:click={() => openFile(dailyBrief.path)}
+                >
+                  Open brief
+                </button>
+              {:else if dailyBriefBlocks.length}
+                <div class="home-brief-preview">
+                  {@render markdownBlocks(dailyBriefBlocks)}
                 </div>
+                <button
+                  class="home-secondary"
+                  type="button"
+                  on:click={() => openFile(dailyBrief.path)}
+                >
+                  Open brief
+                </button>
               {:else}
-                <p class="home-empty">No uncommitted Markdown changes.</p>
+                <p class="home-empty">{dailyBriefStatus || 'No daily brief yet.'}</p>
               {/if}
             </article>
           </div>
