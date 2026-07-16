@@ -1988,13 +1988,17 @@
     <button
       aria-label="Open dashboard"
       class:active={!selectedPath && viewMode === 'edit'}
-      class="global-action global-action-text"
+      class="global-action"
       disabled={!workspaceRoots.length}
       title="Dashboard"
       type="button"
       on:click={showHome}
     >
-      Home
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M3 11.5 12 4l9 7.5" />
+        <path d="M5.5 10.5V20h13v-9.5" />
+        <path d="M9.5 20v-6h5v6" />
+      </svg>
     </button>
     <button
       aria-label={sidebarVisible && sidebarView === 'files'
@@ -2002,12 +2006,15 @@
         : 'Show files'}
       aria-pressed={sidebarVisible && sidebarView === 'files'}
       class:active={sidebarVisible && sidebarView === 'files'}
-      class="global-action global-action-text"
+      class="global-action"
       title="Files"
       type="button"
       on:click={() => toggleSidebar('files')}
     >
-      Files
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 6.5h6l2 2h8v9H4z" />
+        <path d="M4 9h16" />
+      </svg>
     </button>
     <button
       aria-label="Open daily notes calendar"
@@ -2018,7 +2025,15 @@
       type="button"
       on:click={showCalendar}
     >
-      Cal
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M5 5.5h14v14H5z" />
+        <path d="M8 3.5v4" />
+        <path d="M16 3.5v4" />
+        <path d="M5 9h14" />
+        <path d="M8.5 12.5h2" />
+        <path d="M13.5 12.5h2" />
+        <path d="M8.5 16h2" />
+      </svg>
     </button>
     <button
       aria-label={sidebarVisible && sidebarView === 'chat'
@@ -2031,7 +2046,17 @@
       type="button"
       on:click={() => toggleSidebar('chat')}
     >
-      AI
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M12 3.5v3" />
+        <path d="M12 17.5v3" />
+        <path d="M4.5 12h3" />
+        <path d="M16.5 12h3" />
+        <path d="m6.5 6.5 2.2 2.2" />
+        <path d="m15.3 15.3 2.2 2.2" />
+        <path d="m17.5 6.5-2.2 2.2" />
+        <path d="m8.7 15.3-2.2 2.2" />
+        <circle cx="12" cy="12" r="3.5" />
+      </svg>
     </button>
   </nav>
 

@@ -70,10 +70,6 @@ button {
   line-height: 1;
 }
 
-.global-action-text {
-  font-size: 0.72rem;
-}
-
 .global-action:hover {
   border-color: #5d7598;
   background: #2b4267;
@@ -85,8 +81,17 @@ button {
 }
 
 .calendar-launcher {
-  font-size: 0.72rem;
   letter-spacing: 0.04em;
+}
+
+.global-action svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .global-action:disabled {
