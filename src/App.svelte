@@ -22,6 +22,8 @@
   const SEARCH_HISTORY_LIMIT = 8;
   const RECENT_FILES_KEY = 'webmd:recent-files';
   const RECENT_FILES_LIMIT = 5;
+  const VIEW_MODE_KEY = 'webmd:view-mode';
+  const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
@@ -439,6 +441,7 @@
     try {
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
+      viewMode = readWorkspaceViewMode(selectedRoot);
       ({ folder: dailyNoteFolder, stored: dailyNoteFolderStored } =
         readDailyNoteFolder());
       imageAssetFolder = readImageAssetFolder();
@@ -449,6 +452,7 @@
       await loadDailyBrief(selectedRoot);
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
+      else if (viewMode === 'graph') await loadGraph();
     } catch (err) {
       error = err.message;
     }
@@ -483,7 +487,7 @@
     selectedFileKind = 'markdown';
     content = '';
     lastSaved = '';
-    viewMode = 'edit';
+    viewMode = readWorkspaceViewMode(root);
     graphData = { nodes: [], edges: [], unresolved: 0 };
     graphView = { nodes: [], edges: [] };
     dailyBrief = { path: '/raw/dailybrief/latest.md', content: '' };
@@ -508,6 +512,7 @@
     reconcileDailyNoteFolder();
     await loadOverview();
     await loadDailyBrief();
+    if (viewMode === 'graph') await loadGraph();
   }
 
   async function openFile(
@@ -522,6 +527,8 @@
     const fileKind = fileKindForPath(path);
     selectedPath = path;
     selectedFileKind = fileKind;
+    if (fileKind === 'markdown')
+      setViewMode(readWorkspaceViewMode(root), { remember: false });
     diffFiles = [];
     diffStatus = '';
     error = '';
@@ -560,6 +567,7 @@
       });
       updateNavigationState(path, historyMode);
       if (buffered) queueRetry();
+      await applyWorkspaceViewMode(root, path);
     } catch (err) {
       const buffered = sessionStorage.getItem(storageKey(root, path));
       if (buffered) {
@@ -571,6 +579,7 @@
         });
         updateNavigationState(path, historyMode);
         queueRetry();
+        await applyWorkspaceViewMode(root, path);
       } else {
         error = err.message;
         status = '[Offline - Retrying]';
@@ -588,10 +597,10 @@
 
     selectedPath = path;
     selectedFileKind = 'markdown';
+    setViewMode(readWorkspaceViewMode(root), { remember: false });
     diffFiles = [];
     diffStatus = '';
     clearInlineEdit();
-    viewMode = 'edit';
     selectedText = '';
     selectedRange = null;
     status = '[Syncing...]';
@@ -607,6 +616,7 @@
       status = '[Saved]';
       rememberNavigationEntry(previousEntry, path);
       updateNavigationState(path);
+      await applyWorkspaceViewMode(root, path);
     } catch (err) {
       if (root !== selectedRoot || selectedPath !== path) return;
       if (err.status !== 404) {
@@ -629,6 +639,7 @@
         rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
         await loadTree(root);
+        await applyWorkspaceViewMode(root, path);
       } catch (saveErr) {
         sessionStorage.setItem(storageKey(root, path), nextContent);
         showFile(root, path, nextContent, '', 0, { collaborate: false });
@@ -637,6 +648,7 @@
         rememberNavigationEntry(previousEntry, path);
         updateNavigationState(path);
         queueRetry();
+        await applyWorkspaceViewMode(root, path);
       }
     }
   }
@@ -684,7 +696,8 @@
     version = 0,
     { collaborate = true } = {}
   ) {
-    if (viewMode === 'calendar' || viewMode === 'graph') viewMode = 'edit';
+    if (viewMode === 'calendar')
+      setViewMode(readWorkspaceViewMode(root), { remember: false });
     selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
@@ -1084,10 +1097,12 @@
 
     const root = selectedRoot;
     const path = selectedPath;
-    viewMode = 'diff';
-    selectedText = '';
-    selectedRange = null;
+    setViewMode('diff');
     clearInlineEdit();
+    await loadSelectedDiff(root, path);
+  }
+
+  async function loadSelectedDiff(root, path) {
     diffFiles = [];
     diffStatus = 'Loading diff...';
     error = '';
@@ -1113,14 +1128,22 @@
 
   async function showGraph() {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
-    viewMode = 'graph';
+    setViewMode('graph');
     graphScope = selectedPath && selectedIsMarkdown ? 'local' : 'wiki';
     graphStatus = 'Loading graph...';
-    selectedText = '';
-    selectedRange = null;
     clearInlineEdit();
 
     await loadGraph();
+  }
+
+  async function applyWorkspaceViewMode(root, path) {
+    if (root !== selectedRoot || path !== selectedPath) return;
+    if (viewMode === 'diff') await loadSelectedDiff(root, path);
+    else if (viewMode === 'graph') {
+      graphScope = selectedPath && selectedIsMarkdown ? 'local' : 'wiki';
+      if (graphData.nodes.length) updateGraphLayout();
+      else await loadGraph();
+    }
   }
 
   async function loadGraph() {
@@ -1215,7 +1238,6 @@
 
   async function openGraphNode(node) {
     await openFile(node.path);
-    setViewMode('edit');
   }
 
   function graphEdgeState(edge) {
@@ -1409,6 +1431,28 @@
 
   function recentFilesStorageKey(root) {
     return `${RECENT_FILES_KEY}:${root}`;
+  }
+
+  function readWorkspaceViewMode(root) {
+    try {
+      const mode = localStorage.getItem(workspaceViewModeStorageKey(root));
+      return WORKSPACE_VIEW_MODES.has(mode) ? mode : 'edit';
+    } catch {
+      return 'edit';
+    }
+  }
+
+  function rememberWorkspaceViewMode(mode, root = selectedRoot) {
+    if (!WORKSPACE_VIEW_MODES.has(mode)) return;
+    try {
+      localStorage.setItem(workspaceViewModeStorageKey(root), mode);
+    } catch {
+      // Ignore storage failures; the selected mode still works this session.
+    }
+  }
+
+  function workspaceViewModeStorageKey(root) {
+    return `${VIEW_MODE_KEY}:${root}`;
   }
 
   function rootPathKey(root, path) {
@@ -1887,10 +1931,11 @@
     editorView.focus();
   }
 
-  function setViewMode(mode) {
+  function setViewMode(mode, { remember = true } = {}) {
     viewMode = mode;
     selectedText = '';
     selectedRange = null;
+    if (remember) rememberWorkspaceViewMode(mode);
     if (mode === 'edit')
       requestAnimationFrame(() => editorView?.requestMeasure());
   }
