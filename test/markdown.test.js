@@ -117,6 +117,13 @@ test('auto-links bare URLs', () => {
   });
 });
 
+test('parses inline math spans', () => {
+  assert.deepEqual(parseInline('Angle $\\alpha$ matters')[1], {
+    type: 'math',
+    text: '\\alpha'
+  });
+});
+
 test('parses wiki links as workspace references', () => {
   assert.deepEqual(parseInline('See [[2026-07-08]]')[1], {
     type: 'wikiLink',

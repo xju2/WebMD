@@ -2,6 +2,8 @@
   import { markdown } from '@codemirror/lang-markdown';
   import { EditorState } from '@codemirror/state';
   import { EditorView } from '@codemirror/view';
+  import katex from 'katex';
+  import 'katex/dist/katex.min.css';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
   import {
@@ -38,6 +40,10 @@
     'Sources'
   ];
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  function renderMath(source) {
+    return katex.renderToString(source, { throwOnError: false });
+  }
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
     `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1954,6 +1960,8 @@
   {#each segments as segment}
     {#if segment.type === 'code'}
       <code>{segment.text}</code>
+    {:else if segment.type === 'math'}
+      <span class="math-inline">{@html renderMath(segment.text)}</span>
     {:else if segment.type === 'link' && segment.href}
       <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a>
     {:else if segment.type === 'wikiLink'}

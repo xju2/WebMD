@@ -102,7 +102,7 @@ function parseCodeBlock(lang, text) {
 
 export function parseInline(text) {
   const tokenPattern =
-    /(`[^`]+`|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+)/g;
+    /(`[^`]+`|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+)/g;
   const segments = [];
   let lastIndex = 0;
 
@@ -123,6 +123,8 @@ export function parseInline(text) {
 
 function parseInlineToken(token) {
   if (token.startsWith('`')) return { type: 'code', text: token.slice(1, -1) };
+
+  if (token.startsWith('$')) return { type: 'math', text: token.slice(1, -1) };
 
   const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
   if (link) {
