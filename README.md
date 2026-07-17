@@ -64,14 +64,14 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 
 ## Daily brief integration
 
-WebMD displays the latest Codex-generated daily brief from:
+WebMD displays today's Codex-generated daily brief from:
 
 ```text
-raw/dailybrief/latest.md
+raw/dailybrief/YYYY-MM-DD.md
 ```
 
-The scheduled Codex task should write plain Markdown there. A dated history copy
-such as `raw/dailybrief/2026-07-16.md` is optional.
+For example, on 2026-07-17 it reads `raw/dailybrief/2026-07-17.md`.
+`raw/dailybrief/latest.md` is still supported as a fallback.
 
 Recommended Markdown shape:
 

@@ -10,12 +10,13 @@ async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-brief-'));
 }
 
-test('reads the Codex daily brief contract file', async () => {
+test('reads today daily brief before the legacy contract file', async () => {
   const root = await tempRoot();
   const workspace = await createWorkspace(root);
+  const today = new Date(2026, 6, 17);
 
-  assert.deepEqual(await readDailyBrief(workspace), {
-    path: '/raw/dailybrief/latest.md',
+  assert.deepEqual(await readDailyBrief(workspace, today), {
+    path: '/raw/dailybrief/2026-07-17.md',
     content: ''
   });
 
@@ -25,8 +26,18 @@ test('reads the Codex daily brief contract file', async () => {
     '# Daily Brief\n'
   );
 
-  assert.deepEqual(await readDailyBrief(workspace), {
+  assert.deepEqual(await readDailyBrief(workspace, today), {
     path: '/raw/dailybrief/latest.md',
     content: '# Daily Brief\n'
+  });
+
+  await fs.writeFile(
+    path.join(root, 'raw', 'dailybrief', '2026-07-17.md'),
+    '# Today\n'
+  );
+
+  assert.deepEqual(await readDailyBrief(workspace, today), {
+    path: '/raw/dailybrief/2026-07-17.md',
+    content: '# Today\n'
   });
 });
