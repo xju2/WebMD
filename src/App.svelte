@@ -1839,9 +1839,8 @@
 
   async function openSearchResult(result) {
     rememberSearch(searchQuery);
+    if (result.fileKind === 'markdown') setViewMode('preview');
     await openFile(result.path);
-    if (result.from != null && result.fileKind === 'markdown')
-      selectEditorRange(result.from, result.to);
   }
 
   function readSearchHistory() {
