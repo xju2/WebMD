@@ -73,6 +73,15 @@ raw/dailybrief/YYYY-MM-DD.md
 For example, on 2026-07-17 it reads `raw/dailybrief/2026-07-17.md`.
 `raw/dailybrief/latest.md` is still supported as a fallback.
 
+## YAML frontmatter
+
+WebMD understands the Open Knowledge Format fields `type`, `title`,
+`description`, `resource`, `tags`, and `timestamp` in a Markdown file's leading
+YAML frontmatter. Preview renders the Markdown body, and workspace search can
+filter any field with `field:value`, for example `type:Playbook`, `tags:oncall`,
+or `timestamp:2026-07`. Tag matching is exact; other fields support partial,
+case-insensitive matching.
+
 Recommended Markdown shape:
 
 ```markdown
@@ -81,15 +90,19 @@ Recommended Markdown shape:
 _Generated: 2026-07-16 07:30 America/Los_Angeles_
 
 ## Focus
+
 - ...
 
 ## Updates
+
 - ...
 
 ## Follow-ups
+
 - [ ] ...
 
 ## Sources
+
 - raw/dailynotes/2026-07-16.md
 - raw/projects/example.md
 ```

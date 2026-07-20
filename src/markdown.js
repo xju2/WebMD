@@ -1,9 +1,10 @@
 import { parseUnifiedDiff } from './diff.js';
+import { parseFrontmatter } from './frontmatter.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
 export function renderMarkdown(source = '') {
-  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  const lines = parseFrontmatter(source).body.split('\n');
   const blocks = [];
   let index = 0;
 
@@ -257,7 +258,9 @@ function parseQuote(lines) {
 }
 
 function calloutTitle(variant) {
-  return variant === 'tldr' ? 'TLDR' : variant[0].toUpperCase() + variant.slice(1);
+  return variant === 'tldr'
+    ? 'TLDR'
+    : variant[0].toUpperCase() + variant.slice(1);
 }
 
 function startsBlock(line, nextLine = '') {

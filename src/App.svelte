@@ -101,7 +101,11 @@
   let imageAssetFolder = '/assets';
   let imageAssetFolderDraft = '';
   let creatingImageAssetFolder = false;
-  let calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  let calendarMonth = new Date(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    1
+  );
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
   let treeLoaded = false;
@@ -159,16 +163,17 @@
     .map((path) => findFileNode(workspaceTree, path))
     .filter(Boolean);
   $: activeWorkspaceName =
-    workspaceRoots.find((root) => root.id === selectedRoot)?.name || 'Workspace';
+    workspaceRoots.find((root) => root.id === selectedRoot)?.name ||
+    'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
   $: canNavigateBack = navigationBackStack.length > 0;
   $: canNavigateForward = navigationForwardStack.length > 0;
   $: canInlineEdit = Boolean(
     selectedPath &&
-      selectedIsMarkdown &&
-      selectedRange &&
-      selectedRange.from !== selectedRange.to
+    selectedIsMarkdown &&
+    selectedRange &&
+    selectedRange.from !== selectedRange.to
   );
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
@@ -293,7 +298,9 @@
         });
       } catch (err) {
         if (err.name === 'AbortError') throw err;
-        throw new Error('Server unavailable. Check the SSH tunnel and backend.');
+        throw new Error(
+          'Server unavailable. Check the SSH tunnel and backend.'
+        );
       }
       if (!response.ok) throw new Error(await responseErrorMessage(response));
       if (!response.body) throw new Error('AI provider did not stream.');
@@ -666,7 +673,11 @@
   async function showCalendar() {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
     viewMode = 'calendar';
-    calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    calendarMonth = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1
+    );
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -678,7 +689,11 @@
   }
 
   function showCurrentMonth() {
-    calendarMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    calendarMonth = new Date(
+      new Date().getFullYear(),
+      new Date().getMonth(),
+      1
+    );
   }
 
   function calendarDayPath(day) {
@@ -746,7 +761,11 @@
   }
 
   function handleEditorDragOver(event) {
-    if (selectedPath && selectedIsMarkdown && dataTransferImageFiles(event.dataTransfer).length) {
+    if (
+      selectedPath &&
+      selectedIsMarkdown &&
+      dataTransferImageFiles(event.dataTransfer).length
+    ) {
       event.preventDefault();
       return true;
     }
@@ -868,7 +887,11 @@
     );
     documentEvents = source;
     source.onopen = () => {
-      if (root === selectedRoot && path === selectedPath && !hasUnsavedChanges()) {
+      if (
+        root === selectedRoot &&
+        path === selectedPath &&
+        !hasUnsavedChanges()
+      ) {
         error = '';
         status = '[Saved]';
       }
@@ -966,7 +989,10 @@
   async function saveNow() {
     clearTimeout(saveTimer);
     if (!selectedPath || !selectedIsMarkdown) return;
-    if (collaborationEnabled && (pendingUpdates.length || inFlightUpdates.length)) {
+    if (
+      collaborationEnabled &&
+      (pendingUpdates.length || inFlightUpdates.length)
+    ) {
       await flushPendingUpdates();
       return;
     }
@@ -1200,10 +1226,17 @@
   function zoomGraph(event) {
     const rect = graphSvg.getBoundingClientRect();
     const requested = event.deltaY > 0 ? 1.12 : 0.88;
-    const width = Math.max(250, Math.min(3000, graphViewport.width * requested));
+    const width = Math.max(
+      250,
+      Math.min(3000, graphViewport.width * requested)
+    );
     const scale = width / graphViewport.width;
-    const pointerX = graphViewport.x + ((event.clientX - rect.left) / rect.width) * graphViewport.width;
-    const pointerY = graphViewport.y + ((event.clientY - rect.top) / rect.height) * graphViewport.height;
+    const pointerX =
+      graphViewport.x +
+      ((event.clientX - rect.left) / rect.width) * graphViewport.width;
+    const pointerY =
+      graphViewport.y +
+      ((event.clientY - rect.top) / rect.height) * graphViewport.height;
     graphViewport = {
       x: pointerX - (pointerX - graphViewport.x) * scale,
       y: pointerY - (pointerY - graphViewport.y) * scale,
@@ -1230,8 +1263,12 @@
     const dy = event.clientY - graphPointer.clientY;
     graphViewport = {
       ...graphPointer.viewport,
-      x: graphPointer.viewport.x - (dx / rect.width) * graphPointer.viewport.width,
-      y: graphPointer.viewport.y - (dy / rect.height) * graphPointer.viewport.height
+      x:
+        graphPointer.viewport.x -
+        (dx / rect.width) * graphPointer.viewport.width,
+      y:
+        graphPointer.viewport.y -
+        (dy / rect.height) * graphPointer.viewport.height
     };
   }
 
@@ -1248,7 +1285,8 @@
 
   function graphEdgeState(edge) {
     if (!hoveredGraphPath) return '';
-    return edge.source.path === hoveredGraphPath || edge.target.path === hoveredGraphPath
+    return edge.source.path === hoveredGraphPath ||
+      edge.target.path === hoveredGraphPath
       ? 'active'
       : 'dimmed';
   }
@@ -1335,7 +1373,11 @@
     navigationForwardStack = [];
     clearInlineEdit();
     setEditorContent('');
-    history.replaceState({ root: selectedRoot }, '', location.pathname + location.search);
+    history.replaceState(
+      { root: selectedRoot },
+      '',
+      location.pathname + location.search
+    );
     status = '[Saved]';
     await loadOverview();
     await loadDailyBrief();
@@ -1589,7 +1631,9 @@
   }
 
   function joinWorkspacePath(folder, name) {
-    return normalizeWorkspaceFilePath(`${folder === '/' ? '' : folder}/${name}`);
+    return normalizeWorkspaceFilePath(
+      `${folder === '/' ? '' : folder}/${name}`
+    );
   }
 
   function normalizeWorkspaceFilePath(path) {
@@ -1766,7 +1810,9 @@
 
   function normalizeWorkspaceFolder(folder) {
     const normalized = normalizeWorkspaceFilePath(`${folder || '/assets'}/_`);
-    return normalized ? normalized.slice(0, normalized.lastIndexOf('/')) || '/' : '';
+    return normalized
+      ? normalized.slice(0, normalized.lastIndexOf('/')) || '/'
+      : '';
   }
 
   function toggleFolder(path) {
@@ -1833,7 +1879,8 @@
         searchStatus = results.length ? '' : 'No matches';
       }
     } catch (err) {
-      if (run === searchRun && root === selectedRoot) searchStatus = err.message;
+      if (run === searchRun && root === selectedRoot)
+        searchStatus = err.message;
     }
   }
 
@@ -2006,7 +2053,9 @@
       <aside class={`callout callout-${block.variant}`}>
         <p class="callout-title">{@render inline(block.title)}</p>
         {#if block.children.length}
-          <div class="callout-body">{@render markdownBlocks(block.children)}</div>
+          <div class="callout-body">
+            {@render markdownBlocks(block.children)}
+          </div>
         {/if}
       </aside>
     {:else if block.type === 'rule'}
@@ -2207,7 +2256,7 @@
         on:keydown={(event) => {
           if (event.key === 'Enter') rememberSearch(searchQuery);
         }}
-        placeholder="Search files and contents"
+        placeholder="Search or type:Playbook"
         type="search"
       />
       <div class="tree-actions" aria-label="Folder controls">
@@ -2243,7 +2292,9 @@
             <small
               >{result.kind === 'content'
                 ? `Line ${result.lineNumber}`
-                : result.path}</small
+                : result.kind === 'metadata'
+                  ? result.field
+                  : result.path}</small
             >
             {#if result.preview}
               <em>{result.preview}</em>
@@ -2333,15 +2384,14 @@
           <p class="empty-copy">Ask about the current note or selection.</p>
         {/if}
       </div>
-      <form
-        class="ai-form"
-        on:submit|preventDefault={sendChat}
-      >
+      <form class="ai-form" on:submit|preventDefault={sendChat}>
         <textarea
           aria-label="Ask AI"
           bind:value={chatPrompt}
           disabled={chatStreaming || inlineEditLoading}
-          placeholder={selectedText ? 'Ask about the selection' : 'Ask about this note'}
+          placeholder={selectedText
+            ? 'Ask about the selection'
+            : 'Ask about this note'}
           rows="2"
         ></textarea>
         <button
@@ -2351,7 +2401,10 @@
           {chatStreaming ? '...' : 'Ask'}
         </button>
         <button
-          disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading || !canInlineEdit}
+          disabled={!chatPrompt.trim() ||
+            chatStreaming ||
+            inlineEditLoading ||
+            !canInlineEdit}
           title={canInlineEdit
             ? 'Preview edit for selected text'
             : 'Select text in the editor'}
@@ -2400,7 +2453,9 @@
           type="button"
           on:dblclick={revealSelectedFileInSidebar}
         >
-          {viewMode === 'calendar' ? 'Daily Notes' : selectedPath || 'Workspace Home'}
+          {viewMode === 'calendar'
+            ? 'Daily Notes'
+            : selectedPath || 'Workspace Home'}
         </button>
       </div>
       <div class="topbar-actions">
@@ -2410,7 +2465,8 @@
             <select
               aria-label="Image asset folder"
               value={imageAssetFolder}
-              on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
+              on:change={(event) =>
+                chooseImageAssetFolder(event.currentTarget.value)}
             >
               {#each imageAssetFolderOptions as folder}
                 <option value={folder}>{folder}</option>
@@ -2419,16 +2475,16 @@
             </select>
           </label>
           {#if creatingImageAssetFolder}
-            <form class="asset-folder-new" on:submit|preventDefault={createImageAssetFolder}>
+            <form
+              class="asset-folder-new"
+              on:submit|preventDefault={createImageAssetFolder}
+            >
               <input
                 aria-label="New image asset folder"
                 bind:value={imageAssetFolderDraft}
                 placeholder="/assets"
               />
-              <button
-                disabled={!newImageAssetFolderPath()}
-                type="submit"
-              >
+              <button disabled={!newImageAssetFolderPath()} type="submit">
                 Create
               </button>
             </form>
@@ -2470,7 +2526,9 @@
         </div>
         <button
           class="save-button"
-          disabled={!selectedPath || !selectedIsMarkdown || !hasUnsavedChanges()}
+          disabled={!selectedPath ||
+            !selectedIsMarkdown ||
+            !hasUnsavedChanges()}
           on:click={saveNow}
         >
           Save
@@ -2509,7 +2567,11 @@
               <h2>Today</h2>
               <p>Start or continue today’s research note.</p>
               <small>{todayNotePath()}</small>
-              <button class="home-primary" type="button" on:click={() => openDailyNote()}>
+              <button
+                class="home-primary"
+                type="button"
+                on:click={() => openDailyNote()}
+              >
                 Open today’s note
               </button>
             </article>
@@ -2520,7 +2582,11 @@
                   <p class="home-card-label">Resume</p>
                   <h2>Continue</h2>
                 </div>
-                <button class="home-link" type="button" on:click={focusWorkspaceSearch}>
+                <button
+                  class="home-link"
+                  type="button"
+                  on:click={focusWorkspaceSearch}
+                >
                   Find
                 </button>
               </div>
@@ -2534,7 +2600,9 @@
                   {/each}
                 </div>
               {:else}
-                <p class="home-empty">Open a note and it will stay within reach here.</p>
+                <p class="home-empty">
+                  Open a note and it will stay within reach here.
+                </p>
               {/if}
             </article>
 
@@ -2581,7 +2649,9 @@
                   Open brief
                 </button>
               {:else}
-                <p class="home-empty">{dailyBriefStatus || 'No daily brief yet.'}</p>
+                <p class="home-empty">
+                  {dailyBriefStatus || 'No daily brief yet.'}
+                </p>
               {/if}
             </article>
           </div>
@@ -2596,11 +2666,19 @@
         <section class="calendar-pane" aria-label="Daily notes calendar">
           <header class="calendar-toolbar">
             <div class="calendar-month-nav">
-              <button aria-label="Previous month" type="button" on:click={() => moveCalendarMonth(-1)}>
+              <button
+                aria-label="Previous month"
+                type="button"
+                on:click={() => moveCalendarMonth(-1)}
+              >
                 ‹
               </button>
               <h2>{calendarMonthName}</h2>
-              <button aria-label="Next month" type="button" on:click={() => moveCalendarMonth(1)}>
+              <button
+                aria-label="Next month"
+                type="button"
+                on:click={() => moveCalendarMonth(1)}
+              >
                 ›
               </button>
             </div>
@@ -2610,11 +2688,19 @@
                 <select
                   aria-label="Daily notes folder"
                   value={dailyNoteFolder}
-                  on:change={(event) => chooseDailyNoteFolder(event.currentTarget.value)}
+                  on:change={(event) =>
+                    chooseDailyNoteFolder(event.currentTarget.value)}
                 >
                   {#each dailyNoteFolderOptions as folder}
-                    <option value={folder} disabled={folder === dailyNoteFolder && dailyNoteFolderMissing}>
-                      {folder}{folder === dailyNoteFolder && dailyNoteFolderMissing ? ' (missing here)' : ''}
+                    <option
+                      value={folder}
+                      disabled={folder === dailyNoteFolder &&
+                        dailyNoteFolderMissing}
+                    >
+                      {folder}{folder === dailyNoteFolder &&
+                      dailyNoteFolderMissing
+                        ? ' (missing here)'
+                        : ''}
                     </option>
                   {/each}
                 </select>
@@ -2656,18 +2742,26 @@
           <header class="graph-toolbar">
             <div>
               <strong>Knowledge graph</strong>
-              <span>{graphView.nodes.length} notes · {graphView.edges.length} links</span>
+              <span
+                >{graphView.nodes.length} notes · {graphView.edges.length} links</span
+              >
             </div>
             <div class="graph-controls">
               <label>
                 Scope
                 <select value={graphScope} on:change={chooseGraphScope}>
                   <option value="wiki">Wiki</option>
-                  <option value="local" disabled={!selectedPath || !selectedIsMarkdown}>Local</option>
+                  <option
+                    value="local"
+                    disabled={!selectedPath || !selectedIsMarkdown}
+                    >Local</option
+                  >
                   <option value="all">All notes</option>
                 </select>
               </label>
-              <button type="button" on:click={resetGraphViewport}>Reset view</button>
+              <button type="button" on:click={resetGraphViewport}
+                >Reset view</button
+              >
             </div>
           </header>
           <div class="graph-canvas">
@@ -2687,7 +2781,13 @@
                 on:pointercancel={endGraphPointer}
                 on:wheel|preventDefault={zoomGraph}
               >
-                <rect class="graph-background" x="-5000" y="-5000" width="10000" height="10000" />
+                <rect
+                  class="graph-background"
+                  x="-5000"
+                  y="-5000"
+                  width="10000"
+                  height="10000"
+                />
                 <g class="graph-edges">
                   {#each graphView.edges as edge}
                     <line
@@ -2732,7 +2832,9 @@
             {/if}
           </div>
           {#if graphData.unresolved}
-            <footer>{graphData.unresolved} unresolved wiki-link mentions are not drawn.</footer>
+            <footer>
+              {graphData.unresolved} unresolved wiki-link mentions are not drawn.
+            </footer>
           {/if}
         </section>
       {/if}

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { parseFrontmatter } from '../src/frontmatter.js';
 import { parseInline, renderMarkdown } from '../src/markdown.js';
 
 test('renders common markdown blocks safely', () => {
@@ -27,6 +28,24 @@ console.log("ok");
   );
   assert.equal(blocks[3].type, 'code');
   assert.equal(blocks[3].lang, 'js');
+});
+
+test('keeps YAML frontmatter out of the rendered body', () => {
+  const source = `---
+type: Playbook
+title: Incident response
+tags: [oncall, incident]
+---
+# Trigger
+Act now.
+`;
+  const parsed = parseFrontmatter(source);
+  const blocks = renderMarkdown(source);
+
+  assert.deepEqual(parsed.attributes.tags, ['oncall', 'incident']);
+  assert.equal(parsed.attributes.title, 'Incident response');
+  assert.equal(blocks[0].type, 'heading');
+  assert.equal(blocks[0].children[0].text, 'Trigger');
 });
 
 test('renders fenced unified diffs as diff blocks', () => {
@@ -105,7 +124,10 @@ test('renders markdown blocks inside callouts', () => {
   assert.equal(blocks[0].children[0].type, 'list');
   assert.deepEqual(
     blocks[0].children[0].items.map((item) => item.children[0].text),
-    ['identifier                : 2950990', 'nFiles                    : 49,984']
+    [
+      'identifier                : 2950990',
+      'nFiles                    : 49,984'
+    ]
   );
 });
 

@@ -25,7 +25,10 @@ test('rejects traversal paths', async () => {
   const root = await tempRoot();
   const workspace = await createWorkspace(root);
 
-  await assert.rejects(() => workspace.loadFile('/../outside.md'), /Path traversal/);
+  await assert.rejects(
+    () => workspace.loadFile('/../outside.md'),
+    /Path traversal/
+  );
 });
 
 test('reports missing markdown files as not found', async () => {
@@ -90,7 +93,10 @@ test('searches visible paths and markdown content from an index', async () => {
   await fs.mkdir(path.join(root, '.hidden'), { recursive: true });
   await fs.writeFile(path.join(root, 'note.md'), 'First\nNeedle found\n');
   await fs.writeFile(path.join(root, 'raw', 'assets', 'photo.png'), 'png');
-  await fs.writeFile(path.join(root, '.hidden', 'secret.md'), 'Needle hidden\n');
+  await fs.writeFile(
+    path.join(root, '.hidden', 'secret.md'),
+    'Needle hidden\n'
+  );
 
   const workspace = await createWorkspace(root);
 
@@ -116,6 +122,41 @@ test('searches visible paths and markdown content from an index', async () => {
       kind: 'path'
     }
   ]);
+});
+
+test('queries OKF frontmatter fields', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(
+    path.join(root, 'incident.md'),
+    `---
+type: Playbook
+title: Incident response
+description: Steps for a freshness alert.
+resource: https://example.com/runbook
+tags:
+  - oncall
+  - data
+timestamp: 2026-07-18T12:00:00Z
+---
+Act now.
+`
+  );
+  await fs.writeFile(path.join(root, 'other.md'), 'type: Playbook\n');
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(
+    (await workspace.searchFiles('type:play')).map((result) => result.path),
+    ['/incident.md']
+  );
+  for (const query of [
+    'title:incident',
+    'description:freshness',
+    'resource:example.com',
+    'tags:oncall',
+    'timestamp:2026-07'
+  ]) {
+    assert.equal((await workspace.searchFiles(query))[0].path, '/incident.md');
+  }
 });
 
 test('indexes resolved wiki links and invalidates after saves', async () => {
@@ -213,7 +254,10 @@ test('rejects symlink escapes', async () => {
   await fs.symlink(outsideFile, path.join(root, 'escape.md'));
 
   const workspace = await createWorkspace(root);
-  await assert.rejects(() => workspace.loadFile('/escape.md'), /outside WORKSPACE_ROOT/);
+  await assert.rejects(
+    () => workspace.loadFile('/escape.md'),
+    /outside WORKSPACE_ROOT/
+  );
 });
 
 test('saves markdown atomically without leaving temp files', async () => {

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
 import { resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
@@ -90,9 +91,9 @@ export async function createWorkspace(workspaceRoot) {
 }
 
 async function buildWorkspaceGraph(root) {
-  const files = (await readSearchFiles(root, root)).filter(
-    (file) => file.fileKind === 'markdown'
-  ).sort((a, b) => a.path.localeCompare(b.path));
+  const files = (await readSearchFiles(root, root))
+    .filter((file) => file.fileKind === 'markdown')
+    .sort((a, b) => a.path.localeCompare(b.path));
   const paths = files.map((file) => file.path);
   const pathSet = new Set(paths);
   const edges = new Map();
@@ -107,7 +108,9 @@ async function buildWorkspaceGraph(root) {
           source: file.path,
           target: resolved
         });
-      } else if (!/\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i.test(target.split('#')[0])) {
+      } else if (
+        !/\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i.test(target.split('#')[0])
+      ) {
         unresolved += 1;
       }
     }
@@ -182,7 +185,14 @@ async function readGitChanges(root) {
   try {
     const { stdout } = await execFileAsync(
       'git',
-      ['-c', 'core.quotepath=false', 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      [
+        '-c',
+        'core.quotepath=false',
+        'status',
+        '--porcelain=v1',
+        '-z',
+        '--untracked-files=all'
+      ],
       { cwd: root, maxBuffer: 10 * 1024 * 1024 }
     );
     const entries = stdout.split('\0');
@@ -196,7 +206,9 @@ async function readGitChanges(root) {
       if (/[RC]/.test(status)) index += 1;
       if (
         fileKindForPath(filePath) === 'markdown' &&
-        !filePath.split('/').some((part) => part.startsWith('.') || part === 'node_modules')
+        !filePath
+          .split('/')
+          .some((part) => part.startsWith('.') || part === 'node_modules')
       ) {
         changes.push({
           name: path.basename(filePath),
@@ -251,7 +263,12 @@ async function readTree(root, dir, prefix = '') {
     } else if (entry.isFile()) {
       const fileKind = fileKindForPath(entry.name);
       if (fileKind)
-        nodes.push({ name: entry.name, type: 'file', path: nodePath, fileKind });
+        nodes.push({
+          name: entry.name,
+          type: 'file',
+          path: nodePath,
+          fileKind
+        });
     }
   }
 
@@ -284,7 +301,8 @@ async function loadMediaFile(root, filePath) {
   const absolute = await resolvePath(root, normalized);
   const stat = await fs.stat(absolute);
 
-  if (!stat.isFile()) throw new WorkspaceError(400, 'Path points to a directory.');
+  if (!stat.isFile())
+    throw new WorkspaceError(400, 'Path points to a directory.');
   return { path: normalized, absolute, fileKind };
 }
 
@@ -325,7 +343,8 @@ async function saveImageFile(
   { folder = '/assets', notePath, name, mimeType, data } = {}
 ) {
   const extension = imageExtensionFor(name, mimeType);
-  if (!extension) throw new WorkspaceError(400, 'Only image files are supported.');
+  if (!extension)
+    throw new WorkspaceError(400, 'Only image files are supported.');
   if (typeof data !== 'string' || !data) {
     throw new WorkspaceError(400, 'Image data is required.');
   }
@@ -369,17 +388,31 @@ async function diffFile(root, filePath) {
       { cwd: root, maxBuffer: 10 * 1024 * 1024 }
     );
     if (status.startsWith('?? ')) {
-      return { path: normalized, diff: await diffUntrackedFile(root, relative) };
+      return {
+        path: normalized,
+        diff: await diffUntrackedFile(root, relative)
+      };
     }
 
-    const { stdout } = await execFileAsync('git', ['diff', 'HEAD', '--', relative], {
-      cwd: root,
-      maxBuffer: 10 * 1024 * 1024
-    });
+    const { stdout } = await execFileAsync(
+      'git',
+      ['diff', 'HEAD', '--', relative],
+      {
+        cwd: root,
+        maxBuffer: 10 * 1024 * 1024
+      }
+    );
     return { path: normalized, diff: stdout };
   } catch (error) {
-    if (/unknown revision|bad revision|ambiguous argument 'HEAD'/.test(error.stderr || '')) {
-      return { path: normalized, diff: await diffUntrackedFile(root, relative) };
+    if (
+      /unknown revision|bad revision|ambiguous argument 'HEAD'/.test(
+        error.stderr || ''
+      )
+    ) {
+      return {
+        path: normalized,
+        diff: await diffUntrackedFile(root, relative)
+      };
     }
     throw new WorkspaceError(
       400,
@@ -391,10 +424,14 @@ async function diffFile(root, filePath) {
 async function diffUntrackedFile(root, relative) {
   try {
     return (
-      await execFileAsync('git', ['diff', '--no-index', '--', '/dev/null', relative], {
-        cwd: root,
-        maxBuffer: 10 * 1024 * 1024
-      })
+      await execFileAsync(
+        'git',
+        ['diff', '--no-index', '--', '/dev/null', relative],
+        {
+          cwd: root,
+          maxBuffer: 10 * 1024 * 1024
+        }
+      )
     ).stdout;
   } catch (error) {
     if (error.code === 1) return error.stdout;
@@ -410,7 +447,10 @@ async function saveFile(root, filePath, content) {
   const normalized = normalizeWorkspacePath(filePath);
   assertMarkdown(normalized);
   const absolute = await resolvePath(root, normalized, { forWrite: true });
-  const tempPath = path.join(path.dirname(absolute), `.${path.basename(absolute)}.${randomUUID()}.tmp`);
+  const tempPath = path.join(
+    path.dirname(absolute),
+    `.${path.basename(absolute)}.${randomUUID()}.tmp`
+  );
 
   try {
     await fs.writeFile(tempPath, content, { encoding: 'utf8', flag: 'wx' });
@@ -423,7 +463,13 @@ async function saveFile(root, filePath, content) {
   return { success: true, timestamp: new Date().toISOString() };
 }
 
-async function applyDocumentUpdates(root, documents, filePath, version, updates) {
+async function applyDocumentUpdates(
+  root,
+  documents,
+  filePath,
+  version,
+  updates
+) {
   if (!Array.isArray(updates)) {
     throw new WorkspaceError(400, 'Updates must be an array.');
   }
@@ -432,7 +478,10 @@ async function applyDocumentUpdates(root, documents, filePath, version, updates)
   return enqueueDocumentWrite(document, async () => {
     const baseVersion = parseVersion(version);
     if (baseVersion !== document.version) {
-      throw new WorkspaceError(409, `Document is at version ${document.version}.`);
+      throw new WorkspaceError(
+        409,
+        `Document is at version ${document.version}.`
+      );
     }
     if (!updates.length) {
       return { success: true, path: document.path, version: document.version };
@@ -451,7 +500,8 @@ async function applyDocumentUpdates(root, documents, filePath, version, updates)
     document.version = baseVersion + updates.length;
     document.events.push(...events);
     // ponytail: bounded in-memory log; persist logs when reconnect windows matter.
-    while (document.events.length > MAX_DOCUMENT_EVENTS) document.events.shift();
+    while (document.events.length > MAX_DOCUMENT_EVENTS)
+      document.events.shift();
     for (const event of events) {
       for (const listener of document.listeners) {
         try {
@@ -543,12 +593,20 @@ async function buildSearchIndex(root) {
     search(query, { limit = 50 } = {}) {
       const needle = normalizeSearchQuery(query);
       if (!needle) return [];
+      const metadataQuery = parseMetadataQuery(query);
 
       const results = [];
       const maxResults = Math.max(1, Math.min(Number(limit) || 50, 100));
 
       for (const file of files) {
         if (results.length >= maxResults) break;
+
+        if (metadataQuery) {
+          const match = findMetadataMatch(file, metadataQuery);
+          if (match)
+            results.push({ ...searchResult(file, 'metadata'), ...match });
+          continue;
+        }
 
         if (file.lowerPath.includes(needle)) {
           results.push(searchResult(file, 'path'));
@@ -594,6 +652,7 @@ async function readSearchFiles(root, dir, prefix = '') {
       if (fileKind === 'markdown') {
         file.content = await fs.readFile(real, 'utf8');
         file.lowerContent = file.content.toLowerCase();
+        file.metadata = parseFrontmatter(file.content).attributes;
       }
 
       files.push(file);
@@ -608,7 +667,9 @@ function normalizeSearchQuery(query) {
 }
 
 function isHiddenSearchEntry(name) {
-  return name.endsWith('.tmp') || name.startsWith('.') || name === 'node_modules';
+  return (
+    name.endsWith('.tmp') || name.startsWith('.') || name === 'node_modules'
+  );
 }
 
 function searchResult(file, kind) {
@@ -639,6 +700,26 @@ function findSearchContentMatch(file, needle) {
   };
 }
 
+function findMetadataMatch(file, { field, value }) {
+  if (file.fileKind !== 'markdown') return null;
+  const values = Array.isArray(file.metadata[field])
+    ? file.metadata[field]
+    : [file.metadata[field]];
+  const match = values.find(
+    (item) =>
+      item != null &&
+      (field === 'tags'
+        ? String(item).toLowerCase() === value
+        : String(item).toLowerCase().includes(value))
+  );
+  return match === undefined
+    ? null
+    : {
+        field,
+        preview: `${field}: ${Array.isArray(file.metadata[field]) ? file.metadata[field].join(', ') : file.metadata[field]}`
+      };
+}
+
 async function resolvePath(root, filePath, { forWrite = false } = {}) {
   const normalized = normalizeWorkspacePath(filePath);
   const target = path.resolve(root, `.${normalized}`);
@@ -652,7 +733,8 @@ async function resolvePath(root, filePath, { forWrite = false } = {}) {
     try {
       real = await fs.realpath(target);
     } catch (error) {
-      if (error.code === 'ENOENT') throw new WorkspaceError(404, 'File not found.');
+      if (error.code === 'ENOENT')
+        throw new WorkspaceError(404, 'File not found.');
       throw error;
     }
     if (!isInside(root, real)) {
@@ -668,7 +750,8 @@ async function resolvePath(root, filePath, { forWrite = false } = {}) {
 
   try {
     const stat = await fs.lstat(target);
-    if (stat.isDirectory()) throw new WorkspaceError(400, 'Path points to a directory.');
+    if (stat.isDirectory())
+      throw new WorkspaceError(400, 'Path points to a directory.');
     if (stat.isSymbolicLink()) {
       const real = await fs.realpath(target);
       if (!isInside(root, real)) {
@@ -731,7 +814,9 @@ function assertMedia(filePath) {
 }
 
 function imageExtensionFor(name, mimeType) {
-  const mimeExtension = IMAGE_MIME_EXTENSIONS.get(String(mimeType || '').toLowerCase());
+  const mimeExtension = IMAGE_MIME_EXTENSIONS.get(
+    String(mimeType || '').toLowerCase()
+  );
   if (mimeExtension) return mimeExtension;
   const extension = path.extname(name || '').toLowerCase();
   if (IMAGE_EXTENSIONS.has(extension)) return extension;
@@ -784,7 +869,10 @@ function fileKindForPath(filePath) {
 
 function isInside(root, target) {
   const relative = path.relative(root, target);
-  return relative === '' || (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative));
+  return (
+    relative === '' ||
+    (!!relative && !relative.startsWith('..') && !path.isAbsolute(relative))
+  );
 }
 
 function sortEntries(a, b) {
