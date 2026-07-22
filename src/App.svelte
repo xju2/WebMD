@@ -668,6 +668,50 @@
     }
   }
 
+  async function createMarkdownNote() {
+    const entered = prompt('New note path', defaultNewNotePath());
+    if (entered === null) return;
+
+    const path = normalizeMarkdownPath(entered);
+    if (!path) {
+      error = 'Invalid note path.';
+      return;
+    }
+
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+
+    const root = selectedRoot;
+    const content = `# ${basename(path).replace(/\.(md|markdown)$/i, '')}\n\n`;
+    status = '[Syncing...]';
+    error = '';
+
+    try {
+      const loadUrl = `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`;
+      try {
+        await requestJson(loadUrl);
+        await openFile(path);
+        return;
+      } catch (err) {
+        if (err.status !== 404) throw err;
+      }
+
+      await requestJson('/api/workspace/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, path, content })
+      });
+      if (root !== selectedRoot) return;
+
+      await loadTree(root);
+      await openFile(path);
+    } catch (err) {
+      if (root === selectedRoot) {
+        error = err.message;
+        status = '[Saved]';
+      }
+    }
+  }
+
   function todayNotePath(date = new Date()) {
     return buildDailyNotePath(date, activeDailyNoteFolder);
   }
@@ -1658,6 +1702,20 @@
     );
   }
 
+  function defaultNewNotePath() {
+    const folder = selectedPath.slice(0, selectedPath.lastIndexOf('/')) || '/';
+    return joinWorkspacePath(folder, 'Untitled.md');
+  }
+
+  function normalizeMarkdownPath(path) {
+    const normalized = normalizeWorkspaceFilePath(path.trim());
+    return normalized
+      ? /\.(md|markdown)$/i.test(normalized)
+        ? normalized
+        : `${normalized}.md`
+      : '';
+  }
+
   function normalizeWorkspaceFilePath(path) {
     const parts = (path.startsWith('/') ? path : `/${path}`)
       .split('/')
@@ -2257,6 +2315,15 @@
       <span>Files</span>
       <div class="sidebar-title-actions">
         <span>{fileCount} files</span>
+        <button
+          aria-label="Create markdown note"
+          class="sync-button"
+          title="Create markdown note"
+          type="button"
+          on:click={createMarkdownNote}
+        >
+          New
+        </button>
         <button
           aria-label="Sync files"
           class="sync-button"
