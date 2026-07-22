@@ -32,6 +32,7 @@
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
+  const UPLOAD_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i;
   const DAILY_BRIEF_SECTION_TITLES = [
     'Focus',
     'Updates',
@@ -113,6 +114,7 @@
   let editorHost;
   let treeHost;
   let searchInput;
+  let uploadInput;
   let editorView;
   let saveTimer;
   let retryTimer;
@@ -752,11 +754,11 @@
 
   function handleEditorPaste(event) {
     if (!selectedPath || !selectedIsMarkdown) return false;
-    const files = dataTransferImageFiles(event.clipboardData);
+    const files = dataTransferUploadFiles(event.clipboardData);
     if (!files.length) return false;
 
     event.preventDefault();
-    pasteImageFiles(files, editorView.state.selection.main);
+    uploadFiles(files, editorView.state.selection.main);
     return true;
   }
 
@@ -764,7 +766,7 @@
     if (
       selectedPath &&
       selectedIsMarkdown &&
-      dataTransferImageFiles(event.dataTransfer).length
+      dataTransferUploadFiles(event.dataTransfer).length
     ) {
       event.preventDefault();
       return true;
@@ -774,32 +776,36 @@
 
   function handleEditorDrop(event, view) {
     if (!selectedPath || !selectedIsMarkdown) return false;
-    const files = dataTransferImageFiles(event.dataTransfer);
+    const files = dataTransferUploadFiles(event.dataTransfer);
     if (!files.length) return false;
 
     event.preventDefault();
     const position =
       view.posAtCoords({ x: event.clientX, y: event.clientY }) ??
       view.state.selection.main.head;
-    pasteImageFiles(files, { from: position, to: position });
+    uploadFiles(files, { from: position, to: position });
     return true;
   }
 
-  function dataTransferImageFiles(data) {
-    const files = [...(data?.files || [])].filter(isImageFile);
+  function dataTransferUploadFiles(data) {
+    const files = [...(data?.files || [])].filter(isUploadFile);
     if (files.length) return files;
 
     return [...(data?.items || [])]
-      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .filter((item) => item.kind === 'file')
       .map((item) => item.getAsFile())
-      .filter(isImageFile);
+      .filter(isUploadFile);
   }
 
-  function isImageFile(file) {
-    return file?.type?.startsWith('image/');
+  function isUploadFile(file) {
+    return (
+      file?.type?.startsWith('image/') ||
+      file?.type === 'application/pdf' ||
+      UPLOAD_EXTENSIONS.test(file?.name || '')
+    );
   }
 
-  async function pasteImageFiles(files, range) {
+  async function uploadFiles(files, range) {
     const root = selectedRoot;
     const path = selectedPath;
     status = '[Syncing...]';
@@ -808,7 +814,7 @@
     try {
       const embeds = [];
       for (const file of files) {
-        const result = await requestJson('/api/workspace/images', {
+        const result = await requestJson('/api/workspace/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -820,22 +826,28 @@
             data: await fileToBase64(file)
           })
         });
-        embeds.push(`![[${result.path.replace(/^\//, '')}]]`);
+        embeds.push(
+          `${result.fileKind === 'image' ? '!' : ''}[[${result.path.replace(/^\//, '')}]]`
+        );
       }
-      if (root !== selectedRoot || path !== selectedPath) return;
+      if (root !== selectedRoot) return;
 
-      insertImageEmbeds(embeds, range);
-      editorView.focus();
       await loadTree(root);
+      if (path && path === selectedPath && selectedIsMarkdown && range) {
+        insertUploadEmbeds(embeds, range);
+        editorView.focus();
+      } else if (embeds.length) {
+        await openFile(`/${embeds[0].replace(/^!?\[\[|\]\]$/g, '')}`);
+      }
     } catch (err) {
-      if (root === selectedRoot && path === selectedPath) {
+      if (root === selectedRoot) {
         error = err.message;
         status = hasUnsavedChanges() ? '[Offline - Retrying]' : '[Saved]';
       }
     }
   }
 
-  function insertImageEmbeds(embeds, range) {
+  function insertUploadEmbeds(embeds, range) {
     const insert = embeds.join('\n');
     const length = editorView.state.doc.length;
     const from = Math.max(0, Math.min(range.from, length));
@@ -854,6 +866,16 @@
       binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
     }
     return btoa(binary);
+  }
+
+  async function chooseUploadFiles(event) {
+    const files = [...(event.currentTarget.files || [])].filter(isUploadFile);
+    event.currentTarget.value = '';
+    if (!files.length) return;
+    await uploadFiles(
+      files,
+      selectedIsMarkdown ? editorView.state.selection.main : null
+    );
   }
 
   function resetCollaboration(version = 0) {
@@ -2490,6 +2512,22 @@
             </form>
           {/if}
         </div>
+        <input
+          bind:this={uploadInput}
+          class="hidden"
+          type="file"
+          accept="image/*,application/pdf,.pdf"
+          multiple
+          on:change={chooseUploadFiles}
+        />
+        <button
+          class="upload-button"
+          disabled={!workspaceRoots.length}
+          type="button"
+          on:click={() => uploadInput?.click()}
+        >
+          Upload
+        </button>
         <div class="view-toggle" aria-label="View mode">
           <button
             class:active={viewMode === 'edit' && selectedIsMarkdown}

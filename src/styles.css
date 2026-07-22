@@ -673,6 +673,7 @@ button {
   cursor: default;
 }
 
+.upload-button,
 .save-button {
   min-width: 68px;
   height: 34px;
@@ -685,6 +686,12 @@ button {
   font-weight: 700;
 }
 
+.upload-button {
+  background: #ffffff;
+  color: #174b82;
+}
+
+.upload-button:disabled,
 .save-button:disabled {
   border-color: #c9d0da;
   background: #eef1f5;
