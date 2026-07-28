@@ -232,9 +232,17 @@ test('saves uploaded media into the requested folder', async () => {
     mimeType: 'application/pdf',
     data: Buffer.from('pdf').toString('base64')
   });
+  const third = await workspace.saveMediaFile({
+    folder: 'assets',
+    notePath: '/2026-07-15.md',
+    name: 'clip',
+    mimeType: 'image/heic',
+    data: Buffer.from('heic').toString('base64')
+  });
 
   assert.equal(first.path, '/assets/2026-07-15-01.png');
   assert.equal(second.path, '/assets/2026-07-15-01.pdf');
+  assert.equal(third.path, '/assets/2026-07-15-01.heic');
   assert.equal(
     await fs.readFile(path.join(root, 'assets', '2026-07-15-01.png'), 'utf8'),
     'png'
@@ -242,6 +250,10 @@ test('saves uploaded media into the requested folder', async () => {
   assert.equal(
     await fs.readFile(path.join(root, 'assets', '2026-07-15-01.pdf'), 'utf8'),
     'pdf'
+  );
+  assert.equal(
+    await fs.readFile(path.join(root, 'assets', '2026-07-15-01.heic'), 'utf8'),
+    'heic'
   );
 });
 

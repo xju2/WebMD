@@ -12,6 +12,8 @@ const MAX_DOCUMENT_EVENTS = 1000;
 const IMAGE_EXTENSIONS = new Set([
   '.avif',
   '.gif',
+  '.heic',
+  '.heif',
   '.jpeg',
   '.jpg',
   '.png',
@@ -21,6 +23,8 @@ const IMAGE_EXTENSIONS = new Set([
 const IMAGE_MIME_EXTENSIONS = new Map([
   ['image/avif', '.avif'],
   ['image/gif', '.gif'],
+  ['image/heic', '.heic'],
+  ['image/heif', '.heif'],
   ['image/jpeg', '.jpg'],
   ['image/png', '.png'],
   ['image/svg+xml', '.svg'],

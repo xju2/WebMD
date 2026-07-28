@@ -31,8 +31,8 @@
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
-  const IMAGE_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
-  const UPLOAD_EXTENSIONS = /\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i;
+  const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
+  const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
   const DAILY_BRIEF_SECTION_TITLES = [
     'Focus',
     'Updates',
