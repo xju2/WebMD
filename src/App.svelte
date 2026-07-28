@@ -18,6 +18,7 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { layoutGraph } from './graph.js';
   import { renderMarkdown } from './markdown.js';
+  import { uploadPayloadForFile } from './uploads.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
@@ -858,6 +859,7 @@
     try {
       const embeds = [];
       for (const file of files) {
+        const upload = await uploadPayloadForFile(file);
         const result = await requestJson('/api/workspace/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -865,9 +867,9 @@
             root,
             folder: imageAssetFolder,
             notePath: path,
-            name: file.name,
-            mimeType: file.type,
-            data: await fileToBase64(file)
+            name: upload.name,
+            mimeType: upload.mimeType,
+            data: upload.data
           })
         });
         embeds.push(
@@ -901,15 +903,6 @@
       selection: { anchor: from + insert.length },
       effects: EditorView.scrollIntoView(from, { y: 'center' })
     });
-  }
-
-  async function fileToBase64(file) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let binary = '';
-    for (let index = 0; index < bytes.length; index += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-    }
-    return btoa(binary);
   }
 
   async function chooseUploadFiles(event) {
