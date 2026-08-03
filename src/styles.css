@@ -674,6 +674,7 @@ button {
 }
 
 .upload-button,
+.help-button,
 .save-button {
   min-width: 68px;
   height: 34px;
@@ -687,6 +688,12 @@ button {
 }
 
 .upload-button {
+  background: #ffffff;
+  color: #174b82;
+}
+
+.help-button {
+  min-width: 34px;
   background: #ffffff;
   color: #174b82;
 }
@@ -1556,6 +1563,93 @@ button {
 
 .preview-empty {
   color: #778296;
+}
+
+.markdown-help-layer {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.markdown-help-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(15 23 42 / 32%);
+  cursor: default;
+}
+
+.markdown-help {
+  position: relative;
+  z-index: 1;
+  width: min(520px, 100%);
+  max-height: min(680px, 100%);
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgb(21 32 51 / 24%);
+}
+
+.markdown-help header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #dfe6ee;
+}
+
+.markdown-help h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 1rem;
+}
+
+.markdown-help header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.markdown-help dl {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 16px;
+}
+
+.markdown-help dt {
+  margin-bottom: 6px;
+  color: #172033;
+  font-weight: 760;
+}
+
+.markdown-help dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.markdown-help code {
+  padding: 0.18em 0.45em;
+  border-radius: 5px;
+  background: #eef2f6;
+  color: #24324a;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 0.86rem;
 }
 
 .media-pane {

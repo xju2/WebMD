@@ -94,6 +94,7 @@
   let inlineEditPreview = null;
   let selectedRange = null;
   let viewMode = 'edit';
+  let markdownHelpOpen = false;
   let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
@@ -2623,6 +2624,15 @@
           </button>
         </div>
         <button
+          class="help-button"
+          title="Markdown help"
+          type="button"
+          aria-label="Open Markdown help"
+          on:click={() => (markdownHelpOpen = true)}
+        >
+          ?
+        </button>
+        <button
           class="save-button"
           disabled={!selectedPath ||
             !selectedIsMarkdown ||
@@ -2633,6 +2643,69 @@
         </button>
       </div>
     </header>
+
+    {#if markdownHelpOpen}
+      <div class="markdown-help-layer">
+        <button
+          aria-label="Close Markdown help"
+          class="markdown-help-backdrop"
+          type="button"
+          on:click={() => (markdownHelpOpen = false)}
+        ></button>
+        <dialog
+          aria-label="Markdown help"
+          class="markdown-help"
+          open
+        >
+          <header>
+            <h2>Markdown help</h2>
+            <button
+              aria-label="Close Markdown help"
+              title="Close"
+              type="button"
+              on:click={() => (markdownHelpOpen = false)}
+            >
+              x
+            </button>
+          </header>
+          <dl>
+            <div>
+              <dt>Callouts</dt>
+              <dd>
+                <code>&gt; [!note]</code>
+                <code>&gt; [!tldr]</code>
+                <code>&gt; [!deadline]</code>
+                <code>&gt; [!info]</code>
+                <code>&gt; [!warning]</code>
+                <code>&gt; [!error]</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Wiki links</dt>
+              <dd><code>[[Project note]]</code> <code>![[diagram.png]]</code></dd>
+            </div>
+            <div>
+              <dt>Tasks and tables</dt>
+              <dd><code>- [ ] Follow up</code> <code>| Name | Notes |</code></dd>
+            </div>
+            <div>
+              <dt>Math</dt>
+              <dd><code>$E = mc^2$</code></dd>
+            </div>
+            <div>
+              <dt>Frontmatter</dt>
+              <dd>
+                <code>title</code>
+                <code>description</code>
+                <code>resource</code>
+                <code>tags</code>
+                <code>timestamp</code>
+              </dd>
+            </div>
+          </dl>
+        </dialog>
+      </div>
+    {/if}
 
     {#if error}
       <div class="error-banner" role="alert">{error}</div>
