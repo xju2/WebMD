@@ -2685,8 +2685,12 @@
               <dd><code>[[Project note]]</code> <code>![[diagram.png]]</code></dd>
             </div>
             <div>
-              <dt>Tasks and tables</dt>
-              <dd><code>- [ ] Follow up</code> <code>| Name | Notes |</code></dd>
+              <dt>Task list</dt>
+              <dd><code>- [ ] Follow up</code> <code>- [x] Done</code></dd>
+            </div>
+            <div>
+              <dt>Table</dt>
+              <dd><code>| Name | Notes |</code> <code>| --- | --- |</code></dd>
             </div>
             <div>
               <dt>Math</dt>
