@@ -1,5 +1,15 @@
 const HEIC_EXTENSIONS = /\.(heic|heif)$/i;
 const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif']);
+const IMAGE_MIME_EXTENSIONS = new Map([
+  ['image/avif', '.avif'],
+  ['image/gif', '.gif'],
+  ['image/heic', '.heic'],
+  ['image/heif', '.heif'],
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/svg+xml', '.svg'],
+  ['image/webp', '.webp']
+]);
 
 export function isHeicUploadFile(file) {
   return (
@@ -32,10 +42,75 @@ export async function blobToBase64(blob) {
   return btoa(binary);
 }
 
+export function pastedImageSources(clipboardData) {
+  return pastedImageSourcesFromHtml(clipboardData?.getData?.('text/html'));
+}
+
+export function pastedImageSourcesFromHtml(
+  html,
+  baseHref = globalThis.location?.href
+) {
+  if (!html || typeof DOMParser !== 'function') return [];
+
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  return [...document.querySelectorAll('img[src]')]
+    .map((image) => image.getAttribute('src'))
+    .filter((source) => isSupportedPastedImageSource(source, baseHref));
+}
+
+export async function uploadFilesForPastedImageSources(
+  sources,
+  { fetchImpl = fetch, FileImpl = globalThis.File } = {}
+) {
+  const files = [];
+  for (const [index, source] of sources.entries()) {
+    const response = await fetchImpl(source);
+    if (!response.ok) throw new Error('Pasted image could not be loaded.');
+
+    const blob = await response.blob();
+    if (!blob.type?.startsWith('image/')) {
+      throw new Error('Pasted content is not an image.');
+    }
+
+    const name = pastedImageName(source, blob.type, index);
+    files.push(
+      typeof FileImpl === 'function'
+        ? new FileImpl([blob], name, { type: blob.type })
+        : Object.assign(blob, { name })
+    );
+  }
+  return files;
+}
+
 function jpegUploadName(name = '') {
   return HEIC_EXTENSIONS.test(name)
     ? name.replace(HEIC_EXTENSIONS, '.jpg')
     : name;
+}
+
+function isSupportedPastedImageSource(source, baseHref) {
+  if (!source) return false;
+  try {
+    const sourceUrl = new URL(source, baseHref);
+    if (sourceUrl.protocol === 'data:') return source.startsWith('data:image/');
+    if (sourceUrl.protocol === 'blob:') return true;
+
+    const baseUrl = new URL(baseHref);
+    return sourceUrl.origin === baseUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
+function pastedImageName(source, mimeType, index) {
+  const extension = IMAGE_MIME_EXTENSIONS.get(mimeType.toLowerCase()) || '.png';
+  try {
+    const name = decodeURIComponent(new URL(source).pathname.split('/').pop());
+    if (name) return name;
+  } catch {
+    // Data URLs and relative paths use the generated name below.
+  }
+  return `pasted-image-${index + 1}${extension}`;
 }
 
 async function convertHeicToJpegBlob(file) {

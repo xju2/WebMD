@@ -18,7 +18,11 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { layoutGraph } from './graph.js';
   import { renderMarkdown } from './markdown.js';
-  import { uploadPayloadForFile } from './uploads.js';
+  import {
+    pastedImageSources,
+    uploadFilesForPastedImageSources,
+    uploadPayloadForFile
+  } from './uploads.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
@@ -801,7 +805,14 @@
   function handleEditorPaste(event) {
     if (!selectedPath || !selectedIsMarkdown) return false;
     const files = dataTransferUploadFiles(event.clipboardData);
-    if (!files.length) return false;
+    if (!files.length) {
+      const sources = pastedImageSources(event.clipboardData);
+      if (!sources.length) return false;
+
+      event.preventDefault();
+      uploadPastedImageSources(sources, editorView.state.selection.main);
+      return true;
+    }
 
     event.preventDefault();
     uploadFiles(files, editorView.state.selection.main);
@@ -886,6 +897,22 @@
       } else if (embeds.length) {
         await openFile(`/${embeds[0].replace(/^!?\[\[|\]\]$/g, '')}`);
       }
+    } catch (err) {
+      if (root === selectedRoot) {
+        error = err.message;
+        status = hasUnsavedChanges() ? '[Offline - Retrying]' : '[Saved]';
+      }
+    }
+  }
+
+  async function uploadPastedImageSources(sources, range) {
+    const root = selectedRoot;
+    status = '[Syncing...]';
+    error = '';
+
+    try {
+      const files = await uploadFilesForPastedImageSources(sources);
+      if (root === selectedRoot) await uploadFiles(files, range);
     } catch (err) {
       if (root === selectedRoot) {
         error = err.message;
