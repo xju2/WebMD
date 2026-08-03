@@ -100,7 +100,11 @@ test('renders supported callout blockquotes', () => {
 > [!tldr]
 > Short version.
 
-> [!warning] Keep as quote
+> [!warning]
+> Check this.
+
+> [!error]
+> Broken.
 `);
 
   assert.equal(blocks[0].type, 'callout');
@@ -110,7 +114,12 @@ test('renders supported callout blockquotes', () => {
   assert.equal(blocks[1].type, 'callout');
   assert.equal(blocks[1].variant, 'tldr');
   assert.equal(blocks[1].title[0].text, 'TLDR');
-  assert.equal(blocks[2].type, 'quote');
+  assert.equal(blocks[2].type, 'callout');
+  assert.equal(blocks[2].variant, 'warning');
+  assert.equal(blocks[2].title[0].text, 'Warning');
+  assert.equal(blocks[3].type, 'callout');
+  assert.equal(blocks[3].variant, 'error');
+  assert.equal(blocks[3].title[0].text, 'Error');
 });
 
 test('renders markdown blocks inside callouts', () => {

@@ -1481,6 +1481,16 @@ button {
   background: #eef8ff;
 }
 
+.preview-pane .callout-warning {
+  border-left-color: #d97706;
+  background: #fffbeb;
+}
+
+.preview-pane .callout-error {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+
 .preview-pane pre {
   overflow: auto;
   padding: 14px 16px;

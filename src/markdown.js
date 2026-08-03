@@ -244,7 +244,7 @@ function parseListItem(line) {
 }
 
 function parseQuote(lines) {
-  const marker = lines[0]?.match(/^\[!(note|tldr|deadline|info)\]\s*(.*)$/i);
+  const marker = lines[0]?.match(/^\[!(note|tldr|deadline|info|warning|error)\]\s*(.*)$/i);
   if (!marker) return { type: 'quote', children: parseInline(lines.join(' ')) };
 
   const variant = marker[1].toLowerCase();
