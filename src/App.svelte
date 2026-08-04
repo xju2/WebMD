@@ -771,6 +771,8 @@
   ) {
     if (viewMode === 'calendar')
       setViewMode(readWorkspaceViewMode(root), { remember: false });
+    if (!nextContent.trim() && viewMode === 'preview')
+      setViewMode('edit', { remember: false });
     selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
