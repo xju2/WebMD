@@ -275,6 +275,15 @@
     return response.statusText || `HTTP ${response.status}`;
   }
 
+  async function copyCodeBlock(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      error = '';
+    } catch {
+      error = 'Could not copy code to the clipboard.';
+    }
+  }
+
   async function sendChat() {
     const prompt = chatPrompt.trim();
     if (!prompt || chatStreaming) return;
@@ -2164,7 +2173,15 @@
     {:else if block.type === 'rule'}
       <hr />
     {:else if block.type === 'code'}
-      <pre><code>{block.text}</code></pre>
+      <div class="code-block">
+        <button
+          aria-label="Copy code block"
+          title="Copy code"
+          type="button"
+          on:click={() => copyCodeBlock(block.text)}>Copy</button
+        >
+        <pre><code>{block.text}</code></pre>
+      </div>
     {:else if block.type === 'diff'}
       {#each block.files as file}
         {@render diffFile(file)}
