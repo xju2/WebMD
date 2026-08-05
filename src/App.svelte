@@ -2727,10 +2727,18 @@
               <dd>
                 <code>&gt; [!note]</code>
                 <code>&gt; [!tldr]</code>
+                <code>&gt; [!code]</code>
                 <code>&gt; [!deadline]</code>
                 <code>&gt; [!info]</code>
                 <code>&gt; [!warning]</code>
                 <code>&gt; [!error]</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Code block</dt>
+              <dd>
+                <code>```js</code> <code>console.log("ok")</code>
+                <code>```</code>
               </dd>
             </div>
             <div>

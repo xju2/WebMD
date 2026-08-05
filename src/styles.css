@@ -1499,13 +1499,31 @@ button {
   background: #fef2f2;
 }
 
+.preview-pane .callout-code {
+  border-color: #2f3b4e;
+  border-left-color: #14b8a6;
+  background: #111827;
+}
+
+.preview-pane .callout-code .callout-title,
+.preview-pane .callout-code .callout-body {
+  color: #e5edf6;
+}
+
+.preview-pane .callout-code code {
+  background: #253145;
+  color: #c7f9ee;
+}
+
 .preview-pane pre {
   overflow: auto;
   margin: 0;
   padding: 14px 16px;
-  border: 1px solid #e1e5eb;
+  border: 1px solid #263247;
   border-radius: 6px;
-  background: #f7f9fb;
+  background: #111827;
+  color: #e5edf6;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .preview-pane .code-block {
@@ -1531,10 +1549,10 @@ button {
   place-items: center;
   align-self: flex-start;
   padding: 0;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #435269;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.92);
-  color: #334155;
+  background: rgba(17, 24, 39, 0.82);
+  color: #e5edf6;
   cursor: pointer;
   font-size: 0.8rem;
   opacity: 0;
@@ -1557,8 +1575,8 @@ button {
 }
 
 .preview-pane .code-copy-zone button:hover {
-  border-color: #94a3b8;
-  background: #f8fafc;
+  border-color: #14b8a6;
+  background: #1f2937;
 }
 
 .preview-pane .diff-file {

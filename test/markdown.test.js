@@ -105,6 +105,9 @@ test('renders supported callout blockquotes', () => {
 
 > [!error]
 > Broken.
+
+> [!code]
+> \`wrap me\`
 `);
 
   assert.equal(blocks[0].type, 'callout');
@@ -120,6 +123,9 @@ test('renders supported callout blockquotes', () => {
   assert.equal(blocks[3].type, 'callout');
   assert.equal(blocks[3].variant, 'error');
   assert.equal(blocks[3].title[0].text, 'Error');
+  assert.equal(blocks[4].type, 'callout');
+  assert.equal(blocks[4].variant, 'code');
+  assert.equal(blocks[4].title[0].text, 'Code');
 });
 
 test('renders markdown blocks inside callouts', () => {
