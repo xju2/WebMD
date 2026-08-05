@@ -2174,12 +2174,14 @@
       <hr />
     {:else if block.type === 'code'}
       <div class="code-block">
-        <button
-          aria-label="Copy code block"
-          title="Copy code"
-          type="button"
-          on:click={() => copyCodeBlock(block.text)}>Copy</button
-        >
+        <span class="code-copy-zone">
+          <button
+            aria-label="Copy code block"
+            title="Copy code"
+            type="button"
+            on:click={() => copyCodeBlock(block.text)}>Copy</button
+          >
+        </span>
         <pre><code>{block.text}</code></pre>
       </div>
     {:else if block.type === 'diff'}
