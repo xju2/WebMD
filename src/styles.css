@@ -1642,6 +1642,37 @@ button {
   background: transparent;
 }
 
+.preview-pane .tok-keyword {
+  color: #7dd3fc;
+}
+
+.preview-pane .tok-string {
+  color: #a7f3d0;
+}
+
+.preview-pane .tok-number,
+.preview-pane .tok-constant {
+  color: #fca5a5;
+}
+
+.preview-pane .tok-comment {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.preview-pane .tok-function {
+  color: #fde68a;
+}
+
+.preview-pane .tok-type {
+  color: #c4b5fd;
+}
+
+.preview-pane .tok-operator,
+.preview-pane .tok-punctuation {
+  color: #cbd5e1;
+}
+
 .preview-pane hr {
   border: 0;
   border-top: 1px solid #e1e5eb;

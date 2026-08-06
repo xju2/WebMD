@@ -17,6 +17,7 @@
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { layoutGraph } from './graph.js';
+  import { highlightCodeBlock } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
   import {
     pastedImageSources,
@@ -2198,7 +2199,7 @@
             <span class="code-copy-message">Copied to clipboard</span>
           {/if}
         </span>
-        <pre><code>{block.text}</code></pre>
+        <pre><code>{@html highlightCodeBlock(block.lang, block.text)}</code></pre>
       </div>
     {:else if block.type === 'diff'}
       {#each block.files as file}
