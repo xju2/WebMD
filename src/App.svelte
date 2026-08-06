@@ -2813,6 +2813,7 @@
                 <code>&gt; [!code]</code>
                 <code>&gt; [!deadline]</code>
                 <code>&gt; [!info]</code>
+                <code>&gt; [!idea]</code>
                 <code>&gt; [!warning]</code>
                 <code>&gt; [!error]</code>
               </dd>

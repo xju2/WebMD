@@ -245,7 +245,7 @@ function parseListItem(line) {
 
 function parseQuote(lines) {
   const marker = lines[0]?.match(
-    /^\[!(note|tldr|deadline|info|warning|error|code)\]\s*(.*)$/i
+    /^\[!(note|tldr|deadline|info|idea|warning|error|code)\]\s*(.*)$/i
   );
   if (!marker) return { type: 'quote', children: parseInline(lines.join(' ')) };
 
