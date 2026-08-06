@@ -139,6 +139,8 @@
   let sendPromise = Promise.resolve();
   let sendRun = 0;
   let updateSequence = 0;
+  let copiedCode = null;
+  let copiedCodeTimer;
 
   $: workspaceTree = cleanTree(tree);
   $: workspaceFiles = collectFiles(workspaceTree);
@@ -216,6 +218,7 @@
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
     clearTimeout(searchTimer);
+    clearTimeout(copiedCodeTimer);
   });
 
   function createEditor(doc) {
@@ -275,9 +278,12 @@
     return response.statusText || `HTTP ${response.status}`;
   }
 
-  async function copyCodeBlock(text) {
+  async function copyCodeBlock(block) {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(block.text);
+      copiedCode = block;
+      clearTimeout(copiedCodeTimer);
+      copiedCodeTimer = setTimeout(() => (copiedCode = null), 1400);
       error = '';
     } catch {
       error = 'Could not copy code to the clipboard.';
@@ -2176,15 +2182,21 @@
       <div class="code-block">
         <span class="code-copy-zone">
           <button
-            aria-label="Copy code block"
-            title="Copy code"
+            aria-label={copiedCode === block
+              ? 'Code copied to clipboard'
+              : 'Copy code block'}
+            title={copiedCode === block ? 'Copied to clipboard' : 'Copy code'}
             type="button"
-            on:click={() => copyCodeBlock(block.text)}
+            on:click={() => copyCodeBlock(block)}
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <rect x="8" y="7" width="10" height="13" rx="2" />
-              <path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-            </svg>
+            {#if copiedCode === block}
+              <span>Copied to clipboard</span>
+            {:else}
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="8" y="7" width="10" height="13" rx="2" />
+                <path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+              </svg>
+            {/if}
           </button>
         </span>
         <pre><code>{block.text}</code></pre>

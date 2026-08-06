@@ -1544,7 +1544,7 @@ button {
 
 .preview-pane .code-copy-zone button {
   display: grid;
-  width: 28px;
+  min-width: 28px;
   height: 28px;
   place-items: center;
   align-self: flex-start;
@@ -1557,6 +1557,11 @@ button {
   font-size: 0.8rem;
   opacity: 0;
   transition: opacity 120ms ease;
+}
+
+.preview-pane .code-copy-zone span {
+  padding: 0 7px;
+  font-size: 0.76rem;
 }
 
 .preview-pane .code-copy-zone svg {
