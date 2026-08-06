@@ -16,6 +16,7 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
+  import { quotedBlockPaste } from './editor.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
@@ -820,12 +821,20 @@
     updateSelectedText(editorView.state);
   }
 
-  function handleEditorPaste(event) {
+  function handleEditorPaste(event, view) {
     if (!selectedPath || !selectedIsMarkdown) return false;
     const files = dataTransferUploadFiles(event.clipboardData);
     if (!files.length) {
       const sources = pastedImageSources(event.clipboardData);
-      if (!sources.length) return false;
+      if (!sources.length) {
+        const text = event.clipboardData?.getData('text/plain') || '';
+        const insert = quotedPasteText(view.state, text);
+        if (insert === null) return false;
+
+        event.preventDefault();
+        insertText(view, insert);
+        return true;
+      }
 
       event.preventDefault();
       uploadPastedImageSources(sources, editorView.state.selection.main);
@@ -835,6 +844,25 @@
     event.preventDefault();
     uploadFiles(files, editorView.state.selection.main);
     return true;
+  }
+
+  function quotedPasteText(state, text) {
+    const selection = state.selection.main;
+    const line = state.doc.lineAt(selection.from);
+    const beforeCursor = line.text.slice(0, selection.from - line.from);
+    const previousLine =
+      !beforeCursor.trim() && line.number > 1
+        ? state.doc.line(line.number - 1).text
+        : '';
+    return quotedBlockPaste(text, { beforeCursor, previousLine });
+  }
+
+  function insertText(view, insert) {
+    const selection = view.state.selection.main;
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length }
+    });
   }
 
   function handleEditorDragOver(event) {
