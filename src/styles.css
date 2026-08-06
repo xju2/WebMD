@@ -1640,6 +1640,8 @@ button {
 
 .preview-pane pre code {
   background: transparent;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .preview-pane .tok-keyword {
