@@ -2189,15 +2189,14 @@
             type="button"
             on:click={() => copyCodeBlock(block)}
           >
-            {#if copiedCode === block}
-              <span>Copied to clipboard</span>
-            {:else}
-              <svg aria-hidden="true" viewBox="0 0 24 24">
-                <rect x="8" y="7" width="10" height="13" rx="2" />
-                <path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
-              </svg>
-            {/if}
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <rect x="8" y="7" width="10" height="13" rx="2" />
+              <path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+            </svg>
           </button>
+          {#if copiedCode === block}
+            <span class="code-copy-message">Copied to clipboard</span>
+          {/if}
         </span>
         <pre><code>{block.text}</code></pre>
       </div>
