@@ -8,6 +8,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import {
     calendarDays as buildCalendarDays,
+    dailyNoteContent as buildDailyNoteContent,
     dailyNotePath as buildDailyNotePath,
     shiftMonth
   } from './calendar.js';
@@ -34,6 +35,7 @@
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
+  const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
@@ -106,6 +108,7 @@
   let sidebarVisible = true;
   let sidebarView = 'files';
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
+  let dailyNoteTemplatePath = '';
   let dailyNoteFolderStored = false;
   let imageAssetFolder = '/assets';
   let imageAssetFolderDraft = '';
@@ -160,6 +163,9 @@
   $: dailyNoteFolderOptions = dailyNoteFolderMissing
     ? [dailyNoteFolder, ...dailyNoteFolders]
     : dailyNoteFolders;
+  $: dailyNoteTemplateMissing =
+    dailyNoteTemplatePath &&
+    !markdownFiles.some((file) => file.path === dailyNoteTemplatePath);
   $: imageAssetFolderOptions = imageAssetFolders.includes(imageAssetFolder)
     ? imageAssetFolders
     : [imageAssetFolder, ...imageAssetFolders];
@@ -482,6 +488,7 @@
       viewMode = readWorkspaceViewMode(selectedRoot);
       ({ folder: dailyNoteFolder, stored: dailyNoteFolderStored } =
         readDailyNoteFolder());
+      dailyNoteTemplatePath = readDailyNoteTemplatePath();
       imageAssetFolder = readImageAssetFolder();
       recentPaths = readRecentFiles(selectedRoot);
       await loadTree(selectedRoot);
@@ -663,7 +670,11 @@
         return;
       }
 
-      const nextContent = `# ${path.split('/').pop().replace(/\.md$/i, '')}\n\n`;
+      const nextContent = buildDailyNoteContent(
+        date,
+        path,
+        await loadDailyNoteTemplate(root)
+      );
       try {
         await requestJson('/api/workspace/save', {
           method: 'POST',
@@ -737,6 +748,20 @@
 
   function todayNotePath(date = new Date()) {
     return buildDailyNotePath(date, activeDailyNoteFolder);
+  }
+
+  async function loadDailyNoteTemplate(root) {
+    if (!dailyNoteTemplatePath) return '';
+
+    try {
+      return (
+        await requestJson(
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(dailyNoteTemplatePath)}`
+        )
+      ).content;
+    } catch {
+      return '';
+    }
   }
 
   async function showCalendar() {
@@ -1876,6 +1901,15 @@
     }
   }
 
+  function chooseDailyNoteTemplate(templatePath) {
+    dailyNoteTemplatePath = templatePath;
+    try {
+      localStorage.setItem(DAILY_NOTE_TEMPLATE_KEY, templatePath);
+    } catch {
+      // Ignore storage failures; the selected template still works this session.
+    }
+  }
+
   function chooseImageAssetFolder(folder) {
     if (folder === NEW_IMAGE_ASSET_FOLDER) {
       creatingImageAssetFolder = true;
@@ -1937,6 +1971,15 @@
       };
     } catch {
       return { folder: DEFAULT_DAILY_NOTE_FOLDER, stored: false };
+    }
+  }
+
+  function readDailyNoteTemplatePath() {
+    try {
+      const templatePath = localStorage.getItem(DAILY_NOTE_TEMPLATE_KEY) || '';
+      return templatePath ? normalizeMarkdownPath(templatePath) : '';
+    } catch {
+      return '';
     }
   }
 
@@ -2978,6 +3021,25 @@
                         ? ' (missing here)'
                         : ''}
                     </option>
+                  {/each}
+                </select>
+              </label>
+              <label>
+                Template
+                <select
+                  aria-label="Daily note template"
+                  value={dailyNoteTemplatePath}
+                  on:change={(event) =>
+                    chooseDailyNoteTemplate(event.currentTarget.value)}
+                >
+                  <option value="">None</option>
+                  {#if dailyNoteTemplateMissing}
+                    <option value={dailyNoteTemplatePath} disabled>
+                      {dailyNoteTemplatePath} (missing)
+                    </option>
+                  {/if}
+                  {#each markdownFiles as file}
+                    <option value={file.path}>{file.path}</option>
                   {/each}
                 </select>
               </label>

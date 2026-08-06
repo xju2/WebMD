@@ -19,10 +19,28 @@ export function shiftMonth(month, amount) {
 }
 
 export function dailyNotePath(date, folder = '/') {
+  const dateText = dailyNoteDate(date);
+  return `${folder === '/' ? '' : folder}/${dateText}.md`;
+}
+
+export function dailyNoteDate(date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  return `${folder === '/' ? '' : folder}/${year}-${month}-${day}.md`;
+  return `${year}-${month}-${day}`;
+}
+
+export function dailyNoteContent(date, filePath, template = '') {
+  const title = filePath.split('/').pop().replace(/\.md$/i, '');
+  if (!template) return `# ${title}\n\n`;
+
+  return template
+    .replaceAll('{{date}}', dailyNoteDate(date))
+    .replaceAll('{{title}}', title)
+    .replaceAll(
+      '{{weekday}}',
+      date.toLocaleDateString([], { weekday: 'long' })
+    );
 }
 
 export function sameDay(left, right) {

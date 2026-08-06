@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calendarDays, shiftMonth } from '../src/calendar.js';
+import {
+  calendarDays,
+  dailyNoteContent,
+  shiftMonth
+} from '../src/calendar.js';
 
 test('builds a Monday-first six-week calendar', () => {
   const days = calendarDays(new Date(2026, 6, 1));
@@ -11,4 +15,19 @@ test('builds a Monday-first six-week calendar', () => {
   assert.equal(days[2].currentMonth, true);
   assert.equal(days[33].date.toISOString().slice(0, 10), '2026-08-01');
   assert.equal(shiftMonth(new Date(2026, 0, 1), -1).toISOString().slice(0, 10), '2025-12-01');
+});
+
+test('builds daily note content from a template', () => {
+  assert.equal(
+    dailyNoteContent(new Date(2026, 7, 6), '/raw/dailynotes/2026-08-06.md'),
+    '# 2026-08-06\n\n'
+  );
+  assert.equal(
+    dailyNoteContent(
+      new Date(2026, 7, 6),
+      '/raw/dailynotes/2026-08-06.md',
+      '# {{title}}\n\n{{weekday}} {{date}}\n'
+    ),
+    '# 2026-08-06\n\nThursday 2026-08-06\n'
+  );
 });
