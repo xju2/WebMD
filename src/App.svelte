@@ -1023,6 +1023,12 @@
 
     const root = selectedRoot;
     const path = selectedPath;
+    const fallbackPath = [...navigationBackStack]
+      .reverse()
+      .find(
+        (item) =>
+          item.root === root && item.path !== path && findFileNode(tree, item.path)
+      )?.path;
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
     retryTimer = null;
@@ -1043,7 +1049,7 @@
       recentPaths = recentPaths.filter((item) => item !== path);
       searchResults = searchResults.filter((item) => item.path !== path);
       navigationBackStack = navigationBackStack.filter(
-        (item) => item.path !== path
+        (item) => item.path !== path && item.path !== fallbackPath
       );
       navigationForwardStack = navigationForwardStack.filter(
         (item) => item.path !== path
@@ -1076,6 +1082,13 @@
       await loadTree(root);
       await loadOverview(root);
       await loadDailyBrief(root);
+      if (fallbackPath && findFileNode(tree, fallbackPath)) {
+        await openFile(fallbackPath, {
+          historyMode: 'replace',
+          rememberNavigation: false
+        });
+        return;
+      }
       status = '[Saved]';
     } catch (err) {
       if (root === selectedRoot && path === selectedPath) {
