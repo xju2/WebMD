@@ -514,9 +514,13 @@ async function deleteFile(root, documents, filePath) {
     throw new WorkspaceError(400, 'Path points to a directory.');
   }
 
-  await fs.rm(target);
-  documents.delete(normalized);
-  return { success: true, path: normalized };
+  const remove = async () => {
+    await fs.rm(target);
+    documents.delete(normalized);
+    return { success: true, path: normalized };
+  };
+  const document = documents.get(normalized);
+  return document ? enqueueDocumentWrite(document, remove) : remove();
 }
 
 async function applyDocumentUpdates(

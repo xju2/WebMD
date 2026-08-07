@@ -1024,6 +1024,9 @@
     const root = selectedRoot;
     const path = selectedPath;
     clearTimeout(saveTimer);
+    clearTimeout(retryTimer);
+    retryTimer = null;
+    sessionStorage.removeItem(storageKey(root, path));
     stopCollaboration();
     status = '[Syncing...]';
     error = '';
@@ -1036,9 +1039,16 @@
       });
       if (root !== selectedRoot || path !== selectedPath) return;
 
-      sessionStorage.removeItem(storageKey(root, path));
       fileCache.delete(rootPathKey(root, path));
       recentPaths = recentPaths.filter((item) => item !== path);
+      searchResults = searchResults.filter((item) => item.path !== path);
+      navigationBackStack = navigationBackStack.filter(
+        (item) => item.path !== path
+      );
+      navigationForwardStack = navigationForwardStack.filter(
+        (item) => item.path !== path
+      );
+      tree = removePathFromTree(tree, path);
       try {
         localStorage.setItem(
           recentFilesStorageKey(root),
@@ -1922,6 +1932,16 @@
 
       const children = cleanTree(node.children || []);
       return children.length ? [{ ...node, children }] : [];
+    });
+  }
+
+  function removePathFromTree(nodes, path) {
+    return nodes.flatMap((node) => {
+      if (node.path === path) return [];
+      if (node.type !== 'directory') return [node];
+      return [
+        { ...node, children: removePathFromTree(node.children || [], path) }
+      ];
     });
   }
 

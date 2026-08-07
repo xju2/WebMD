@@ -324,6 +324,27 @@ test('deletes supported workspace files', async () => {
   );
 });
 
+test('does not recreate a loaded document after deleting it', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old\n');
+
+  const workspace = await createWorkspace(root);
+  await workspace.loadFile('/note.md');
+  await workspace.deleteFile('/note.md');
+
+  await assert.rejects(
+    () =>
+      workspace.applyUpdates('/note.md', 0, [
+        updateFor('old\n', { from: 0, to: 3, insert: 'new' })
+      ]),
+    (error) => error.status === 404
+  );
+  await assert.rejects(
+    () => fs.readFile(path.join(root, 'note.md'), 'utf8'),
+    /ENOENT/
+  );
+});
+
 test('creates missing folders when saving markdown', async () => {
   const root = await tempRoot();
   const workspace = await createWorkspace(root);
