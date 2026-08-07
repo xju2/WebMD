@@ -5,3 +5,4 @@
 - Stage only task-related files. If unrelated dirty files already exist, leave them unstaged and mention them.
 - Use a concise commit message that describes the user-visible change.
 - Do not commit generated build output, secrets, local logs, or temporary files unless the user explicitly asks.
+- Tell the user if the server needs to be restarted for changes to take effect.
