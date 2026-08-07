@@ -100,6 +100,10 @@ export async function createApp({
     res.json(await workspaces.get(req.body.root).saveMediaFile(req.body));
   }));
 
+  app.delete('/api/workspace/files', asyncHandler(async (req, res) => {
+    res.json(await workspaces.get(req.body.root).deleteFile(req.body.path));
+  }));
+
   app.post('/api/workspace/updates', asyncHandler(async (req, res) => {
     res.json(
       await workspaces

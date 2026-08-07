@@ -300,6 +300,30 @@ test('saves markdown atomically without leaving temp files', async () => {
   );
 });
 
+test('deletes supported workspace files', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old phrase\n');
+  await fs.writeFile(path.join(root, 'image.png'), 'png');
+
+  const workspace = await createWorkspace(root);
+  assert.equal((await workspace.searchFiles('old'))[0].path, '/note.md');
+
+  assert.deepEqual(await workspace.deleteFile('/note.md'), {
+    success: true,
+    path: '/note.md'
+  });
+  assert.deepEqual(await workspace.searchFiles('old'), []);
+  await assert.rejects(
+    () => fs.readFile(path.join(root, 'note.md'), 'utf8'),
+    /ENOENT/
+  );
+  await workspace.deleteFile('/image.png');
+  await assert.rejects(
+    () => workspace.deleteFile('/'),
+    /File path is required/
+  );
+});
+
 test('creates missing folders when saving markdown', async () => {
   const root = await tempRoot();
   const workspace = await createWorkspace(root);

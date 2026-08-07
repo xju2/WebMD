@@ -675,6 +675,7 @@ button {
 
 .upload-button,
 .help-button,
+.delete-button,
 .save-button {
   min-width: 68px;
   height: 34px;
@@ -698,7 +699,14 @@ button {
   color: #174b82;
 }
 
+.delete-button {
+  border-color: #d3a1a1;
+  background: #ffffff;
+  color: #9f2525;
+}
+
 .upload-button:disabled,
+.delete-button:disabled,
 .save-button:disabled {
   border-color: #c9d0da;
   background: #eef1f5;

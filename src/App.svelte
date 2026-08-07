@@ -1014,6 +1014,67 @@
     );
   }
 
+  async function deleteSelectedFile() {
+    if (
+      !selectedPath ||
+      !confirm(`Delete ${selectedPath}? This cannot be undone.`)
+    )
+      return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+    clearTimeout(saveTimer);
+    stopCollaboration();
+    status = '[Syncing...]';
+    error = '';
+
+    try {
+      await requestJson('/api/workspace/files', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, path })
+      });
+      if (root !== selectedRoot || path !== selectedPath) return;
+
+      sessionStorage.removeItem(storageKey(root, path));
+      fileCache.delete(rootPathKey(root, path));
+      recentPaths = recentPaths.filter((item) => item !== path);
+      try {
+        localStorage.setItem(
+          recentFilesStorageKey(root),
+          JSON.stringify(recentPaths)
+        );
+      } catch {
+        // Ignore storage failures; the visible list is already updated.
+      }
+      selectedPath = '';
+      selectedFileKind = 'markdown';
+      content = '';
+      lastSaved = '';
+      selectedText = '';
+      selectedRange = null;
+      viewMode = 'edit';
+      diffFiles = [];
+      diffStatus = '';
+      clearInlineEdit();
+      setEditorContent('');
+      history.replaceState(
+        { root: selectedRoot },
+        '',
+        location.pathname + location.search
+      );
+      await loadTree(root);
+      await loadOverview(root);
+      await loadDailyBrief(root);
+      status = '[Saved]';
+    } catch (err) {
+      if (root === selectedRoot && path === selectedPath) {
+        error = err.message;
+        status = '[Saved]';
+      }
+    }
+  }
+
   function resetCollaboration(version = 0) {
     documentVersion = Number(version) || 0;
     pendingUpdates = [];
@@ -2724,6 +2785,14 @@
           on:click={() => uploadInput?.click()}
         >
           Upload
+        </button>
+        <button
+          class="delete-button"
+          disabled={!selectedPath}
+          type="button"
+          on:click={deleteSelectedFile}
+        >
+          Delete
         </button>
         <div class="view-toggle" aria-label="View mode">
           <button

@@ -164,6 +164,34 @@ test('creates folders through the workspace API', async () => {
   }
 });
 
+test('deletes files through the workspace API', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'delete me\n');
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/workspace/files`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      success: true,
+      path: '/note.md'
+    });
+    await assert.rejects(
+      () => fs.readFile(path.join(root, 'note.md'), 'utf8'),
+      /ENOENT/
+    );
+  } finally {
+    server.close();
+  }
+});
+
 test('streams AI chat through the selected workspace document', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nContext line\n');

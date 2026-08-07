@@ -81,6 +81,12 @@ export async function createWorkspace(workspaceRoot) {
       graphIndex = null;
       return result;
     },
+    deleteFile: async (filePath) => {
+      const result = await deleteFile(root, documents, filePath);
+      searchIndex = null;
+      graphIndex = null;
+      return result;
+    },
     applyUpdates: async (filePath, version, updates) => {
       const result = await applyDocumentUpdates(
         root,
@@ -477,6 +483,40 @@ async function saveFile(root, filePath, content) {
   }
 
   return { success: true, timestamp: new Date().toISOString() };
+}
+
+async function deleteFile(root, documents, filePath) {
+  const normalized = normalizeWorkspacePath(filePath);
+  if (!fileKindForPath(normalized)) {
+    throw new WorkspaceError(
+      400,
+      'Only Markdown, image, and PDF files are supported.'
+    );
+  }
+
+  const target = path.resolve(root, `.${normalized}`);
+  if (!isInside(root, target)) {
+    throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+  }
+
+  let real;
+  try {
+    real = await fs.realpath(target);
+  } catch (error) {
+    if (error.code === 'ENOENT')
+      throw new WorkspaceError(404, 'File not found.');
+    throw error;
+  }
+  if (!isInside(root, real)) {
+    throw new WorkspaceError(403, 'Path resolves outside WORKSPACE_ROOT.');
+  }
+  if (!(await fs.stat(real)).isFile()) {
+    throw new WorkspaceError(400, 'Path points to a directory.');
+  }
+
+  await fs.rm(target);
+  documents.delete(normalized);
+  return { success: true, path: normalized };
 }
 
 async function applyDocumentUpdates(
