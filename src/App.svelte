@@ -87,6 +87,7 @@
   let chatStatus = '';
   let chatStreaming = false;
   let chatAbort;
+  let chatScrollHost;
   let inlineEditStatus = '';
   let inlineEditLoading = false;
   let inlineEditPreview = null;
@@ -367,6 +368,13 @@
     };
     chatMessages = next;
   }
+
+  async function scrollChatToBottom() {
+    await tick();
+    if (chatScrollHost) chatScrollHost.scrollTop = chatScrollHost.scrollHeight;
+  }
+
+  $: if (chatScrollHost && chatMessages) scrollChatToBottom();
 
   function clearInlineEdit() {
     inlineEditPreview = null;
@@ -1022,7 +1030,9 @@
       .reverse()
       .find(
         (item) =>
-          item.root === root && item.path !== path && findFileNode(tree, item.path)
+          item.root === root &&
+          item.path !== path &&
+          findFileNode(tree, item.path)
       )?.path;
     clearTimeout(saveTimer);
     clearTimeout(retryTimer);
@@ -2291,14 +2301,17 @@
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <rect x="8" y="7" width="10" height="13" rx="2" />
-              <path d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+              <path
+                d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+              />
             </svg>
           </button>
           {#if copiedCode === block}
             <span class="code-copy-message">Copied to clipboard</span>
           {/if}
         </span>
-        <pre><code>{@html highlightCodeBlock(block.lang, block.text)}</code></pre>
+        <pre><code>{@html highlightCodeBlock(block.lang, block.text)}</code
+          ></pre>
       </div>
     {:else if block.type === 'diff'}
       {#each block.files as file}
@@ -2623,12 +2636,20 @@
       <div class="sidebar-title ai-title">
         <span>AI chat</span>
       </div>
-      <div class="ai-messages" aria-live="polite">
+      <div class="ai-messages" aria-live="polite" bind:this={chatScrollHost}>
         {#if chatMessages.length}
           {#each chatMessages as message}
             <article class={`ai-message ai-message-${message.role}`}>
               <strong>{message.role === 'user' ? 'You' : 'AI'}</strong>
-              <p>{message.text || (chatStreaming ? '...' : '')}</p>
+              <div class="ai-bubble">
+                {#if !message.text && chatStreaming}
+                  <span aria-hidden="true" class="ai-typing"
+                    ><span></span><span></span><span></span></span
+                  >
+                {:else}
+                  <p>{message.text}</p>
+                {/if}
+              </div>
             </article>
           {/each}
         {:else}
@@ -2645,25 +2666,39 @@
             : 'Ask about this note'}
           rows="2"
         ></textarea>
-        <button
-          disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
-          type="submit"
-        >
-          {chatStreaming ? '...' : 'Ask'}
-        </button>
-        <button
-          disabled={!chatPrompt.trim() ||
-            chatStreaming ||
-            inlineEditLoading ||
-            !canInlineEdit}
-          title={canInlineEdit
-            ? 'Preview edit for selected text'
-            : 'Select text in the editor'}
-          type="button"
-          on:click={requestInlineEdit}
-        >
-          {inlineEditLoading ? '...' : 'Edit'}
-        </button>
+        <div class="ai-form-actions">
+          <button
+            aria-label="Preview edit for selected text"
+            class="ai-icon-button"
+            disabled={!chatPrompt.trim() ||
+              chatStreaming ||
+              inlineEditLoading ||
+              !canInlineEdit}
+            title={canInlineEdit
+              ? 'Preview edit for selected text'
+              : 'Select text in the editor'}
+            type="button"
+            on:click={requestInlineEdit}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path
+                d="M4 20.5 4.8 16.2 15.8 5.2a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5L8.8 19.7z"
+              />
+              <path d="m14 7 3 3" />
+            </svg>
+          </button>
+          <button
+            aria-label="Send"
+            class="ai-send-button"
+            disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
+            title="Send"
+            type="submit"
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M4 12 20 4l-6 16-3-7-7-1z" />
+            </svg>
+          </button>
+        </div>
       </form>
       {#if chatStatus || inlineEditStatus}
         <p class="ai-status">{chatStatus || inlineEditStatus}</p>
@@ -2828,11 +2863,7 @@
           type="button"
           on:click={() => (markdownHelpOpen = false)}
         ></button>
-        <dialog
-          aria-label="Markdown help"
-          class="markdown-help"
-          open
-        >
+        <dialog aria-label="Markdown help" class="markdown-help" open>
           <header>
             <h2>Markdown help</h2>
             <button
@@ -2867,7 +2898,9 @@
             </div>
             <div>
               <dt>Wiki links</dt>
-              <dd><code>[[Project note]]</code> <code>![[diagram.png]]</code></dd>
+              <dd>
+                <code>[[Project note]]</code> <code>![[diagram.png]]</code>
+              </dd>
             </div>
             <div>
               <dt>Task list</dt>
