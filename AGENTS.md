@@ -6,3 +6,4 @@
 - Use a concise commit message that describes the user-visible change.
 - Do not commit generated build output, secrets, local logs, or temporary files unless the user explicitly asks.
 - Tell the user if the server needs to be restarted for changes to take effect.
+- No need to use worktree, since you are the only developer. You can commit directly to the main branch.
