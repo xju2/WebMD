@@ -3,10 +3,18 @@ import { parseFrontmatter } from './frontmatter.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
-export function renderMarkdown(source = '') {
-  const lines = parseFrontmatter(source).body.split('\n');
+export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
+  const { attributes, body } = parseFrontmatter(source);
+  const lines = body.split('\n');
   const blocks = [];
   let index = 0;
+
+  const fields = Object.entries(attributes).map(([key, value]) => ({
+    key,
+    list: Array.isArray(value),
+    values: (Array.isArray(value) ? value : [value]).map(parseInline)
+  }));
+  if (fields.length) blocks.push({ type: 'frontmatter', fields });
 
   while (index < lines.length) {
     const line = lines[index];
@@ -51,7 +59,7 @@ export function renderMarkdown(source = '') {
         quote.push(lines[index].replace(/^>\s?/, ''));
         index += 1;
       }
-      blocks.push(parseQuote(quote));
+      blocks.push(parseQuote(quote, taskCounter));
       continue;
     }
 
@@ -63,7 +71,7 @@ export function renderMarkdown(source = '') {
         index += 1;
       }
       if (index < lines.length) index += 1;
-      blocks.push(parseDetails(details));
+      blocks.push(parseDetails(details, taskCounter));
       continue;
     }
 
@@ -81,6 +89,7 @@ export function renderMarkdown(source = '') {
       while (index < lines.length) {
         const item = parseListItem(lines[index]);
         if (!item || item.ordered !== ordered) break;
+        if (item.task) item.taskIndex = taskCounter.value++;
         items.push(item);
         index += 1;
       }
@@ -255,7 +264,7 @@ function parseListItem(line) {
   };
 }
 
-function parseQuote(lines) {
+function parseQuote(lines, taskCounter) {
   const marker = lines[0]?.match(
     /^\[!(note|tldr|deadline|info|idea|warning|error|code)\]\s*(.*)$/i
   );
@@ -267,16 +276,19 @@ function parseQuote(lines) {
     type: 'callout',
     variant,
     title: parseInline(title),
-    children: renderMarkdown(lines.slice(1).join('\n'))
+    children: renderMarkdown(lines.slice(1).join('\n'), taskCounter)
   };
 }
 
-function parseDetails(lines) {
+function parseDetails(lines, taskCounter) {
   const summary = lines[0]?.trim().match(/^<summary>(.*)<\/summary>\s*$/i);
   return {
     type: 'details',
     summary: parseInline(summary ? summary[1].trim() || 'Details' : 'Details'),
-    children: renderMarkdown((summary ? lines.slice(1) : lines).join('\n'))
+    children: renderMarkdown(
+      (summary ? lines.slice(1) : lines).join('\n'),
+      taskCounter
+    )
   };
 }
 

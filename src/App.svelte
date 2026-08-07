@@ -42,13 +42,6 @@
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
-  const DAILY_BRIEF_SECTION_TITLES = [
-    'Focus',
-    'Updates',
-    'Follow-ups',
-    'Recommendations',
-    'Sources'
-  ];
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   function renderMath(source) {
@@ -81,9 +74,6 @@
     changes: []
   };
   let overviewStatus = 'Loading workspace...';
-  let dailyBrief = { path: '/raw/dailybrief/latest.md', content: '' };
-  let dailyBriefStatus = '';
-  let dailyBriefGenerating = false;
   let graphData = { nodes: [], edges: [], unresolved: 0 };
   let graphView = { nodes: [], edges: [] };
   let graphScope = 'wiki';
@@ -196,12 +186,6 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
-  $: dailyBriefSections = parseDailyBriefSections(dailyBrief.content);
-  $: dailyBriefBlocks = dailyBriefSections.length
-    ? []
-    : dailyBrief.content
-      ? renderMarkdown(dailyBrief.content)
-      : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
@@ -475,6 +459,22 @@
     inlineEditStatus = '';
   }
 
+  function toggleTask(taskIndex) {
+    if (typeof taskIndex !== 'number' || !editorView) return;
+    const taskLine = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[([ xX])\]/gm;
+    let match;
+    let seen = -1;
+    while ((match = taskLine.exec(content))) {
+      seen += 1;
+      if (seen !== taskIndex) continue;
+      const from = match.index + match[0].length - 2;
+      editorView.dispatch({
+        changes: { from, to: from + 1, insert: match[1] === ' ' ? 'x' : ' ' }
+      });
+      return;
+    }
+  }
+
   function rejectInlineEdit() {
     inlineEditPreview = null;
     inlineEditStatus = '';
@@ -494,7 +494,6 @@
       await loadTree(selectedRoot);
       reconcileDailyNoteFolder();
       await loadOverview(selectedRoot);
-      await loadDailyBrief(selectedRoot);
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
       else if (viewMode === 'graph') await loadGraph();
@@ -535,9 +534,6 @@
     viewMode = readWorkspaceViewMode(root);
     graphData = { nodes: [], edges: [], unresolved: 0 };
     graphView = { nodes: [], edges: [] };
-    dailyBrief = { path: '/raw/dailybrief/latest.md', content: '' };
-    dailyBriefStatus = '';
-    dailyBriefGenerating = false;
     status = '[Saved]';
     error = '';
     clearInlineEdit();
@@ -556,7 +552,6 @@
     await loadTree();
     reconcileDailyNoteFolder();
     await loadOverview();
-    await loadDailyBrief();
     if (viewMode === 'graph') await loadGraph();
   }
 
@@ -1081,7 +1076,6 @@
       );
       await loadTree(root);
       await loadOverview(root);
-      await loadDailyBrief(root);
       if (fallbackPath && findFileNode(tree, fallbackPath)) {
         await openFile(fallbackPath, {
           historyMode: 'replace',
@@ -1350,7 +1344,6 @@
       return;
     }
     await loadOverview(root);
-    await loadDailyBrief(root);
     if (viewMode === 'calendar') {
       status = '[Saved]';
       return;
@@ -1622,7 +1615,6 @@
     );
     status = '[Saved]';
     await loadOverview();
-    await loadDailyBrief();
   }
 
   async function focusWorkspaceSearch() {
@@ -1653,39 +1645,6 @@
       }
     } catch (err) {
       if (root === selectedRoot) overviewStatus = err.message;
-    }
-  }
-
-  async function loadDailyBrief(root = selectedRoot) {
-    dailyBriefStatus = 'Loading daily brief...';
-    try {
-      const brief = await requestJson(
-        `/api/workspace/daily-brief?root=${encodeURIComponent(root)}`
-      );
-      if (root === selectedRoot) {
-        dailyBrief = brief;
-        dailyBriefStatus = brief.content ? '' : 'No daily brief yet';
-      }
-    } catch (err) {
-      if (root === selectedRoot) dailyBriefStatus = err.message;
-    }
-  }
-
-  async function refreshDailyBrief() {
-    if (dailyBriefGenerating) return;
-    dailyBriefGenerating = true;
-    dailyBriefStatus = 'Loading daily brief...';
-    error = '';
-
-    try {
-      await loadDailyBrief(selectedRoot);
-      await loadTree(selectedRoot);
-      await loadOverview(selectedRoot);
-    } catch (err) {
-      dailyBriefStatus = 'Daily brief reload failed';
-      error = err.message;
-    } finally {
-      dailyBriefGenerating = false;
     }
   }
 
@@ -2215,49 +2174,6 @@
     }
   }
 
-  function parseDailyBriefSections(markdown) {
-    if (!markdown.trim()) return [];
-
-    const sections = new Map();
-    let current = '';
-    let lines = [];
-
-    for (const line of markdown.split('\n')) {
-      const match = line.match(/^##\s+(.+?)\s*#*\s*$/);
-      if (match) {
-        saveBriefSection(sections, current, lines);
-        current = normalizeBriefSectionTitle(match[1]);
-        lines = [];
-      } else if (current) {
-        lines.push(line);
-      }
-    }
-    saveBriefSection(sections, current, lines);
-
-    return DAILY_BRIEF_SECTION_TITLES.map((title) => ({
-      title,
-      content: sections.get(title) || ''
-    })).filter((section) => section.content);
-  }
-
-  function saveBriefSection(sections, title, lines) {
-    if (!title || !DAILY_BRIEF_SECTION_TITLES.includes(title)) return;
-    const content = lines.join('\n').trim();
-    if (content) sections.set(title, content);
-  }
-
-  function normalizeBriefSectionTitle(title) {
-    const compact = title.toLowerCase().replace(/[^a-z]/g, '');
-    if (compact === 'focus') return 'Focus';
-    if (compact === 'updates') return 'Updates';
-    if (compact === 'followups') return 'Follow-ups';
-    if (compact === 'recommendationsonnewideasordirections')
-      return 'Recommendations';
-    if (compact === 'recommendations') return 'Recommendations';
-    if (compact === 'sources') return 'Sources';
-    return '';
-  }
-
   function selectEditorRange(from, to) {
     setViewMode('edit');
     editorView.dispatch({
@@ -2325,7 +2241,20 @@
 
 {#snippet markdownBlocks(blocks)}
   {#each blocks as block}
-    {#if block.type === 'heading'}
+    {#if block.type === 'frontmatter'}
+      <dl class="frontmatter">
+        {#each block.fields as field}
+          <div>
+            <dt>{field.key}</dt>
+            <dd class:frontmatter-list={field.list}>
+              {#each field.values as value}
+                <span>{@render inline(value)}</span>
+              {/each}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+    {:else if block.type === 'heading'}
       <svelte:element this={`h${block.level}`}>
         {@render inline(block.children)}
       </svelte:element>
@@ -2405,7 +2334,11 @@
         {#each block.items as item}
           <li class:task={item.task}>
             {#if item.task}
-              <input checked={item.checked} disabled type="checkbox" />
+              <input
+                checked={item.checked}
+                type="checkbox"
+                on:change={() => toggleTask(item.taskIndex)}
+              />
             {/if}
             <span>{@render inline(item.children)}</span>
           </li>
@@ -3029,55 +2962,6 @@
               {:else}
                 <p class="home-empty">
                   Open a note and it will stay within reach here.
-                </p>
-              {/if}
-            </article>
-
-            <article class="home-card home-brief">
-              <div class="home-card-heading">
-                <div>
-                  <p class="home-card-label">Review</p>
-                  <h2>Daily brief</h2>
-                </div>
-                <button
-                  class="home-link"
-                  disabled={dailyBriefGenerating}
-                  type="button"
-                  on:click={refreshDailyBrief}
-                >
-                  {dailyBriefGenerating ? 'Loading...' : 'Reload'}
-                </button>
-              </div>
-              {#if dailyBriefSections.length}
-                <div class="home-brief-sections">
-                  {#each dailyBriefSections as section}
-                    <section class="home-brief-section">
-                      <h3>{section.title}</h3>
-                      {@render markdownBlocks(renderMarkdown(section.content))}
-                    </section>
-                  {/each}
-                </div>
-                <button
-                  class="home-secondary"
-                  type="button"
-                  on:click={() => openFile(dailyBrief.path)}
-                >
-                  Open brief
-                </button>
-              {:else if dailyBriefBlocks.length}
-                <div class="home-brief-preview">
-                  {@render markdownBlocks(dailyBriefBlocks)}
-                </div>
-                <button
-                  class="home-secondary"
-                  type="button"
-                  on:click={() => openFile(dailyBrief.path)}
-                >
-                  Open brief
-                </button>
-              {:else}
-                <p class="home-empty">
-                  {dailyBriefStatus || 'No daily brief yet.'}
                 </p>
               {/if}
             </article>

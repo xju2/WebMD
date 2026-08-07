@@ -30,7 +30,7 @@ console.log("ok");
   assert.equal(blocks[3].lang, 'js');
 });
 
-test('keeps YAML frontmatter out of the rendered body', () => {
+test('renders YAML frontmatter as a property block ahead of the body', () => {
   const source = `---
 type: Playbook
 title: Incident response
@@ -44,8 +44,17 @@ Act now.
 
   assert.deepEqual(parsed.attributes.tags, ['oncall', 'incident']);
   assert.equal(parsed.attributes.title, 'Incident response');
-  assert.equal(blocks[0].type, 'heading');
-  assert.equal(blocks[0].children[0].text, 'Trigger');
+
+  assert.equal(blocks[0].type, 'frontmatter');
+  const fields = Object.fromEntries(blocks[0].fields.map((f) => [f.key, f]));
+  assert.equal(fields.title.values[0][0].text, 'Incident response');
+  assert.deepEqual(
+    fields.tags.values.map((v) => v[0].text),
+    ['oncall', 'incident']
+  );
+
+  assert.equal(blocks[1].type, 'heading');
+  assert.equal(blocks[1].children[0].text, 'Trigger');
 });
 
 test('renders fenced unified diffs as diff blocks', () => {

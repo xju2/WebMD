@@ -1,12 +1,3 @@
-const FIELDS = new Set([
-  'type',
-  'title',
-  'description',
-  'resource',
-  'tags',
-  'timestamp'
-]);
-
 export function parseFrontmatter(source = '') {
   const text = source.replace(/\r\n?/g, '\n');
   const lines = text.split('\n');
@@ -22,19 +13,18 @@ export function parseFrontmatter(source = '') {
 
   for (let index = 0; index < metadataLines.length; index += 1) {
     const entry = metadataLines[index].match(/^([a-zA-Z][\w-]*):[ \t]*(.*)$/);
-    if (!entry || !FIELDS.has(entry[1])) continue;
+    if (!entry) continue;
 
     const [, field, rawValue] = entry;
-    if (field !== 'tags') {
-      const value = parseScalar(rawValue);
-      if (value) attributes[field] = value;
+    if (rawValue.trim()) {
+      const value = parseValue(rawValue);
+      const hasValue = Array.isArray(value) ? value.length : Boolean(value);
+      if (hasValue) attributes[field] = value;
       continue;
     }
 
-    const tags = rawValue.trim()
-      ? parseInlineList(rawValue)
-      : readBlockList(metadataLines, index + 1);
-    if (tags.length) attributes.tags = tags;
+    const list = readBlockList(metadataLines, index + 1);
+    if (list.length) attributes[field] = list;
   }
 
   return { attributes, body: lines.slice(end + 1).join('\n') };
@@ -63,13 +53,15 @@ function readBlockList(lines, start) {
   return values;
 }
 
-function parseInlineList(value) {
+function parseValue(value) {
   const trimmed = value.trim();
-  const items =
-    trimmed.startsWith('[') && trimmed.endsWith(']')
-      ? trimmed.slice(1, -1).split(',')
-      : [trimmed];
-  return items.map(parseScalar).filter(Boolean);
+  return trimmed.startsWith('[') && trimmed.endsWith(']')
+    ? trimmed
+        .slice(1, -1)
+        .split(',')
+        .map(parseScalar)
+        .filter(Boolean)
+    : parseScalar(trimmed);
 }
 
 function parseScalar(value) {
