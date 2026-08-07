@@ -134,6 +134,22 @@ test('renders supported callout blockquotes', () => {
   assert.equal(blocks[5].title[0].text, 'Code');
 });
 
+test('renders details blocks with markdown children', () => {
+  const blocks = renderMarkdown(`<details>
+<summary>Show code</summary>
+
+\`\`\`js
+console.log("ok");
+\`\`\`
+</details>
+`);
+
+  assert.equal(blocks[0].type, 'details');
+  assert.equal(blocks[0].summary[0].text, 'Show code');
+  assert.equal(blocks[0].children[0].type, 'code');
+  assert.equal(blocks[0].children[0].lang, 'js');
+});
+
 test('renders markdown blocks inside callouts', () => {
   const blocks = renderMarkdown(`> [!info] HITS dataset **e8481\\_s4149** info:
 > - identifier                : 2950990

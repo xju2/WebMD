@@ -2329,6 +2329,11 @@
           </div>
         {/if}
       </aside>
+    {:else if block.type === 'details'}
+      <details>
+        <summary>{@render inline(block.summary)}</summary>
+        {@render markdownBlocks(block.children)}
+      </details>
     {:else if block.type === 'rule'}
       <hr />
     {:else if block.type === 'code'}

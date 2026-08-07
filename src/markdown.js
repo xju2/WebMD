@@ -55,6 +55,18 @@ export function renderMarkdown(source = '') {
       continue;
     }
 
+    if (/^<details>\s*$/i.test(line.trim())) {
+      const details = [];
+      index += 1;
+      while (index < lines.length && !/^<\/details>\s*$/i.test(lines[index].trim())) {
+        details.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      blocks.push(parseDetails(details));
+      continue;
+    }
+
     const table = parseTable(lines, index);
     if (table) {
       blocks.push(table.block);
@@ -259,6 +271,15 @@ function parseQuote(lines) {
   };
 }
 
+function parseDetails(lines) {
+  const summary = lines[0]?.trim().match(/^<summary>(.*)<\/summary>\s*$/i);
+  return {
+    type: 'details',
+    summary: parseInline(summary ? summary[1].trim() || 'Details' : 'Details'),
+    children: renderMarkdown((summary ? lines.slice(1) : lines).join('\n'))
+  };
+}
+
 function calloutTitle(variant) {
   return variant === 'tldr'
     ? 'TLDR'
@@ -270,6 +291,7 @@ function startsBlock(line, nextLine = '') {
     /^```/.test(line) ||
     /^(#{1,6})\s+/.test(line) ||
     /^>\s?/.test(line) ||
+    /^<details>\s*$/i.test(line.trim()) ||
     /^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim()) ||
     isTableStart(line, nextLine) ||
     !!parseListItem(line)

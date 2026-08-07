@@ -1407,6 +1407,7 @@ button {
 .preview-pane ol,
 .preview-pane blockquote,
 .preview-pane .callout,
+.preview-pane details,
 .preview-pane .code-block,
 .preview-pane pre,
 .preview-pane .table-scroll {
@@ -1526,6 +1527,18 @@ button {
 .preview-pane .callout-code code {
   background: #253145;
   color: #c7f9ee;
+}
+
+.preview-pane details {
+  padding: 10px 14px;
+  border: 1px solid #dfe6ee;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.preview-pane summary {
+  cursor: pointer;
+  font-weight: 720;
 }
 
 .preview-pane pre {
