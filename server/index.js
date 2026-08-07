@@ -1,5 +1,12 @@
 import { createApp } from './app.js';
 import path from 'node:path';
+import os from 'node:os';
+
+try {
+  process.loadEnvFile(path.join(os.homedir(), '.webmd.conf'));
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
 
 const workspaceRoots = (process.env.WORKSPACE_ROOTS || process.env.WORKSPACE_ROOT || '')
   .split(path.delimiter)
@@ -7,7 +14,7 @@ const workspaceRoots = (process.env.WORKSPACE_ROOTS || process.env.WORKSPACE_ROO
 const port = Number(process.env.PORT || 3000);
 
 if (!workspaceRoots.length) {
-  console.error('WORKSPACE_ROOT or WORKSPACE_ROOTS is required.');
+  console.error('WORKSPACE_ROOT or WORKSPACE_ROOTS is required (set in the environment or ~/.webmd.conf).');
   process.exit(1);
 }
 

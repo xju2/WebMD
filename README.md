@@ -18,6 +18,13 @@ WORKSPACE_ROOTS="/absolute/path/to/notes:/absolute/path/to/other-notes" npm run 
 The backend refuses to start without `WORKSPACE_ROOT` or `WORKSPACE_ROOTS` and always binds to `127.0.0.1`.
 The Vite dev server also binds to `127.0.0.1` and proxies `/api` to the backend.
 
+Instead of passing env vars on the command line, put them in `~/.webmd.conf` (`KEY=VALUE` per line, same format as `.env`). The backend loads it automatically on startup; real environment variables still take precedence:
+
+```conf
+WORKSPACE_ROOT=/absolute/path/to/notes
+PORT=3000
+```
+
 ## SSH Tunnel
 
 On the remote server:
