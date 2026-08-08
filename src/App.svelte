@@ -371,10 +371,16 @@
 
   async function scrollChatToBottom() {
     await tick();
-    if (chatScrollHost) chatScrollHost.scrollTop = chatScrollHost.scrollHeight;
+    // Scroll through a plain local: assigning to chatScrollHost.scrollTop
+    // directly compiles to a mutation of the bound element, which would mark it
+    // dirty and re-run the statement below on every scroll.
+    const host = chatScrollHost;
+    if (host) host.scrollTop = host.scrollHeight;
   }
 
-  $: if (chatScrollHost && chatMessages) scrollChatToBottom();
+  // Track chatMessages only. chatScrollHost is read after the await above, so it
+  // stays out of this statement's dependencies and cannot retrigger it.
+  $: (chatMessages, scrollChatToBottom());
 
   function clearInlineEdit() {
     inlineEditPreview = null;
