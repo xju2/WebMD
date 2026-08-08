@@ -24,6 +24,10 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
   path.
 - Hardening added SSH tunnel startup docs, clearer server-unavailable errors,
   and a smoke test that starts the real server against a temporary workspace.
+- Prompt presets let a selection be rewritten from a named prompt for paper,
+  email, or note writing. Built-in presets ship with the server and
+  `$WORKSPACE_ROOT/.webmd/prompts.json` overrides or extends them by id.
+  `POST /api/ai/edit` now streams so long rewrites show progress.
 - No remaining planned implementation items.
 
 ## Milestones
@@ -149,6 +153,23 @@ Tasks:
 Done when:
 - A fresh clone can run the app using the documented commands.
 - Core file safety, save, collaboration, and AI flows have one runnable check each.
+
+### 8. Prompt Presets
+
+Status: Done.
+
+Tasks:
+- [x] Ship built-in rewrite presets grouped for paper, email, and note writing.
+- [x] Let `$WORKSPACE_ROOT/.webmd/prompts.json` override built-ins by id and add new presets.
+- [x] Add `GET /api/ai/presets`, keeping system prompts server-side.
+- [x] Stream `POST /api/ai/edit` so long rewrites fill the diff preview live.
+- [x] Add a preset list to the AI panel. AI controls stay in the panel so the
+      editing surface stays free of floating overlays.
+
+Done when:
+- A selection can be rewritten from a named prompt without typing an instruction.
+- A user's own presets survive a server restart and travel with the workspace.
+- A malformed preset file degrades to the built-ins with a visible warning.
 
 ## First Implementation Pass
 

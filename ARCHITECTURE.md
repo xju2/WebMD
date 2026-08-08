@@ -313,6 +313,50 @@ data: {"text": " scope:"}
 
 ```
 
+#### Prompt Presets
+
+* **Endpoint:** `GET /api/ai/presets`
+* **Role:** Lists the named rewrite prompts available for a workspace: built-in presets merged with `$WORKSPACE_ROOT/.webmd/prompts.json`, where a repeated `id` overrides the built-in. Preset system prompts are deliberately omitted from the response and stay server-side alongside provider credentials.
+* **Success Signature (`200 OK`):**
+
+```json
+{
+  "presets": [
+    { "id": "academic-tighten", "label": "Tighten (academic)", "group": "Paper" }
+  ],
+  "warning": "Ignored 1 preset(s) in /.webmd/prompts.json missing id, label, or system: #2."
+}
+
+```
+
+#### Inline Edit Vector
+
+* **Endpoint:** `POST /api/ai/edit`
+* **Payload Interface Configuration:**
+
+```json
+{
+  "path": "/Project Notes/architecture.md",
+  "selectedText": "The results were possibly indicative of a trend.",
+  "presetId": "academic-tighten",
+  "instruction": "keep the citation"
+}
+
+```
+
+Either `presetId` or `instruction` is required; supplying both refines the preset. Preset resolution happens before the stream opens, so a bad request still returns `400` instead of an SSE error event.
+
+* **Success Signature (`200 OK - Header: Content-Type: text/event-stream`):**
+
+```
+data: {"text": "The results indicate"}
+data: {"text": " a consistent trend."}
+data: {"done": true, "replacement": "The results indicate a consistent trend."}
+
+```
+
+The final event is authoritative. Code fences can only be stripped once the whole reply has arrived, so clients apply `replacement` rather than their own concatenated deltas. The editor renders the accumulating text as a live diff and commits it only after the user accepts.
+
 ---
 
 ## 7. Cross-Cutting Concerns: State Synchronization & Fault Tolerance

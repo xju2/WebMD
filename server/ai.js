@@ -5,6 +5,8 @@ const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.6';
 const DEFAULT_OLLAMA_MODEL = 'llama3.2';
 const MAX_CONTEXT_CHARS = 12000;
+const DEFAULT_EDIT_SYSTEM =
+  'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.';
 
 export async function* streamAiChat({
   prompt,
@@ -23,8 +25,15 @@ export async function* streamAiChat({
   yield* streamAiProvider(config, messages, fetchImpl);
 }
 
-export async function createAiEdit({
+/**
+ * Yields `{ text }` deltas as the provider streams, then a final
+ * `{ done, replacement }` carrying the authoritative text. Fences can only be
+ * stripped once the whole reply has arrived, so the last event — not the
+ * concatenated deltas — is what callers should apply to the document.
+ */
+export async function* streamAiEdit({
   instruction,
+  system = DEFAULT_EDIT_SYSTEM,
   selectedText = '',
   path = '',
   documentText = '',
@@ -39,13 +48,21 @@ export async function createAiEdit({
   }
 
   const config = aiConfig(env);
-  const messages = editMessages({ instruction, selectedText, path, documentText });
+  const messages = editMessages({
+    instruction,
+    system,
+    selectedText,
+    path,
+    documentText
+  });
+
   let replacement = '';
   for await (const chunk of streamAiProvider(config, messages, fetchImpl)) {
     replacement += chunk;
+    yield { text: chunk };
   }
 
-  return { replacement: stripSingleFencedBlock(replacement) };
+  yield { done: true, replacement: stripSingleFencedBlock(replacement) };
 }
 
 function aiConfig(env) {
@@ -89,7 +106,7 @@ function chatMessages({ prompt, selectedText, path, documentText }) {
   ];
 }
 
-function editMessages({ instruction, selectedText, path, documentText }) {
+function editMessages({ instruction, system, selectedText, path, documentText }) {
   const documentContext = documentText?.trim()
     ? `Current document ${path || ''}:\n${trimContext(documentText)}`
     : path
@@ -99,8 +116,7 @@ function editMessages({ instruction, selectedText, path, documentText }) {
   return [
     {
       role: 'developer',
-      content:
-        'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.'
+      content: system || DEFAULT_EDIT_SYSTEM
     },
     {
       role: 'user',

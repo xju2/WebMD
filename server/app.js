@@ -2,7 +2,8 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAiEdit, streamAiChat } from './ai.js';
+import { streamAiChat, streamAiEdit } from './ai.js';
+import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import { readDailyBrief } from './daily-brief.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
@@ -112,48 +113,57 @@ export async function createApp({
     );
   }));
 
+  app.get('/api/ai/presets', asyncHandler(async (req, res) => {
+    const { presets, warning } = await listPresets(workspaces.get(req.query.root));
+    // System prompts stay server-side, like provider credentials.
+    res.json({ presets: publicPresets(presets), warning });
+  }));
+
   app.post('/api/ai/chat', asyncHandler(async (req, res) => {
     const workspace = workspaces.get(req.body.root);
     const document = req.body.path
       ? await workspace.loadFile(req.body.path)
       : { content: '' };
-    const stream = streamAiChat({
-      prompt: req.body.prompt,
-      selectedText: req.body.selectedText,
-      path: req.body.path,
-      documentText: document.content,
-      env: aiEnv,
-      fetchImpl: aiFetch
-    });
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders?.();
-
-    try {
-      for await (const text of stream) {
-        res.write(`data: ${JSON.stringify({ text })}\n\n`);
-      }
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-    } catch (error) {
-      res.write(
-        `data: ${JSON.stringify({ error: error.message || 'AI request failed.' })}\n\n`
-      );
-    } finally {
-      res.end();
-    }
+    await streamSse(
+      res,
+      chatEvents(
+        streamAiChat({
+          prompt: req.body.prompt,
+          selectedText: req.body.selectedText,
+          path: req.body.path,
+          documentText: document.content,
+          env: aiEnv,
+          fetchImpl: aiFetch
+        })
+      )
+    );
   }));
 
   app.post('/api/ai/edit', asyncHandler(async (req, res) => {
     const workspace = workspaces.get(req.body.root);
+    // Resolve the preset before streaming starts: once SSE headers are out, a
+    // bad request can only be reported as an error event, not a 400.
+    const preset = req.body.presetId
+      ? await resolvePreset(workspace, req.body.presetId)
+      : null;
+    const instruction = editInstruction(preset, req.body.instruction);
+    if (!instruction) {
+      throw new WorkspaceError(400, 'A prompt preset or an edit instruction is required.');
+    }
+    if (typeof req.body.selectedText !== 'string' || !req.body.selectedText.length) {
+      throw new WorkspaceError(400, 'Selected text is required for AI edits.');
+    }
+
     const document = req.body.path
       ? await workspace.loadFile(req.body.path)
       : { content: '' };
 
-    res.json(
-      await createAiEdit({
-        instruction: req.body.instruction,
+    await streamSse(
+      res,
+      streamAiEdit({
+        instruction,
+        system: preset?.system,
         selectedText: req.body.selectedText,
         path: req.body.path,
         documentText: document.content,
@@ -181,6 +191,43 @@ export async function createApp({
 
 function asyncHandler(handler) {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+}
+
+/**
+ * Pipes an async generator to the client as SSE. Errors arrive as a final
+ * `error` event because the status line is long gone by the time a provider
+ * fails mid-stream.
+ */
+async function streamSse(res, events) {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  try {
+    for await (const event of events) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+  } catch (error) {
+    res.write(
+      `data: ${JSON.stringify({ error: error.message || 'AI request failed.' })}\n\n`
+    );
+  } finally {
+    res.end();
+  }
+}
+
+async function* chatEvents(stream) {
+  for await (const text of stream) yield { text };
+  yield { done: true };
+}
+
+/** A preset supplies the instruction; a typed note refines it. Either alone works. */
+function editInstruction(preset, typed) {
+  const extra = typeof typed === 'string' ? typed.trim() : '';
+  if (!preset) return extra;
+  if (!extra) return preset.instruction;
+  return `${preset.instruction}\n\nAlso apply this instruction: ${extra}`;
 }
 
 export async function createWorkspaceRegistry(roots) {

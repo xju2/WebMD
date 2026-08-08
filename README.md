@@ -69,6 +69,44 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `OPENAI_API_KEY`: required for `AI_PROVIDER=openai`; never sent to the browser.
 - `OPENAI_BASE_URL`: optional OpenAI-compatible base URL, defaults to `https://api.openai.com/v1`.
 
+## Prompt presets
+
+Select text in the editor, then pick a prompt from **Rewrite selection** in the
+AI panel. The result always lands in the diff preview first, so nothing changes
+until you accept it. Anything typed in the chat box refines the preset.
+
+Built-in presets:
+
+| Group | Presets |
+| --- | --- |
+| Paper | Tighten (academic), Active voice, Methods-section voice, Plain-language summary |
+| Email | Polite reply, Concise reply, Soften a decline |
+| Notes | Condense to bullets, Clean up dictation |
+
+Add your own in `$WORKSPACE_ROOT/.webmd/prompts.json`. Reusing a built-in `id`
+replaces that preset, so you can retune one without redefining the rest:
+
+```json
+{
+  "presets": [
+    {
+      "id": "grant-aims",
+      "label": "Specific Aims voice",
+      "group": "Paper",
+      "system": "You rewrite text in the voice of an NIH Specific Aims page. Return only the replacement Markdown, with no explanations or code fences.",
+      "instruction": "Tighten to active voice and cut hedging."
+    }
+  ]
+}
+```
+
+`id`, `label`, and `system` are required; `group` defaults to `Custom` and
+`instruction` is derived from the label when omitted. A `system` prompt should
+tell the model to return only the replacement Markdown — anything else it says
+ends up in your document. System prompts stay on the server and are never sent
+to the browser. Invalid entries are skipped with a warning in the AI panel
+rather than dropping the whole file.
+
 ## Daily brief integration
 
 WebMD displays today's Codex-generated daily brief from:

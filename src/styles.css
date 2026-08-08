@@ -465,6 +465,7 @@ button {
 
 .ai-form {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   gap: 8px;
   margin: 0 10px 12px;
@@ -561,6 +562,47 @@ button {
   color: #657286;
   font-size: 0.8rem;
 }
+
+/* Own row inside the flex-wrapped composer, above the prompt textarea. */
+.ai-preset {
+  display: grid;
+  gap: 4px;
+  flex: 1 0 100%;
+  padding: 2px 6px 6px 0;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.ai-preset-label {
+  color: #657286;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ai-preset select {
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.ai-preset select:disabled {
+  background: #f3f6fa;
+  color: #93a0b2;
+}
+
+.ai-preset-warning {
+  flex: 1 0 100%;
+  margin: 0;
+  color: #a3591b;
+  font-size: 0.78rem;
+}
+
 
 .search-result {
   display: grid;

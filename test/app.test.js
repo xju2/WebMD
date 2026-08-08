@@ -272,7 +272,117 @@ test('returns AI edit replacement for the selected workspace text', async () => 
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { replacement: 'concise text' });
+    const body = await response.text();
+    assert.match(body, /data: .*"text":"concise text"/);
+    assert.match(body, /data: .*"replacement":"concise text"/);
+  } finally {
+    server.close();
+  }
+});
+
+test('lists prompt presets without their system prompts', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd', 'prompts.json'),
+    JSON.stringify({
+      presets: [
+        { id: 'grant-aims', label: 'Specific Aims voice', system: 'Secret.' }
+      ]
+    })
+  );
+
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/ai/presets`);
+    assert.equal(response.status, 200);
+
+    const body = await response.text();
+    assert.match(body, /Specific Aims voice/);
+    assert.doesNotMatch(body, /Secret\./);
+
+    const { presets } = JSON.parse(body);
+    assert.ok(presets.some((preset) => preset.id === 'academic-tighten'));
+  } finally {
+    server.close();
+  }
+});
+
+test('runs an AI edit from a prompt preset', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        const body = JSON.parse(options.body);
+        // The preset supplies the system prompt; the typed note refines it.
+        assert.match(body.messages[0].content, /peer-reviewed paper/);
+        assert.match(body.messages[1].content, /keep the third sentence/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('{"message":{"content":"tight text"}}\n')
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/note.md',
+        selectedText: 'rough text',
+        presetId: 'academic-tighten',
+        instruction: 'keep the third sentence'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /"replacement":"tight text"/);
+  } finally {
+    server.close();
+  }
+});
+
+test('rejects AI edits with a bad or missing prompt', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  const post = (body) =>
+    fetch(`${url}/api/ai/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md', ...body })
+    });
+
+  try {
+    // A bad request must surface as a status code, not an SSE error event.
+    const unknown = await post({
+      selectedText: 'rough text',
+      presetId: 'nope'
+    });
+    assert.equal(unknown.status, 400);
+    assert.match((await unknown.json()).error, /Unknown prompt preset/);
+
+    const empty = await post({ selectedText: 'rough text' });
+    assert.equal(empty.status, 400);
+    assert.match((await empty.json()).error, /preset or an edit instruction/);
+
+    const noSelection = await post({ selectedText: '', presetId: 'note-bullets' });
+    assert.equal(noSelection.status, 400);
+    assert.match((await noSelection.json()).error, /Selected text is required/);
   } finally {
     server.close();
   }

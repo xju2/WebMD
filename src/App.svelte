@@ -91,6 +91,9 @@
   let inlineEditStatus = '';
   let inlineEditLoading = false;
   let inlineEditPreview = null;
+  let inlineEditAbort = null;
+  let aiPresets = [];
+  let aiPresetWarning = '';
   let selectedRange = null;
   let viewMode = 'edit';
   let markdownHelpOpen = false;
@@ -184,6 +187,7 @@
     selectedRange &&
     selectedRange.from !== selectedRange.to
   );
+  $: presetGroups = groupPresets(aiPresets);
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
@@ -383,63 +387,130 @@
   $: (chatMessages, scrollChatToBottom());
 
   function clearInlineEdit() {
+    inlineEditAbort?.abort();
+    inlineEditAbort = null;
+    inlineEditLoading = false;
     inlineEditPreview = null;
     inlineEditStatus = '';
   }
 
-  async function requestInlineEdit() {
+  async function requestInlineEdit(presetId = '') {
     const instruction = chatPrompt.trim();
-    if (!instruction || inlineEditLoading || !canInlineEdit) return;
+    if ((!instruction && !presetId) || inlineEditLoading || !canInlineEdit)
+      return;
 
     const root = selectedRoot;
     const path = selectedPath;
     const range = { from: selectedRange.from, to: selectedRange.to };
     const original = editorView.state.sliceDoc(range.from, range.to);
 
+    inlineEditAbort?.abort();
+    inlineEditAbort = new AbortController();
+    const abort = inlineEditAbort;
     inlineEditLoading = true;
     inlineEditStatus = 'Drafting edit...';
-    inlineEditPreview = null;
     error = '';
+    setViewMode('edit');
+
+    // Show the panel before the first token so a slow local model reads as
+    // working rather than hung.
+    inlineEditPreview = {
+      root,
+      path,
+      range,
+      original,
+      replacement: '',
+      streaming: true,
+      diffFiles: [buildReplacementDiffFile(original, '', 'AI edit preview')]
+    };
+
+    let streamed = '';
+    let lastRender = 0;
 
     try {
-      const result = await requestJson('/api/ai/edit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          root,
-          path,
-          selectedText: original,
-          instruction
-        })
-      });
-      if (root !== selectedRoot || path !== selectedPath) return;
+      let response;
+      try {
+        response = await fetch('/api/ai/edit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abort.signal,
+          body: JSON.stringify({
+            root,
+            path,
+            selectedText: original,
+            presetId,
+            instruction
+          })
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw new Error('Server unavailable. Check the SSH tunnel and backend.');
+      }
+      if (!response.ok) throw new Error(await responseErrorMessage(response));
+      if (!response.body) throw new Error('AI provider did not stream.');
 
-      const replacement = result.replacement ?? '';
+      await readSseStream(response.body, (event) => {
+        if (event.error) throw new Error(event.error);
+        if (event.text) {
+          streamed += event.text;
+          // Rebuilding the diff walks every line, so cap it at ~10fps instead
+          // of running once per token.
+          const now = performance.now();
+          if (now - lastRender > 100) {
+            lastRender = now;
+            showInlineEditDraft(abort, original, streamed);
+          }
+        }
+        // The final event is authoritative: fences can only be stripped once
+        // the whole reply has arrived.
+        if (event.done) streamed = event.replacement ?? streamed;
+      });
+
+      if (abort.signal.aborted || root !== selectedRoot || path !== selectedPath)
+        return;
+
       inlineEditPreview = {
         root,
         path,
         range,
         original,
-        replacement,
+        replacement: streamed,
+        streaming: false,
         diffFiles: [
-          buildReplacementDiffFile(original, replacement, 'AI edit preview')
+          buildReplacementDiffFile(original, streamed, 'AI edit preview')
         ]
       };
       inlineEditStatus =
-        original === replacement ? 'AI returned unchanged text' : 'Review edit';
+        original === streamed ? 'AI returned unchanged text' : 'Review edit';
       chatPrompt = '';
-      setViewMode('edit');
     } catch (err) {
+      if (err.name === 'AbortError') return;
+      // A half-streamed rewrite must never be acceptable.
+      inlineEditPreview = null;
       inlineEditStatus = 'AI edit failed';
       error = err.message;
     } finally {
-      inlineEditLoading = false;
+      if (inlineEditAbort === abort) {
+        inlineEditAbort = null;
+        inlineEditLoading = false;
+      }
     }
+  }
+
+  function showInlineEditDraft(abort, original, replacement) {
+    if (abort.signal.aborted || !inlineEditPreview) return;
+    inlineEditPreview = {
+      ...inlineEditPreview,
+      replacement,
+      diffFiles: [
+        buildReplacementDiffFile(original, replacement, 'AI edit preview')
+      ]
+    };
   }
 
   function acceptInlineEdit() {
     const preview = inlineEditPreview;
-    if (!preview) return;
+    if (!preview || preview.streaming) return;
     if (preview.root !== selectedRoot || preview.path !== selectedPath) {
       error = 'AI edit no longer matches the open file.';
       return;
@@ -490,8 +561,8 @@
   }
 
   function rejectInlineEdit() {
-    inlineEditPreview = null;
-    inlineEditStatus = '';
+    // Doubles as Cancel while streaming, so it must drop the in-flight request.
+    clearInlineEdit();
     editorView?.focus();
   }
 
@@ -505,6 +576,7 @@
       dailyNoteTemplatePath = readDailyNoteTemplatePath();
       imageAssetFolder = readImageAssetFolder();
       recentPaths = readRecentFiles(selectedRoot);
+      loadAiPresets(selectedRoot);
       await loadTree(selectedRoot);
       reconcileDailyNoteFolder();
       await loadOverview(selectedRoot);
@@ -514,6 +586,32 @@
     } catch (err) {
       error = err.message;
     }
+  }
+
+  async function loadAiPresets(root = selectedRoot) {
+    try {
+      const result = await requestJson(
+        `/api/ai/presets?root=${encodeURIComponent(root)}`
+      );
+      if (root !== selectedRoot) return;
+      aiPresets = result.presets ?? [];
+      aiPresetWarning = result.warning ?? '';
+    } catch {
+      // Presets are an enhancement; a typed instruction still works without them.
+      if (root !== selectedRoot) return;
+      aiPresets = [];
+      aiPresetWarning = '';
+    }
+  }
+
+  function groupPresets(presets) {
+    const groups = new Map();
+    for (const preset of presets) {
+      const name = preset.group || 'Custom';
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(preset);
+    }
+    return [...groups].map(([name, items]) => ({ name, items }));
   }
 
   async function loadTree(root = selectedRoot) {
@@ -563,6 +661,7 @@
     navigationBackStack = [];
     navigationForwardStack = [];
     setEditorContent('');
+    loadAiPresets(root);
     await loadTree();
     reconcileDailyNoteFolder();
     await loadOverview();
@@ -1598,6 +1697,10 @@
       selectedText = text;
       selectedRange = null;
     } else if (!text) {
+      // Focusing a control outside the editor collapses the DOM selection, but
+      // CodeMirror still holds the real one. Keep it, or reaching for the
+      // preset list would disarm the very action it is meant to run.
+      if (editorView && !editorView.state.selection.main.empty) return;
       selectedText = '';
       selectedRange = null;
     }
@@ -2663,6 +2766,36 @@
         {/if}
       </div>
       <form class="ai-form" on:submit|preventDefault={sendChat}>
+        {#if presetGroups.length}
+          <label class="ai-preset">
+            <span class="ai-preset-label">Rewrite selection</span>
+            <select
+              aria-label="Rewrite the selected text with a prompt preset"
+              disabled={!canInlineEdit || chatStreaming || inlineEditLoading}
+              title={canInlineEdit
+                ? 'Rewrite the selected text'
+                : 'Select text in the editor'}
+              value=""
+              on:change={(event) => {
+                const presetId = event.currentTarget.value;
+                event.currentTarget.value = '';
+                if (presetId) requestInlineEdit(presetId);
+              }}
+            >
+              <option value="">Choose a prompt...</option>
+              {#each presetGroups as group}
+                <optgroup label={group.name}>
+                  {#each group.items as preset}
+                    <option value={preset.id}>{preset.label}</option>
+                  {/each}
+                </optgroup>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        {#if aiPresetWarning}
+          <p class="ai-preset-warning">{aiPresetWarning}</p>
+        {/if}
         <textarea
           aria-label="Ask AI"
           bind:value={chatPrompt}
@@ -2684,7 +2817,7 @@
               ? 'Preview edit for selected text'
               : 'Select text in the editor'}
             type="button"
-            on:click={requestInlineEdit}
+            on:click={() => requestInlineEdit()}
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path
@@ -3260,8 +3393,15 @@
           <header class="inline-edit-header">
             <strong>AI edit preview</strong>
             <div class="inline-edit-actions">
-              <button type="button" on:click={rejectInlineEdit}>Reject</button>
-              <button class="primary" type="button" on:click={acceptInlineEdit}>
+              <button type="button" on:click={rejectInlineEdit}>
+                {inlineEditPreview.streaming ? 'Cancel' : 'Reject'}
+              </button>
+              <button
+                class="primary"
+                disabled={inlineEditPreview.streaming}
+                type="button"
+                on:click={acceptInlineEdit}
+              >
                 Accept
               </button>
             </div>
