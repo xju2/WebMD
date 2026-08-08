@@ -21,7 +21,18 @@ if (!workspaceRoots.length) {
 try {
   const app = await createApp({ workspaceRoots });
   const server = app.listen(port, '127.0.0.1', () => {
-    console.log(`WebMD listening on http://127.0.0.1:${port}`);
+    // EADDRINUSE lands just after this callback, so defer and let the error handler win.
+    setImmediate(() => console.log(`WebMD listening on http://127.0.0.1:${port}`));
+  });
+
+  // listen() reports failures as an async event, so the try/catch never sees them.
+  server.on('error', (error) => {
+    console.error(
+      error.code === 'EADDRINUSE'
+        ? `Port ${port} is already in use. Stop the running WebMD server, or set PORT in the environment or ~/.webmd.conf.`
+        : error.message
+    );
+    process.exit(1);
   });
 
   process.on('SIGTERM', () => server.close(() => process.exit(0)));
