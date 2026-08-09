@@ -161,6 +161,120 @@ test('rejects AI edits without selected text', async () => {
   }, /Selected text is required/);
 });
 
+test('explains a rejected API key and quotes the provider', async () => {
+  await assert.rejects(
+    () =>
+      collect(
+        streamAiChat({
+          prompt: 'Summarize',
+          env: {
+            AI_PROVIDER: 'openai',
+            AI_MODEL: 'gpt-test',
+            OPENAI_API_KEY: 'stale'
+          },
+          fetchImpl: async () =>
+            new Response('{"error":"invalid api key"}', {
+              status: 401,
+              statusText: 'Unauthorized'
+            })
+        })
+      ),
+    (error) => {
+      assert.match(error.message, /401 Unauthorized/);
+      assert.match(error.message, /OPENAI_API_KEY/);
+      assert.match(error.message, /duplicate entry/);
+      assert.match(error.message, /invalid api key/);
+      // The key itself must never travel back to the browser.
+      assert.doesNotMatch(error.message, /stale/);
+      return true;
+    }
+  );
+});
+
+test('names the model when the provider fails to serve it', async () => {
+  await assert.rejects(
+    () =>
+      collect(
+        streamAiChat({
+          prompt: 'Summarize',
+          env: {
+            AI_PROVIDER: 'openai',
+            AI_MODEL: 'blocked-model',
+            OPENAI_API_KEY: 'secret'
+          },
+          fetchImpl: async () =>
+            new Response('{"error":"explicit deny in a service control policy"}', {
+              status: 500
+            })
+        })
+      ),
+    (error) => {
+      assert.match(error.message, /blocked-model/);
+      assert.match(error.message, /not permitted for this account/);
+      assert.match(error.message, /service control policy/);
+      return true;
+    }
+  );
+});
+
+test('suggests pulling a missing Ollama model', async () => {
+  await assert.rejects(
+    () =>
+      collect(
+        streamAiChat({
+          prompt: 'Summarize',
+          env: { AI_PROVIDER: 'ollama', AI_MODEL: 'absent-model' },
+          fetchImpl: async () => new Response('model not found', { status: 404 })
+        })
+      ),
+    /ollama pull absent-model/
+  );
+});
+
+test('reports an unreachable provider instead of a bare fetch failure', async () => {
+  await assert.rejects(
+    () =>
+      collect(
+        streamAiChat({
+          prompt: 'Summarize',
+          env: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+          fetchImpl: async () => {
+            throw new TypeError('fetch failed');
+          }
+        })
+      ),
+    (error) => {
+      assert.match(error.message, /Could not reach/);
+      assert.match(error.message, /Is Ollama running\?/);
+      return true;
+    }
+  );
+});
+
+test('keeps credentials in the base URL out of error messages', async () => {
+  await assert.rejects(
+    () =>
+      collect(
+        streamAiChat({
+          prompt: 'Summarize',
+          env: {
+            AI_PROVIDER: 'openai',
+            AI_MODEL: 'gpt-test',
+            OPENAI_API_KEY: 'secret',
+            OPENAI_BASE_URL: 'https://user:hunter2@example.test/v1'
+          },
+          fetchImpl: async () => new Response('nope', { status: 429 })
+        })
+      ),
+    (error) => {
+      assert.doesNotMatch(error.message, /hunter2/);
+      assert.match(error.message, /example\.test/);
+      assert.match(error.message, /Rate limit or quota/);
+      return true;
+    }
+  );
+});
+
 test('lists built-in presets when the workspace has no prompts file', async () => {
   const workspace = await workspaceWithPresets();
   const { presets, warning } = await listPresets(workspace);

@@ -880,6 +880,11 @@ button {
   background: #fff2f0;
   color: #9d2d24;
   font-size: 0.9rem;
+  /* Provider errors can be long and carry unbroken ARNs and URLs. Cap the
+     height and break anywhere so one bad response cannot take over the page. */
+  max-height: 8.5em;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .editor-frame {

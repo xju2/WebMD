@@ -5,6 +5,7 @@ const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.6';
 const DEFAULT_OLLAMA_MODEL = 'llama3.2';
 const MAX_CONTEXT_CHARS = 12000;
+const MAX_PROVIDER_ERROR_CHARS = 400;
 const DEFAULT_EDIT_SYSTEM =
   'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.';
 
@@ -133,23 +134,31 @@ function trimContext(text) {
 
 async function* streamOpenAI(config, messages, fetchImpl) {
   if (!config.openaiApiKey) {
-    throw new WorkspaceError(400, 'OPENAI_API_KEY is required for AI_PROVIDER=openai.');
+    throw new WorkspaceError(
+      400,
+      'OPENAI_API_KEY is required for AI_PROVIDER=openai. Set it in the environment or ~/.webmd.conf.'
+    );
   }
 
-  const response = await fetchImpl(`${config.openaiBaseUrl}/responses`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.openaiApiKey}`,
-      'Content-Type': 'application/json'
+  const response = await requestProvider(
+    fetchImpl,
+    `${config.openaiBaseUrl}/responses`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.openaiApiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: config.model,
+        input: messages,
+        stream: true
+      })
     },
-    body: JSON.stringify({
-      model: config.model,
-      input: messages,
-      stream: true
-    })
-  });
+    config
+  );
 
-  assertProviderResponse(response);
+  await assertProviderResponse(response, config);
   for await (const event of parseSse(response.body)) {
     if (event.type === 'response.output_text.delta' && event.delta) {
       yield event.delta;
@@ -164,7 +173,10 @@ function streamAiProvider(config, messages, fetchImpl) {
   if (config.provider === 'ollama') {
     return streamOllama(config, messages, fetchImpl);
   }
-  throw new WorkspaceError(400, `Unsupported AI_PROVIDER: ${config.provider}.`);
+  throw new WorkspaceError(
+    400,
+    `Unsupported AI_PROVIDER: "${config.provider}". Use "openai" or "ollama".`
+  );
 }
 
 function stripSingleFencedBlock(text) {
@@ -174,34 +186,126 @@ function stripSingleFencedBlock(text) {
 }
 
 async function* streamOllama(config, messages, fetchImpl) {
-  const response = await fetchImpl(`${config.ollamaBaseUrl}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: config.model,
-      messages: messages.map((message) => ({
-        role: message.role === 'developer' ? 'system' : message.role,
-        content: message.content
-      })),
-      stream: true
-    })
-  });
+  const response = await requestProvider(
+    fetchImpl,
+    `${config.ollamaBaseUrl}/api/chat`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: config.model,
+        messages: messages.map((message) => ({
+          role: message.role === 'developer' ? 'system' : message.role,
+          content: message.content
+        })),
+        stream: true
+      })
+    },
+    config
+  );
 
-  assertProviderResponse(response);
+  await assertProviderResponse(response, config);
   for await (const event of parseJsonLines(response.body)) {
     const text = event.message?.content;
     if (text) yield text;
   }
 }
 
-function assertProviderResponse(response) {
-  if (!response?.ok) {
+/** Wraps transport failures, which arrive as bare "fetch failed" otherwise. */
+async function requestProvider(fetchImpl, url, options, config) {
+  try {
+    return await fetchImpl(url, options);
+  } catch (error) {
     throw new WorkspaceError(
       502,
-      `AI provider failed: ${response?.status || 'no response'} ${response?.statusText || ''}`.trim()
+      `Could not reach ${providerLabel(config)}: ${error.message}. ${
+        config.provider === 'ollama'
+          ? 'Is Ollama running?'
+          : 'Check OPENAI_BASE_URL and that the host is reachable.'
+      }`
     );
   }
-  if (!response.body) throw new WorkspaceError(502, 'AI provider did not stream.');
+}
+
+async function assertProviderResponse(response, config) {
+  if (!response) {
+    throw new WorkspaceError(502, `No response from ${providerLabel(config)}.`);
+  }
+  if (!response.ok) {
+    const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+    const detail = await readProviderError(response);
+    throw new WorkspaceError(
+      502,
+      [
+        `${providerLabel(config)} failed with ${status}.`,
+        providerHint(response.status, config),
+        detail && `Provider said: ${detail}`
+      ]
+        .filter(Boolean)
+        .join(' ')
+    );
+  }
+  if (!response.body) {
+    throw new WorkspaceError(
+      502,
+      `${providerLabel(config)} returned no response body to stream.`
+    );
+  }
+}
+
+function providerLabel(config) {
+  const base =
+    config.provider === 'openai' ? config.openaiBaseUrl : config.ollamaBaseUrl;
+  return `AI provider ${safeUrl(base)} (model ${config.model})`;
+}
+
+/** Drops any user:password in the configured URL so it stays out of errors. */
+function safeUrl(value) {
+  try {
+    const url = new URL(value);
+    url.username = '';
+    url.password = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return value;
+  }
+}
+
+function providerHint(status, config) {
+  const openai = config.provider === 'openai';
+
+  if (status === 401 || status === 403) {
+    return openai
+      ? 'The API key was rejected. Check OPENAI_API_KEY in the environment or ~/.webmd.conf, and note that a duplicate entry there overrides the earlier one.'
+      : 'The provider rejected the request.';
+  }
+  if (status === 404) {
+    return openai
+      ? `Check that AI_MODEL "${config.model}" exists on this provider and that OPENAI_BASE_URL points at the API root.`
+      : `Check that AI_MODEL "${config.model}" is installed: ollama pull ${config.model}.`;
+  }
+  if (status === 429) {
+    return 'Rate limit or quota exceeded. Retry in a moment.';
+  }
+  if (status >= 500) {
+    return `The provider could not serve AI_MODEL "${config.model}". It may be unavailable, or not permitted for this account — try another model.`;
+  }
+  if (status >= 400) {
+    return `The request was rejected. Check AI_MODEL "${config.model}".`;
+  }
+  return '';
+}
+
+async function readProviderError(response) {
+  try {
+    const text = (await response.text()).trim();
+    if (!text) return '';
+    return text.length > MAX_PROVIDER_ERROR_CHARS
+      ? `${text.slice(0, MAX_PROVIDER_ERROR_CHARS)}...`
+      : text;
+  } catch {
+    return '';
+  }
 }
 
 async function* parseSse(body) {
