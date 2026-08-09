@@ -132,7 +132,10 @@ test('saves pasted images through the workspace API', async () => {
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { path: '/assets/2026-07-15-01.png' });
+    assert.deepEqual(await response.json(), {
+      path: '/assets/2026-07-15-01.png',
+      fileKind: 'image'
+    });
     assert.equal(
       await fs.readFile(path.join(root, 'assets', '2026-07-15-01.png'), 'utf8'),
       'png'
