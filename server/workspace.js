@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
-import { resolveWikiLinkPath } from '../src/wiki-links.js';
+import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_EVENTS = 1000;
@@ -127,9 +127,7 @@ async function buildWorkspaceGraph(root) {
           source: file.path,
           target: resolved
         });
-      } else if (
-        !/\.(avif|gif|jpe?g|png|svg|webp|pdf)$/i.test(target.split('#')[0])
-      ) {
+      } else if (!isMediaWikiTarget(target)) {
         unresolved += 1;
       }
     }

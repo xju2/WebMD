@@ -1,3 +1,6 @@
+const MARKDOWN_PATTERN = /\.(md|markdown)$/i;
+const MEDIA_PATTERN = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
+
 export function parseWikiLinkValue(value = '') {
   const pipeIndex = value.indexOf('|');
   const target = (pipeIndex === -1 ? value : value.slice(0, pipeIndex)).trim();
@@ -6,37 +9,45 @@ export function parseWikiLinkValue(value = '') {
   return { target, text: text || target };
 }
 
+export function isMediaWikiTarget(target) {
+  return (
+    typeof target === 'string' &&
+    MEDIA_PATTERN.test(target.split('#')[0].trim())
+  );
+}
+
 export function resolveWikiLinkPath(target, currentPath = '', files = []) {
-  const markdownTarget = toMarkdownTarget(target);
-  if (!markdownTarget) return '';
+  const fileTarget = toFileTarget(target);
+  if (!fileTarget) return '';
 
-  if (markdownTarget.startsWith('/'))
-    return normalizeWorkspacePath(markdownTarget);
+  if (fileTarget.startsWith('/')) return normalizeWorkspacePath(fileTarget);
 
-  const markdownPaths = files
-    .filter((file) => typeof file === 'string' || file?.fileKind === 'markdown')
-    .map((file) => (typeof file === 'string' ? file : file.path))
-    .filter(Boolean);
+  const kindPattern = MEDIA_PATTERN.test(fileTarget)
+    ? MEDIA_PATTERN
+    : MARKDOWN_PATTERN;
+  const candidatePaths = files
+    .map((file) => (typeof file === 'string' ? file : file?.path))
+    .filter((path) => typeof path === 'string' && kindPattern.test(path));
 
-  if (markdownTarget.includes('/')) {
-    const suffixMatch = findUniquePath(markdownPaths, (path) =>
-      path.endsWith(`/${markdownTarget}`)
+  if (fileTarget.includes('/')) {
+    const suffixMatch = findUniquePath(candidatePaths, (path) =>
+      path.endsWith(`/${fileTarget}`)
     );
     if (suffixMatch) return suffixMatch;
   }
 
   const siblingPath = joinWorkspacePath(
     currentDirectory(currentPath),
-    markdownTarget
+    fileTarget
   );
 
-  if (!markdownTarget.includes('/') && markdownPaths.includes(siblingPath)) {
+  if (!fileTarget.includes('/') && candidatePaths.includes(siblingPath)) {
     return siblingPath;
   }
 
-  if (!markdownTarget.includes('/')) {
-    const nameMatch = findUniquePath(markdownPaths, (path) =>
-      path.endsWith(`/${markdownTarget}`)
+  if (!fileTarget.includes('/')) {
+    const nameMatch = findUniquePath(candidatePaths, (path) =>
+      path.endsWith(`/${fileTarget}`)
     );
     if (nameMatch) return nameMatch;
   }
@@ -44,7 +55,7 @@ export function resolveWikiLinkPath(target, currentPath = '', files = []) {
   return siblingPath;
 }
 
-function toMarkdownTarget(target) {
+function toFileTarget(target) {
   if (typeof target !== 'string') return '';
 
   const fileTarget = target.split('#')[0].trim();
@@ -57,7 +68,9 @@ function toMarkdownTarget(target) {
     return '';
   }
 
-  return /\.(md|markdown)$/i.test(fileTarget) ? fileTarget : `${fileTarget}.md`;
+  return MARKDOWN_PATTERN.test(fileTarget) || MEDIA_PATTERN.test(fileTarget)
+    ? fileTarget
+    : `${fileTarget}.md`;
 }
 
 function joinWorkspacePath(parent, child) {

@@ -38,6 +38,46 @@ test('resolves slash wiki links by unique workspace suffix', () => {
   );
 });
 
+test('keeps media extensions instead of appending .md', () => {
+  const files = [
+    { path: '/raw/assets/2026-08-10-01.pdf', fileKind: 'pdf' },
+    { path: '/raw/dailynotes/2026-08-10.md', fileKind: 'markdown' }
+  ];
+
+  assert.equal(
+    resolveWikiLinkPath(
+      '/raw/assets/2026-08-10-01.pdf',
+      '/raw/dailynotes/2026-08-10.md',
+      files
+    ),
+    '/raw/assets/2026-08-10-01.pdf'
+  );
+});
+
+test('resolves media wiki links by unique workspace filename', () => {
+  const files = [
+    { path: '/raw/assets/scan.pdf', fileKind: 'pdf' },
+    { path: '/raw/assets/photo.png', fileKind: 'image' },
+    { path: '/notes/today.md', fileKind: 'markdown' }
+  ];
+
+  assert.equal(
+    resolveWikiLinkPath('scan.pdf', '/notes/today.md', files),
+    '/raw/assets/scan.pdf'
+  );
+  assert.equal(
+    resolveWikiLinkPath('photo.png', '/notes/today.md', files),
+    '/raw/assets/photo.png'
+  );
+});
+
+test('still appends .md to note titles that contain dots', () => {
+  assert.equal(
+    resolveWikiLinkPath('release 1.2', '/notes/today.md', []),
+    '/notes/release 1.2.md'
+  );
+});
+
 test('rejects traversal wiki links', () => {
   assert.equal(resolveWikiLinkPath('../secret', '/notes/today.md', []), '');
 });

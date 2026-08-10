@@ -1846,13 +1846,13 @@
   }
 
   function wikiLinkHref(target) {
-    const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
+    const path = resolveWikiLinkPath(target, selectedPath, workspaceFiles);
     return path ? `#${encodeURI(path)}` : '';
   }
 
   async function openWikiLink(event, target) {
     event.preventDefault();
-    const path = resolveWikiLinkPath(target, selectedPath, markdownFiles);
+    const path = resolveWikiLinkPath(target, selectedPath, workspaceFiles);
     if (!path) {
       error = `Invalid wiki link: ${target}`;
       return;
