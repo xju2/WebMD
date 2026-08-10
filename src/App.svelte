@@ -17,7 +17,7 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
-  import { quotedBlockPaste } from './editor.js';
+  import { arxivLinkPaste, quotedBlockPaste } from './editor.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
@@ -961,7 +961,10 @@
       const sources = pastedImageSources(event.clipboardData);
       if (!sources.length) {
         const text = event.clipboardData?.getData('text/plain') || '';
-        const insert = quotedPasteText(view.state, text);
+        const beforeCursor = textBeforeCursor(view.state);
+        const insert =
+          arxivLinkPaste(text, { beforeCursor }) ??
+          quotedPasteText(view.state, text, beforeCursor);
         if (insert === null) return false;
 
         event.preventDefault();
@@ -979,10 +982,14 @@
     return true;
   }
 
-  function quotedPasteText(state, text) {
+  function textBeforeCursor(state) {
     const selection = state.selection.main;
     const line = state.doc.lineAt(selection.from);
-    const beforeCursor = line.text.slice(0, selection.from - line.from);
+    return line.text.slice(0, selection.from - line.from);
+  }
+
+  function quotedPasteText(state, text, beforeCursor) {
+    const line = state.doc.lineAt(state.selection.main.from);
     const previousLine =
       !beforeCursor.trim() && line.number > 1
         ? state.doc.line(line.number - 1).text
