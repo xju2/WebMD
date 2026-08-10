@@ -3032,6 +3032,7 @@
                 <code>&gt; [!idea]</code>
                 <code>&gt; [!warning]</code>
                 <code>&gt; [!error]</code>
+                <code>&gt; [!prompt]</code>
               </dd>
             </div>
             <div>

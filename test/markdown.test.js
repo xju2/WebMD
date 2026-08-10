@@ -120,6 +120,9 @@ test('renders supported callout blockquotes', () => {
 
 > [!code]
 > \`wrap me\`
+
+> [!prompt]
+> Summarize this note.
 `);
 
   assert.equal(blocks[0].type, 'callout');
@@ -141,6 +144,9 @@ test('renders supported callout blockquotes', () => {
   assert.equal(blocks[5].type, 'callout');
   assert.equal(blocks[5].variant, 'code');
   assert.equal(blocks[5].title[0].text, 'Code');
+  assert.equal(blocks[6].type, 'callout');
+  assert.equal(blocks[6].variant, 'prompt');
+  assert.equal(blocks[6].title[0].text, 'Prompt');
 });
 
 test('renders details blocks with markdown children', () => {
