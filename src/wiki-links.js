@@ -1,3 +1,4 @@
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MARKDOWN_PATTERN = /\.(md|markdown)$/i;
 const MEDIA_PATTERN = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
 
@@ -16,7 +17,12 @@ export function isMediaWikiTarget(target) {
   );
 }
 
-export function resolveWikiLinkPath(target, currentPath = '', files = []) {
+export function resolveWikiLinkPath(
+  target,
+  currentPath = '',
+  files = [],
+  { dailyNoteFolder = '' } = {}
+) {
   const fileTarget = toFileTarget(target);
   if (!fileTarget) return '';
 
@@ -28,6 +34,11 @@ export function resolveWikiLinkPath(target, currentPath = '', files = []) {
   const candidatePaths = files
     .map((file) => (typeof file === 'string' ? file : file?.path))
     .filter((path) => typeof path === 'string' && kindPattern.test(path));
+
+  const dailyNotePath = toDailyNotePath(fileTarget, dailyNoteFolder);
+  if (dailyNotePath && candidatePaths.includes(dailyNotePath)) {
+    return dailyNotePath;
+  }
 
   if (fileTarget.includes('/')) {
     const suffixMatch = findUniquePath(candidatePaths, (path) =>
@@ -52,7 +63,16 @@ export function resolveWikiLinkPath(target, currentPath = '', files = []) {
     if (nameMatch) return nameMatch;
   }
 
-  return siblingPath;
+  return dailyNotePath || siblingPath;
+}
+
+function toDailyNotePath(fileTarget, folder) {
+  if (fileTarget.includes('/')) return '';
+  if (!DATE_PATTERN.test(fileTarget.replace(MARKDOWN_PATTERN, ''))) return '';
+
+  const parent =
+    folder === '/' ? '/' : normalizeWorkspacePath(String(folder ?? ''));
+  return parent ? joinWorkspacePath(parent, fileTarget) : '';
 }
 
 function toFileTarget(target) {

@@ -78,6 +78,62 @@ test('still appends .md to note titles that contain dots', () => {
   );
 });
 
+test('sends missing date links to the daily note folder', () => {
+  const files = [{ path: '/wiki/topics/q2c.md', fileKind: 'markdown' }];
+
+  assert.equal(
+    resolveWikiLinkPath('2026-08-03', '/wiki/topics/q2c.md', files, {
+      dailyNoteFolder: '/raw/dailynotes'
+    }),
+    '/raw/dailynotes/2026-08-03.md'
+  );
+});
+
+test('prefers the daily note over a same-named note beside the link', () => {
+  const files = [
+    { path: '/meetings/2026-08-03.md', fileKind: 'markdown' },
+    { path: '/meetings/agenda.md', fileKind: 'markdown' },
+    { path: '/raw/dailynotes/2026-08-03.md', fileKind: 'markdown' }
+  ];
+
+  assert.equal(
+    resolveWikiLinkPath('2026-08-03', '/meetings/agenda.md', files, {
+      dailyNoteFolder: '/raw/dailynotes'
+    }),
+    '/raw/dailynotes/2026-08-03.md'
+  );
+});
+
+test('falls back to a date note kept outside the daily note folder', () => {
+  const files = [
+    { path: '/archive/2026-08-03.md', fileKind: 'markdown' },
+    { path: '/wiki/topics/q2c.md', fileKind: 'markdown' }
+  ];
+
+  assert.equal(
+    resolveWikiLinkPath('2026-08-03', '/wiki/topics/q2c.md', files, {
+      dailyNoteFolder: '/raw/dailynotes'
+    }),
+    '/archive/2026-08-03.md'
+  );
+});
+
+test('keeps date links with an explicit folder out of the daily note folder', () => {
+  assert.equal(
+    resolveWikiLinkPath('archive/2026-08-03', '/wiki/topics/q2c.md', [], {
+      dailyNoteFolder: '/raw/dailynotes'
+    }),
+    '/wiki/topics/archive/2026-08-03.md'
+  );
+});
+
+test('resolves date links beside the link without a daily note folder', () => {
+  assert.equal(
+    resolveWikiLinkPath('2026-08-03', '/wiki/topics/q2c.md', []),
+    '/wiki/topics/2026-08-03.md'
+  );
+});
+
 test('rejects traversal wiki links', () => {
   assert.equal(resolveWikiLinkPath('../secret', '/notes/today.md', []), '');
 });

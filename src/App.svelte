@@ -1845,14 +1845,20 @@
       : joinWorkspacePath(imageAssetFolder, filePath);
   }
 
+  function wikiLinkPath(target) {
+    return resolveWikiLinkPath(target, selectedPath, workspaceFiles, {
+      dailyNoteFolder: activeDailyNoteFolder
+    });
+  }
+
   function wikiLinkHref(target) {
-    const path = resolveWikiLinkPath(target, selectedPath, workspaceFiles);
+    const path = wikiLinkPath(target);
     return path ? `#${encodeURI(path)}` : '';
   }
 
   async function openWikiLink(event, target) {
     event.preventDefault();
-    const path = resolveWikiLinkPath(target, selectedPath, workspaceFiles);
+    const path = wikiLinkPath(target);
     if (!path) {
       error = `Invalid wiki link: ${target}`;
       return;
