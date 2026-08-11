@@ -11,8 +11,8 @@
     dailyNoteContent as buildDailyNoteContent,
     dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
-    shiftDay,
-    shiftMonth
+    shiftMonth,
+    stepDailyNote
   } from './calendar.js';
   import {
     rebaseRemoteUpdate,
@@ -105,6 +105,7 @@
   let sidebarVisible = true;
   let sidebarView = 'files';
   let markdownViewsHidden = false;
+  let dailyNoteStep = -1;
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
   let dailyNoteTemplatePath = '';
   let dailyNoteFolderStored = false;
@@ -173,12 +174,27 @@
     year: 'numeric'
   });
   $: dailyNotePaths = new Set(markdownFiles.map((file) => file.path));
-  // Advance from the open daily note when there is one, otherwise from today.
-  $: nextDayNoteDate = shiftDay(
-    dailyNoteDateFromPath(selectedPath) || new Date(),
-    1
+  // Only notes that already exist in the daily note folder, oldest to newest.
+  $: dailyNoteEntries = markdownFiles
+    .map((file) => ({ path: file.path, date: dailyNoteDateFromPath(file.path) }))
+    .filter(
+      (entry) =>
+        entry.date &&
+        entry.path === todayNotePath(entry.date, activeDailyNoteFolder)
+    )
+    .sort((left, right) => left.date - right.date);
+  $: dailyNoteIndex = dailyNoteEntries.findIndex(
+    (entry) => entry.path === selectedPath
   );
-  $: nextDayNotePath = todayNotePath(nextDayNoteDate, activeDailyNoteFolder);
+  $: dailyNoteHop = stepDailyNote(
+    dailyNoteEntries.length,
+    dailyNoteIndex,
+    dailyNoteStep
+  );
+  $: dailyNoteHopPath =
+    dailyNoteHop && dailyNoteEntries[dailyNoteHop.index].path !== selectedPath
+      ? dailyNoteEntries[dailyNoteHop.index].path
+      : '';
   // The Markdown views only collapse while the AI panel owns the sidebar, so
   // closing the panel always brings the editor back.
   $: markdownViewsCollapsed =
@@ -872,8 +888,11 @@
     return buildDailyNotePath(date, folder);
   }
 
-  async function openNextDayNote() {
-    await openDailyNote(nextDayNoteDate);
+  // Opens through openFile so a missing note is never created on the way.
+  async function openAdjacentDailyNote() {
+    if (!dailyNoteHopPath) return;
+    dailyNoteStep = dailyNoteHop.step;
+    await openFile(dailyNoteHopPath);
   }
 
   async function loadDailyNoteTemplate(root) {
@@ -2992,14 +3011,16 @@
           on:change={chooseUploadFiles}
         />
         <button
-          aria-label="Open the next day's daily note"
-          class="next-day-button"
-          disabled={!workspaceRoots.length}
-          title={`Next day note (${nextDayNotePath})`}
+          aria-label="Open an adjacent daily note"
+          class="cycle-days-button"
+          disabled={!dailyNoteHopPath}
+          title={dailyNoteHopPath
+            ? `Cycle days (${dailyNoteHopPath})`
+            : 'No other daily note to open'}
           type="button"
-          on:click={openNextDayNote}
+          on:click={openAdjacentDailyNote}
         >
-          Next day
+          Cycle days
         </button>
         <button
           class="upload-button"

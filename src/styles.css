@@ -934,7 +934,7 @@ button {
 }
 
 .upload-button,
-.next-day-button,
+.cycle-days-button,
 .delete-button {
   min-width: 68px;
   height: 34px;
@@ -948,7 +948,7 @@ button {
 }
 
 .upload-button,
-.next-day-button {
+.cycle-days-button {
   background: #ffffff;
   color: #174b82;
 }
@@ -960,7 +960,7 @@ button {
 }
 
 .upload-button:disabled,
-.next-day-button:disabled,
+.cycle-days-button:disabled,
 .delete-button:disabled {
   border-color: #c9d0da;
   background: #eef1f5;
