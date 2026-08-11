@@ -1626,11 +1626,11 @@ button {
   margin-top: 0.45em;
 }
 
-/* Only the item's own text dims, so a nested list of open subtasks stays
-   readable under a ticked parent. */
+/* Done items recede rather than being struck out: the text stays legible for
+   re-reading, and the ticked box already carries the signal. Only the item's
+   own text dims, so open subtasks stay readable under a ticked parent. */
 .preview-pane li.task-done > span {
-  color: #8994a5;
-  text-decoration: line-through;
+  color: #667085;
 }
 
 .preview-pane a {
