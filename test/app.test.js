@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createApp, createWorkspaceRegistry } from '../server/app.js';
+import { resetArxivCache } from '../server/arxiv.js';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
@@ -386,6 +387,60 @@ test('rejects AI edits with a bad or missing prompt', async () => {
     const noSelection = await post({ selectedText: '', presetId: 'note-bullets' });
     assert.equal(noSelection.status, 400);
     assert.match((await noSelection.json()).error, /Selected text is required/);
+  } finally {
+    server.close();
+  }
+});
+
+test('serves arXiv metadata for an identifier', async () => {
+  resetArxivCache();
+  const root = await tempRoot();
+  const requested = [];
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      arxivFetch: async (target) => {
+        requested.push(target);
+        return new Response(
+          '<feed><entry><title>A Tracking Pipeline</title>' +
+            '<author><name>Xiangyang Ju</name></author></entry></feed>'
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/arxiv?id=2608.00146v2`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      id: '2608.00146v2',
+      title: 'A Tracking Pipeline',
+      authors: ['Xiangyang Ju']
+    });
+    assert.match(requested[0], /id_list=2608\.00146v2/);
+  } finally {
+    server.close();
+  }
+});
+
+test('rejects an arXiv lookup without a valid identifier', async () => {
+  resetArxivCache();
+  const root = await tempRoot();
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      arxivFetch: async () => {
+        throw new Error('should not be called');
+      }
+    })
+  );
+
+  try {
+    for (const query of ['', '?id=', '?id=https://arxiv.org/abs/2608.00146']) {
+      const response = await fetch(`${url}/api/arxiv${query}`);
+      assert.equal(response.status, 400, query);
+      assert.match((await response.json()).error, /arXiv identifier is required/);
+    }
   } finally {
     server.close();
   }

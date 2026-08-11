@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { streamAiChat, streamAiEdit } from './ai.js';
+import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import { readDailyBrief } from './daily-brief.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
@@ -14,7 +15,8 @@ export async function createApp({
   workspaceRoot,
   workspaceRoots,
   aiEnv = process.env,
-  aiFetch = fetch
+  aiFetch = fetch,
+  arxivFetch = fetch
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
   const workspaces = await createWorkspaceRegistry(roots);
@@ -111,6 +113,16 @@ export async function createApp({
         .get(req.body.root)
         .applyUpdates(req.body.path, req.body.version, req.body.updates)
     );
+  }));
+
+  // Proxied because export.arxiv.org sends no CORS headers, and so lookups share
+  // one cache and one rate limit across browser tabs. Workspace-independent.
+  app.get('/api/arxiv', asyncHandler(async (req, res) => {
+    const id = req.query.id;
+    if (!isArxivId(id)) {
+      throw new WorkspaceError(400, 'An arXiv identifier is required.');
+    }
+    res.json(await fetchArxivMetadata(id.trim(), { fetchImpl: arxivFetch }));
   }));
 
   app.get('/api/ai/presets', asyncHandler(async (req, res) => {

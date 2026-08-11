@@ -19,7 +19,7 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
-  import { arxivLinkPaste, quotedBlockPaste } from './editor.js';
+  import { arxivCitation, arxivPasteId, quotedBlockPaste } from './editor.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
@@ -1037,13 +1037,22 @@
       if (!sources.length) {
         const text = event.clipboardData?.getData('text/plain') || '';
         const beforeCursor = textBeforeCursor(view.state);
+        const arxivId = arxivPasteId(text, { beforeCursor });
         const insert =
-          arxivLinkPaste(text, { beforeCursor }) ??
+          (arxivId && arxivCitation({ id: arxivId })) ??
           quotedPasteText(view.state, text, beforeCursor);
         if (insert === null) return false;
 
         event.preventDefault();
+        const from = view.state.selection.main.from;
         insertText(view, insert);
+        // The bare link lands now; author and title arrive when arXiv answers.
+        if (arxivId) {
+          upgradeArxivCitation(arxivId, insert, {
+            from,
+            to: from + insert.length
+          });
+        }
         return true;
       }
 
@@ -1055,6 +1064,44 @@
     event.preventDefault();
     uploadFiles(files, editorView.state.selection.main);
     return true;
+  }
+
+  /**
+   * Replaces the bare link a paste just inserted with the full citation. Runs
+   * un-awaited, so everything it touches may have moved on: the guards below
+   * drop the upgrade rather than risk rewriting text the user has since edited.
+   */
+  async function upgradeArxivCitation(id, placeholder, range) {
+    const root = selectedRoot;
+    const path = selectedPath;
+
+    let metadata;
+    try {
+      metadata = await requestJson(`/api/arxiv?id=${encodeURIComponent(id)}`);
+    } catch (err) {
+      if (root === selectedRoot) error = err.message;
+      return;
+    }
+
+    if (root !== selectedRoot || path !== selectedPath || !selectedIsMarkdown) {
+      return;
+    }
+
+    const citation = arxivCitation(metadata);
+    if (citation === placeholder) return;
+
+    const length = editorView.state.doc.length;
+    const from = Math.min(range.from, length);
+    const to = Math.min(range.to, length);
+    if (editorView.state.doc.sliceString(from, to) !== placeholder) return;
+
+    // Only carry the cursor along if it is still sitting right after the link.
+    const cursor = editorView.state.selection.main;
+    const followCursor = cursor.empty && cursor.head === to;
+    editorView.dispatch({
+      changes: { from, to, insert: citation },
+      ...(followCursor ? { selection: { anchor: from + citation.length } } : {})
+    });
   }
 
   function textBeforeCursor(state) {

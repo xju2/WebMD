@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { arxivLinkPaste, quotedBlockPaste } from '../src/editor.js';
+import {
+  arxivCitation,
+  arxivLinkPaste,
+  arxivPasteId,
+  quotedBlockPaste
+} from '../src/editor.js';
 
 const ABS_LINK = '[arXiv:2608.00146](https://arxiv.org/abs/2608.00146)';
 
@@ -67,6 +72,68 @@ test('leaves an arXiv link bare inside markdown link or autolink syntax', () => 
   assert.equal(
     arxivLinkPaste('https://arxiv.org/pdf/2608.00146', { beforeCursor: '<' }),
     null
+  );
+});
+
+test('reports the identifier a pasted arXiv link carries', () => {
+  assert.equal(arxivPasteId('https://arxiv.org/pdf/2608.00146v2'), '2608.00146v2');
+  assert.equal(arxivPasteId('https://arxiv.org/abs/hep-th/9901001'), 'hep-th/9901001');
+  assert.equal(arxivPasteId('https://example.com/abs/2608.00146'), null);
+  assert.equal(
+    arxivPasteId('https://arxiv.org/pdf/2608.00146', { beforeCursor: '[p](' }),
+    null
+  );
+});
+
+test('formats a citation with the first author and title', () => {
+  assert.equal(
+    arxivCitation({
+      id: '2608.00146',
+      title: 'A Tracking Pipeline',
+      authors: ['Xiangyang Ju', 'Daniel Murnane']
+    }),
+    `Ju et al., "A Tracking Pipeline" — ${ABS_LINK}`
+  );
+});
+
+test('drops the et al. for a single author', () => {
+  assert.equal(
+    arxivCitation({
+      id: '2608.00146',
+      title: 'A Tracking Pipeline',
+      authors: ['Xiangyang Ju']
+    }),
+    `Ju, "A Tracking Pipeline" — ${ABS_LINK}`
+  );
+});
+
+test('keeps a collaboration name whole', () => {
+  assert.equal(
+    arxivCitation({
+      id: '2608.00146',
+      title: 'A Search',
+      authors: ['ATLAS Collaboration', 'CMS Collaboration']
+    }),
+    `ATLAS Collaboration et al., "A Search" — ${ABS_LINK}`
+  );
+});
+
+test('collapses the line breaks arXiv wraps titles with', () => {
+  assert.equal(
+    arxivCitation({
+      id: '2608.00146',
+      title: 'A Tracking\n  Pipeline for\nDetectors',
+      authors: ['Xiangyang Ju']
+    }),
+    `Ju, "A Tracking Pipeline for Detectors" — ${ABS_LINK}`
+  );
+});
+
+test('falls back to the bare link without metadata', () => {
+  assert.equal(arxivCitation({ id: '2608.00146' }), ABS_LINK);
+  assert.equal(
+    arxivCitation({ id: '2608.00146', title: 'Untitled', authors: [] }),
+    `"Untitled" — ${ABS_LINK}`
   );
 });
 
