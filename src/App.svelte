@@ -9,7 +9,9 @@
   import {
     calendarDays as buildCalendarDays,
     dailyNoteContent as buildDailyNoteContent,
+    dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
+    shiftDay,
     shiftMonth
   } from './calendar.js';
   import {
@@ -97,10 +99,12 @@
   let selectedRange = null;
   let viewMode = 'edit';
   let markdownHelpOpen = false;
+  let viewMenuOpen = false;
   let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
   let sidebarView = 'files';
+  let markdownViewsHidden = false;
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
   let dailyNoteTemplatePath = '';
   let dailyNoteFolderStored = false;
@@ -169,6 +173,16 @@
     year: 'numeric'
   });
   $: dailyNotePaths = new Set(markdownFiles.map((file) => file.path));
+  // Advance from the open daily note when there is one, otherwise from today.
+  $: nextDayNoteDate = shiftDay(
+    dailyNoteDateFromPath(selectedPath) || new Date(),
+    1
+  );
+  $: nextDayNotePath = todayNotePath(nextDayNoteDate, activeDailyNoteFolder);
+  // The Markdown views only collapse while the AI panel owns the sidebar, so
+  // closing the panel always brings the editor back.
+  $: markdownViewsCollapsed =
+    markdownViewsHidden && sidebarVisible && sidebarView === 'chat';
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
   $: continueFiles = recentPaths
@@ -854,8 +868,12 @@
     }
   }
 
-  function todayNotePath(date = new Date()) {
-    return buildDailyNotePath(date, activeDailyNoteFolder);
+  function todayNotePath(date = new Date(), folder = activeDailyNoteFolder) {
+    return buildDailyNotePath(date, folder);
+  }
+
+  async function openNextDayNote() {
+    await openDailyNote(nextDayNoteDate);
   }
 
   async function loadDailyNoteTemplate(root) {
@@ -1478,6 +1496,29 @@
     if (path && content === lastSaved)
       await openFile(path, { historyMode: 'replace' });
     else if (!path) status = '[Saved]';
+  }
+
+  function closeViewMenu() {
+    viewMenuOpen = false;
+  }
+
+  function closeViewMenuOnEscape(event) {
+    if (event.key === 'Escape') closeViewMenu();
+  }
+
+  async function chooseDiffView() {
+    closeViewMenu();
+    await showDiff();
+  }
+
+  async function chooseGraphView() {
+    closeViewMenu();
+    await showGraph();
+  }
+
+  function openMarkdownHelp() {
+    closeViewMenu();
+    markdownHelpOpen = true;
   }
 
   async function showDiff() {
@@ -2508,6 +2549,7 @@
 
 <main
   bind:this={appShell}
+  class:markdown-hidden={markdownViewsCollapsed}
   class:sidebar-hidden={!sidebarVisible}
   class="app-shell"
 >
@@ -2757,6 +2799,19 @@
     <section class:ai-panel-hidden={sidebarView !== 'chat'} class="ai-panel">
       <div class="sidebar-title ai-title">
         <span>AI chat</span>
+        <div class="sidebar-title-actions">
+          <button
+            aria-pressed={markdownViewsHidden}
+            class="sync-button"
+            title={markdownViewsHidden
+              ? 'Show the Markdown views'
+              : 'Hide the Markdown views and widen this panel'}
+            type="button"
+            on:click={() => (markdownViewsHidden = !markdownViewsHidden)}
+          >
+            {markdownViewsHidden ? 'Show Markdown' : 'Hide Markdown'}
+          </button>
+        </div>
       </div>
       <div class="ai-messages" aria-live="polite" bind:this={chatScrollHost}>
         {#if chatMessages.length}
@@ -2937,6 +2992,16 @@
           on:change={chooseUploadFiles}
         />
         <button
+          aria-label="Open the next day's daily note"
+          class="next-day-button"
+          disabled={!workspaceRoots.length}
+          title={`Next day note (${nextDayNotePath})`}
+          type="button"
+          on:click={openNextDayNote}
+        >
+          Next day
+        </button>
+        <button
           class="upload-button"
           disabled={!workspaceRoots.length}
           type="button"
@@ -2969,41 +3034,58 @@
           >
             Preview
           </button>
-          <button
-            class:active={viewMode === 'diff' && selectedIsMarkdown}
-            disabled={!selectedPath || !selectedIsMarkdown}
-            type="button"
-            on:click={showDiff}
-          >
-            Diff
-          </button>
-          <button
-            class:active={viewMode === 'graph'}
-            disabled={!workspaceRoots.length}
-            type="button"
-            on:click={showGraph}
-          >
-            Graph
-          </button>
         </div>
-        <button
-          class="help-button"
-          title="Markdown help"
-          type="button"
-          aria-label="Open Markdown help"
-          on:click={() => (markdownHelpOpen = true)}
-        >
-          ?
-        </button>
-        <button
-          class="save-button"
-          disabled={!selectedPath ||
-            !selectedIsMarkdown ||
-            !hasUnsavedChanges()}
-          on:click={saveNow}
-        >
-          Save
-        </button>
+        <div class="view-menu">
+          <button
+            aria-expanded={viewMenuOpen}
+            aria-haspopup="menu"
+            aria-label="More views"
+            class:active={viewMode === 'diff' || viewMode === 'graph'}
+            class="view-menu-button"
+            title="More views"
+            type="button"
+            on:click={() => (viewMenuOpen = !viewMenuOpen)}
+            on:keydown={closeViewMenuOnEscape}
+          >
+            <span aria-hidden="true">•••</span>
+          </button>
+          {#if viewMenuOpen}
+            <button
+              aria-label="Close more views"
+              class="view-menu-backdrop"
+              type="button"
+              on:click={closeViewMenu}
+            ></button>
+            <div
+              class="view-menu-list"
+              role="menu"
+              tabindex="-1"
+              on:keydown={closeViewMenuOnEscape}
+            >
+              <button
+                class:active={viewMode === 'diff' && selectedIsMarkdown}
+                disabled={!selectedPath || !selectedIsMarkdown}
+                role="menuitem"
+                type="button"
+                on:click={chooseDiffView}
+              >
+                Diff
+              </button>
+              <button
+                class:active={viewMode === 'graph'}
+                disabled={!workspaceRoots.length}
+                role="menuitem"
+                type="button"
+                on:click={chooseGraphView}
+              >
+                Graph
+              </button>
+              <button role="menuitem" type="button" on:click={openMarkdownHelp}>
+                Markdown help
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
     </header>
 

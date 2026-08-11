@@ -18,6 +18,23 @@ export function shiftMonth(month, amount) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1);
 }
 
+export function shiftDay(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+export function dailyNoteDateFromPath(path) {
+  const name = String(path ?? '')
+    .split('/')
+    .pop();
+  const match = /^(\d{4})-(\d{2})-(\d{2})\.(?:md|markdown)$/i.exec(name ?? '');
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  // Rejects impossible dates such as 2026-02-30, which Date rolls forward.
+  return dailyNoteDate(date) === `${year}-${month}-${day}` ? date : null;
+}
+
 export function dailyNotePath(date, folder = '/') {
   const dateText = dailyNoteDate(date);
   return `${folder === '/' ? '' : folder}/${dateText}.md`;

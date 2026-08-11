@@ -43,6 +43,23 @@ button {
   grid-template-columns: 68px minmax(0, 1fr);
 }
 
+/* The AI panel takes the freed column when the Markdown views are hidden. */
+.app-shell.markdown-hidden {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+
+.app-shell.markdown-hidden .workspace {
+  display: none;
+}
+
+.app-shell.markdown-hidden .ai-messages,
+.app-shell.markdown-hidden .ai-form,
+.app-shell.markdown-hidden .ai-status {
+  width: min(100%, 760px);
+  margin-right: auto;
+  margin-left: auto;
+}
+
 .global-bar {
   display: flex;
   min-width: 0;
@@ -832,10 +849,93 @@ button {
   cursor: default;
 }
 
+.view-menu {
+  position: relative;
+  display: flex;
+}
+
+.view-menu-button {
+  display: flex;
+  min-width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #eef2f6;
+  color: #637083;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 720;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+.view-menu-button:hover {
+  border-color: #9fb2ca;
+  color: #123f75;
+}
+
+.view-menu-button.active {
+  background: #ffffff;
+  color: #123f75;
+  box-shadow: 0 1px 2px rgb(13 23 40 / 12%);
+}
+
+.view-menu-backdrop {
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.view-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgb(13 23 40 / 14%);
+}
+
+.view-menu-list button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #273246;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.view-menu-list button:hover:not(:disabled) {
+  background: #eef2f6;
+  color: #123f75;
+}
+
+.view-menu-list button.active {
+  background: #dfe8f6;
+  color: #123f75;
+}
+
+.view-menu-list button:disabled {
+  color: #9aa4b2;
+  cursor: default;
+}
+
 .upload-button,
-.help-button,
-.delete-button,
-.save-button {
+.next-day-button,
+.delete-button {
   min-width: 68px;
   height: 34px;
   border: 1px solid #9fb2ca;
@@ -847,13 +947,8 @@ button {
   font-weight: 700;
 }
 
-.upload-button {
-  background: #ffffff;
-  color: #174b82;
-}
-
-.help-button {
-  min-width: 34px;
+.upload-button,
+.next-day-button {
   background: #ffffff;
   color: #174b82;
 }
@@ -865,8 +960,8 @@ button {
 }
 
 .upload-button:disabled,
-.delete-button:disabled,
-.save-button:disabled {
+.next-day-button:disabled,
+.delete-button:disabled {
   border-color: #c9d0da;
   background: #eef1f5;
   color: #8994a5;
@@ -2199,7 +2294,8 @@ button {
     grid-template-rows: minmax(150px, 32vh) minmax(0, 1fr);
   }
 
-  .app-shell.sidebar-hidden {
+  .app-shell.sidebar-hidden,
+  .app-shell.markdown-hidden {
     grid-template-rows: minmax(0, 1fr);
   }
 
