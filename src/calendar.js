@@ -18,21 +18,15 @@ export function shiftMonth(month, amount) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1);
 }
 
-// Picks the neighbouring daily note in a list ordered oldest to newest. The
-// walk reverses at either end instead of stalling, so the button keeps moving
-// once it reaches today. `step` is the direction the previous hop travelled.
+// Indexes the neighbouring daily note in a list ordered oldest to newest, or
+// null at either end. With nothing daily open, stepping back reaches the
+// newest note and stepping forward has nowhere to go.
 export function stepDailyNote(count, index, step) {
   if (count <= 0) return null;
-  // Nothing daily is open, so start from the newest note and walk backwards.
-  if (index < 0 || index >= count) return { index: count - 1, step: -1 };
+  if (index < 0 || index >= count) return step < 0 ? count - 1 : null;
 
-  const forward = step >= 0 ? 1 : -1;
-  const next = index + forward;
-  if (next >= 0 && next < count) return { index: next, step: forward };
-
-  const back = index - forward;
-  if (back < 0 || back >= count) return null;
-  return { index: back, step: -forward };
+  const next = index + (step < 0 ? -1 : 1);
+  return next >= 0 && next < count ? next : null;
 }
 
 export function dailyNoteDateFromPath(path) {

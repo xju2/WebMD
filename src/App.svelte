@@ -105,7 +105,6 @@
   let sidebarVisible = true;
   let sidebarView = 'files';
   let markdownViewsHidden = false;
-  let dailyNoteStep = -1;
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
   let dailyNoteTemplatePath = '';
   let dailyNoteFolderStored = false;
@@ -186,15 +185,8 @@
   $: dailyNoteIndex = dailyNoteEntries.findIndex(
     (entry) => entry.path === selectedPath
   );
-  $: dailyNoteHop = stepDailyNote(
-    dailyNoteEntries.length,
-    dailyNoteIndex,
-    dailyNoteStep
-  );
-  $: dailyNoteHopPath =
-    dailyNoteHop && dailyNoteEntries[dailyNoteHop.index].path !== selectedPath
-      ? dailyNoteEntries[dailyNoteHop.index].path
-      : '';
+  $: olderDailyNotePath = adjacentDailyNote(-1);
+  $: newerDailyNotePath = adjacentDailyNote(1);
   // The Markdown views only collapse while the AI panel owns the sidebar, so
   // closing the panel always brings the editor back.
   $: markdownViewsCollapsed =
@@ -888,11 +880,51 @@
     return buildDailyNotePath(date, folder);
   }
 
+  const shortcutKey =
+    typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform)
+      ? 'Cmd'
+      : 'Ctrl';
+
+  // Every shortcut carries both Cmd/Ctrl and Shift. Plain Alt combinations are
+  // unusable here because macOS turns Alt+letter into a dead key that would
+  // type an accent into the editor instead.
+  function handleShortcut(event) {
+    if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey)
+      return;
+
+    // Keyed by physical key because Shift rewrites event.key into < and >.
+    const run = {
+      Comma: () => openOlderDailyNote(),
+      Period: () => openNewerDailyNote(),
+      KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
+      KeyP: () => selectedPath && setViewMode('preview')
+    }[event.code];
+    if (!run) return;
+
+    event.preventDefault();
+    run();
+  }
+
+  function adjacentDailyNote(step) {
+    const target = stepDailyNote(
+      dailyNoteEntries.length,
+      dailyNoteIndex,
+      step
+    );
+    return target === null ? '' : dailyNoteEntries[target].path;
+  }
+
   // Opens through openFile so a missing note is never created on the way.
-  async function openAdjacentDailyNote() {
-    if (!dailyNoteHopPath) return;
-    dailyNoteStep = dailyNoteHop.step;
-    await openFile(dailyNoteHopPath);
+  async function openAdjacentDailyNote(path) {
+    if (path) await openFile(path);
+  }
+
+  async function openOlderDailyNote() {
+    await openAdjacentDailyNote(olderDailyNotePath);
+  }
+
+  async function openNewerDailyNote() {
+    await openAdjacentDailyNote(newerDailyNotePath);
   }
 
   async function loadDailyNoteTemplate(root) {
@@ -2527,7 +2559,7 @@
     {:else if block.type === 'list'}
       <svelte:element this={block.ordered ? 'ol' : 'ul'}>
         {#each block.items as item}
-          <li class:task={item.task}>
+          <li class:task={item.task} class:task-done={item.task && item.checked}>
             {#if item.task}
               <input
                 checked={item.checked}
@@ -2565,6 +2597,8 @@
     {/each}
   </article>
 {/snippet}
+
+<svelte:window on:keydown={handleShortcut} />
 
 <main
   bind:this={appShell}
@@ -3010,18 +3044,30 @@
           multiple
           on:change={chooseUploadFiles}
         />
-        <button
-          aria-label="Open an adjacent daily note"
-          class="cycle-days-button"
-          disabled={!dailyNoteHopPath}
-          title={dailyNoteHopPath
-            ? `Cycle days (${dailyNoteHopPath})`
-            : 'No other daily note to open'}
-          type="button"
-          on:click={openAdjacentDailyNote}
-        >
-          Cycle days
-        </button>
+        <div class="day-step" aria-label="Daily notes">
+          <button
+            aria-label="Open the previous daily note"
+            disabled={!olderDailyNotePath}
+            title={olderDailyNotePath
+              ? `Older daily note (${olderDailyNotePath})`
+              : 'No older daily note'}
+            type="button"
+            on:click={openOlderDailyNote}
+          >
+            ‹
+          </button>
+          <button
+            aria-label="Open the next daily note"
+            disabled={!newerDailyNotePath}
+            title={newerDailyNotePath
+              ? `Newer daily note (${newerDailyNotePath})`
+              : 'No newer daily note'}
+            type="button"
+            on:click={openNewerDailyNote}
+          >
+            ›
+          </button>
+        </div>
         <button
           class="upload-button"
           disabled={!workspaceRoots.length}
@@ -3178,6 +3224,15 @@
                 <code>resource</code>
                 <code>tags</code>
                 <code>timestamp</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Shortcuts</dt>
+              <dd>
+                <code>{shortcutKey}+Shift+E</code> edit
+                <code>{shortcutKey}+Shift+P</code> preview
+                <code>{shortcutKey}+Shift+&lt;</code> older day
+                <code>{shortcutKey}+Shift+&gt;</code> newer day
               </dd>
             </div>
           </dl>

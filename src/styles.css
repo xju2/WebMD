@@ -934,7 +934,6 @@ button {
 }
 
 .upload-button,
-.cycle-days-button,
 .delete-button {
   min-width: 68px;
   height: 34px;
@@ -947,8 +946,7 @@ button {
   font-weight: 700;
 }
 
-.upload-button,
-.cycle-days-button {
+.upload-button {
   background: #ffffff;
   color: #174b82;
 }
@@ -959,8 +957,35 @@ button {
   color: #9f2525;
 }
 
+.day-step {
+  display: flex;
+  gap: 4px;
+}
+
+.day-step button {
+  display: flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #9fb2ca;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #174b82;
+  cursor: pointer;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.day-step button:hover:not(:disabled) {
+  border-color: #174b82;
+  background: #eef2f6;
+}
+
 .upload-button:disabled,
-.cycle-days-button:disabled,
+.day-step button:disabled,
 .delete-button:disabled {
   border-color: #c9d0da;
   background: #eef1f5;
@@ -1599,6 +1624,13 @@ button {
 .preview-pane li.task input {
   flex: 0 0 auto;
   margin-top: 0.45em;
+}
+
+/* Only the item's own text dims, so a nested list of open subtasks stays
+   readable under a ticked parent. */
+.preview-pane li.task-done > span {
+  color: #8994a5;
+  text-decoration: line-through;
 }
 
 .preview-pane a {

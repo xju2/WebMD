@@ -20,24 +20,23 @@ test('builds a Monday-first six-week calendar', () => {
   assert.equal(shiftMonth(new Date(2026, 0, 1), -1).toISOString().slice(0, 10), '2025-12-01');
 });
 
-test('walks daily notes and reverses at either end', () => {
-  assert.deepEqual(stepDailyNote(4, 2, -1), { index: 1, step: -1 });
-  assert.deepEqual(stepDailyNote(4, 1, 1), { index: 2, step: 1 });
-  // The newest note is the end of the line, so the walk turns around.
-  assert.deepEqual(stepDailyNote(4, 3, 1), { index: 2, step: -1 });
-  assert.deepEqual(stepDailyNote(4, 0, -1), { index: 1, step: 1 });
+test('indexes the neighbouring daily note', () => {
+  assert.equal(stepDailyNote(4, 2, -1), 1);
+  assert.equal(stepDailyNote(4, 1, 1), 2);
 });
 
-test('starts from the newest daily note when none is open', () => {
-  assert.deepEqual(stepDailyNote(3, -1, 1), { index: 2, step: -1 });
-  assert.deepEqual(stepDailyNote(3, 9, -1), { index: 2, step: -1 });
-});
-
-test('has nowhere to hop with fewer than two daily notes', () => {
+test('stops at either end of the daily notes', () => {
+  assert.equal(stepDailyNote(4, 3, 1), null);
+  assert.equal(stepDailyNote(4, 0, -1), null);
   assert.equal(stepDailyNote(0, -1, -1), null);
-  // The only note is already open, so both directions run off the end.
   assert.equal(stepDailyNote(1, 0, -1), null);
-  assert.deepEqual(stepDailyNote(1, -1, -1), { index: 0, step: -1 });
+});
+
+test('reaches the newest daily note when none is open', () => {
+  assert.equal(stepDailyNote(3, -1, -1), 2);
+  assert.equal(stepDailyNote(3, 9, -1), 2);
+  // Forward from nowhere would land past the newest note.
+  assert.equal(stepDailyNote(3, -1, 1), null);
 });
 
 test('reads the date only from daily note file names', () => {
