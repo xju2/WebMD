@@ -21,7 +21,7 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { arxivLinkPaste, quotedBlockPaste } from './editor.js';
   import { layoutGraph } from './graph.js';
-  import { highlightCodeBlock } from './highlight.js';
+  import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
   import {
     pastedImageSources,
@@ -175,7 +175,10 @@
   $: dailyNotePaths = new Set(markdownFiles.map((file) => file.path));
   // Only notes that already exist in the daily note folder, oldest to newest.
   $: dailyNoteEntries = markdownFiles
-    .map((file) => ({ path: file.path, date: dailyNoteDateFromPath(file.path) }))
+    .map((file) => ({
+      path: file.path,
+      date: dailyNoteDateFromPath(file.path)
+    }))
     .filter(
       (entry) =>
         entry.date &&
@@ -466,7 +469,9 @@
         });
       } catch (err) {
         if (err.name === 'AbortError') throw err;
-        throw new Error('Server unavailable. Check the SSH tunnel and backend.');
+        throw new Error(
+          'Server unavailable. Check the SSH tunnel and backend.'
+        );
       }
       if (!response.ok) throw new Error(await responseErrorMessage(response));
       if (!response.body) throw new Error('AI provider did not stream.');
@@ -488,7 +493,11 @@
         if (event.done) streamed = event.replacement ?? streamed;
       });
 
-      if (abort.signal.aborted || root !== selectedRoot || path !== selectedPath)
+      if (
+        abort.signal.aborted ||
+        root !== selectedRoot ||
+        path !== selectedPath
+      )
         return;
 
       inlineEditPreview = {
@@ -881,7 +890,8 @@
   }
 
   const shortcutKey =
-    typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform)
+    typeof navigator !== 'undefined' &&
+    /Mac|iP(hone|ad)/.test(navigator.platform)
       ? 'Cmd'
       : 'Ctrl';
 
@@ -906,11 +916,7 @@
   }
 
   function adjacentDailyNote(step) {
-    const target = stepDailyNote(
-      dailyNoteEntries.length,
-      dailyNoteIndex,
-      step
-    );
+    const target = stepDailyNote(dailyNoteEntries.length, dailyNoteIndex, step);
     return target === null ? '' : dailyNoteEntries[target].path;
   }
 
@@ -2504,26 +2510,29 @@
       <hr />
     {:else if block.type === 'code'}
       <div class="code-block">
-        <span class="code-copy-zone">
-          <button
-            aria-label={copiedCode === block
-              ? 'Code copied to clipboard'
-              : 'Copy code block'}
-            title={copiedCode === block ? 'Copied to clipboard' : 'Copy code'}
-            type="button"
-            on:click={() => copyCodeBlock(block)}
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <rect x="8" y="7" width="10" height="13" rx="2" />
-              <path
-                d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
-              />
-            </svg>
-          </button>
-          {#if copiedCode === block}
-            <span class="code-copy-message">Copied to clipboard</span>
-          {/if}
-        </span>
+        <div class="code-block-bar">
+          <span class="code-lang">{languageLabel(block.lang)}</span>
+          <span class="code-copy-zone">
+            {#if copiedCode === block}
+              <span class="code-copy-message">Copied</span>
+            {/if}
+            <button
+              aria-label={copiedCode === block
+                ? 'Code copied to clipboard'
+                : 'Copy code block'}
+              title={copiedCode === block ? 'Copied to clipboard' : 'Copy code'}
+              type="button"
+              on:click={() => copyCodeBlock(block)}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="8" y="7" width="10" height="13" rx="2" />
+                <path
+                  d="M6 17H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"
+                />
+              </svg>
+            </button>
+          </span>
+        </div>
         <pre><code>{@html highlightCodeBlock(block.lang, block.text)}</code
           ></pre>
       </div>
@@ -2559,7 +2568,10 @@
     {:else if block.type === 'list'}
       <svelte:element this={block.ordered ? 'ol' : 'ul'}>
         {#each block.items as item}
-          <li class:task={item.task} class:task-done={item.task && item.checked}>
+          <li
+            class:task={item.task}
+            class:task-done={item.task && item.checked}
+          >
             {#if item.task}
               <input
                 checked={item.checked}

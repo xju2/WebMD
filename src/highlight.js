@@ -15,6 +15,19 @@ const languages = new Map([
   ['hxx', cppLanguage]
 ]);
 
+const labels = new Map([
+  ['py', 'Python'],
+  ['python', 'Python'],
+  ['c', 'C'],
+  ['cc', 'C++'],
+  ['cpp', 'C++'],
+  ['c++', 'C++'],
+  ['cxx', 'C++'],
+  ['h', 'C header'],
+  ['hpp', 'C++ header'],
+  ['hxx', 'C++ header']
+]);
+
 const highlighter = tagHighlighter([
   {
     tag: [
@@ -45,24 +58,39 @@ const highlighter = tagHighlighter([
   { tag: tags.punctuation, class: 'tok-punctuation' }
 ]);
 
+// Each source line becomes its own block-level span so the preview can hang-
+// indent wrapped lines; a single `pre` text flow only indents its first line.
 export function highlightCodeBlock(lang = '', code = '') {
   const language = languages.get(lang.trim().toLowerCase());
-  if (!language) return escapeHtml(code);
+  if (!language) return wrapLines(code.split('\n').map(escapeHtml));
 
-  let html = '';
+  // highlightCode never puts a newline through the text callback: it reports
+  // every line break separately, which is where we start the next line span.
+  const lines = [''];
   highlightCode(
     code,
     language.parser.parse(code),
     highlighter,
     (text, classes) => {
       const escaped = escapeHtml(text);
-      html += classes ? `<span class="${classes}">${escaped}</span>` : escaped;
+      lines[lines.length - 1] += classes
+        ? `<span class="${classes}">${escaped}</span>`
+        : escaped;
     },
     () => {
-      html += '\n';
+      lines.push('');
     }
   );
-  return html;
+  return wrapLines(lines);
+}
+
+export function languageLabel(lang = '') {
+  const key = lang.trim().toLowerCase();
+  return labels.get(key) ?? key;
+}
+
+function wrapLines(lines) {
+  return lines.map((line) => `<span class="code-line">${line}</span>`).join('');
 }
 
 function escapeHtml(text) {
