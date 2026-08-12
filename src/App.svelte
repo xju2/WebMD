@@ -96,6 +96,7 @@
   let inlineEditAbort = null;
   let aiPresets = [];
   let aiPresetWarning = '';
+  let activePresetGroup = '';
   let selectedRange = null;
   let viewMode = 'edit';
   let markdownHelpOpen = false;
@@ -213,6 +214,11 @@
     selectedRange.from !== selectedRange.to
   );
   $: presetGroups = groupPresets(aiPresets);
+  // Tracks presetGroups only. activePresetGroup is read inside the function so
+  // this cannot retrigger itself when the fallback assigns to it.
+  $: reconcilePresetGroup(presetGroups);
+  $: activePresets =
+    presetGroups.find((group) => group.name === activePresetGroup)?.items ?? [];
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
@@ -312,9 +318,21 @@
     }
   }
 
-  async function sendChat() {
-    const prompt = chatPrompt.trim();
-    if (!prompt || chatStreaming) return;
+  function sendChat() {
+    return streamChat({ prompt: chatPrompt.trim() });
+  }
+
+  /** Runs a chat preset against the whole note, with no selection required. */
+  function runChatPreset(preset) {
+    return streamChat({
+      prompt: chatPrompt.trim(),
+      presetId: preset.id,
+      label: preset.label
+    });
+  }
+
+  async function streamChat({ prompt, presetId = '', label = '' }) {
+    if ((!prompt && !presetId) || chatStreaming || inlineEditLoading) return;
 
     chatPrompt = '';
     chatStatus = 'Thinking...';
@@ -323,7 +341,8 @@
     chatAbort = new AbortController();
     chatMessages = [
       ...chatMessages,
-      { role: 'user', text: prompt },
+      // A preset with nothing typed would otherwise open an empty user bubble.
+      { role: 'user', text: prompt || label },
       { role: 'assistant', text: '' }
     ];
 
@@ -338,6 +357,7 @@
             root: selectedRoot,
             path: selectedIsMarkdown ? selectedPath : '',
             selectedText,
+            presetId,
             prompt
           })
         });
@@ -643,6 +663,34 @@
       groups.get(name).push(preset);
     }
     return [...groups].map(([name, items]) => ({ name, items }));
+  }
+
+  function reconcilePresetGroup(groups) {
+    if (groups.some((group) => group.name === activePresetGroup)) return;
+    activePresetGroup = groups[0]?.name ?? '';
+  }
+
+  /** Chat presets read the note; edit presets rewrite the selection. */
+  function runPreset(preset) {
+    if (preset.kind === 'chat') return runChatPreset(preset);
+    return requestInlineEdit(preset.id);
+  }
+
+  function presetDisabled(preset) {
+    if (chatStreaming || inlineEditLoading) return true;
+    return preset.kind !== 'chat' && !canInlineEdit;
+  }
+
+  /** Group names come from user config, so they need slugging for an id. */
+  function presetGroupId(name) {
+    return `ai-preset-tab-${String(name).replace(/[^A-Za-z0-9]+/g, '-')}`;
+  }
+
+  function presetTitle(preset) {
+    if (preset.kind !== 'chat' && !canInlineEdit) {
+      return 'Select text in the editor';
+    }
+    return preset.instruction || preset.label;
   }
 
   async function loadTree(root = selectedRoot) {
@@ -2947,31 +2995,50 @@
       </div>
       <form class="ai-form" on:submit|preventDefault={sendChat}>
         {#if presetGroups.length}
-          <label class="ai-preset">
-            <span class="ai-preset-label">Rewrite selection</span>
-            <select
-              aria-label="Rewrite the selected text with a prompt preset"
-              disabled={!canInlineEdit || chatStreaming || inlineEditLoading}
-              title={canInlineEdit
-                ? 'Rewrite the selected text'
-                : 'Select text in the editor'}
-              value=""
-              on:change={(event) => {
-                const presetId = event.currentTarget.value;
-                event.currentTarget.value = '';
-                if (presetId) requestInlineEdit(presetId);
-              }}
-            >
-              <option value="">Choose a prompt...</option>
-              {#each presetGroups as group}
-                <optgroup label={group.name}>
-                  {#each group.items as preset}
-                    <option value={preset.id}>{preset.label}</option>
-                  {/each}
-                </optgroup>
-              {/each}
-            </select>
-          </label>
+          <div class="ai-preset">
+            <span class="ai-preset-label" id="ai-preset-heading">Prompts</span>
+            <div class="ai-preset-picker">
+              <div
+                aria-labelledby="ai-preset-heading"
+                class="ai-preset-groups"
+                role="tablist"
+              >
+                {#each presetGroups as group}
+                  <button
+                    aria-controls="ai-preset-items"
+                    aria-selected={group.name === activePresetGroup}
+                    class="ai-preset-group"
+                    class:active={group.name === activePresetGroup}
+                    id={presetGroupId(group.name)}
+                    role="tab"
+                    type="button"
+                    on:click={() => (activePresetGroup = group.name)}
+                  >
+                    {group.name}
+                  </button>
+                {/each}
+              </div>
+              <div
+                aria-labelledby={presetGroupId(activePresetGroup)}
+                class="ai-preset-items"
+                id="ai-preset-items"
+                role="tabpanel"
+              >
+                {#each activePresets as preset}
+                  <button
+                    class="ai-preset-chip"
+                    class:chat={preset.kind === 'chat'}
+                    disabled={presetDisabled(preset)}
+                    title={presetTitle(preset)}
+                    type="button"
+                    on:click={() => runPreset(preset)}
+                  >
+                    {preset.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          </div>
         {/if}
         {#if aiPresetWarning}
           <p class="ai-preset-warning">{aiPresetWarning}</p>

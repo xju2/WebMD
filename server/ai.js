@@ -8,9 +8,12 @@ const MAX_CONTEXT_CHARS = 12000;
 const MAX_PROVIDER_ERROR_CHARS = 400;
 const DEFAULT_EDIT_SYSTEM =
   'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.';
+const DEFAULT_CHAT_SYSTEM =
+  'You are WebMD, an AI assistant inside a remote Markdown workspace. Answer with concise, useful Markdown. Do not claim to edit files unless the user asks for an explicit edit flow.';
 
 export async function* streamAiChat({
   prompt,
+  system = DEFAULT_CHAT_SYSTEM,
   selectedText = '',
   path = '',
   documentText = '',
@@ -22,7 +25,7 @@ export async function* streamAiChat({
   }
 
   const config = aiConfig(env);
-  const messages = chatMessages({ prompt, selectedText, path, documentText });
+  const messages = chatMessages({ prompt, system, selectedText, path, documentText });
   yield* streamAiProvider(config, messages, fetchImpl);
 }
 
@@ -85,7 +88,7 @@ function aiConfig(env) {
   };
 }
 
-function chatMessages({ prompt, selectedText, path, documentText }) {
+function chatMessages({ prompt, system, selectedText, path, documentText }) {
   const context = selectedText?.trim()
     ? `Selected text from ${path || 'the current document'}:\n${selectedText.trim()}`
     : documentText?.trim()
@@ -97,8 +100,7 @@ function chatMessages({ prompt, selectedText, path, documentText }) {
   return [
     {
       role: 'developer',
-      content:
-        'You are WebMD, an AI assistant inside a remote Markdown workspace. Answer with concise, useful Markdown. Do not claim to edit files unless the user asks for an explicit edit flow.'
+      content: system || DEFAULT_CHAT_SYSTEM
     },
     {
       role: 'user',

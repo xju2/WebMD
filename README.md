@@ -71,17 +71,25 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 
 ## Prompt presets
 
-Select text in the editor, then pick a prompt from **Rewrite selection** in the
-AI panel. The result always lands in the diff preview first, so nothing changes
-until you accept it. Anything typed in the chat box refines the preset.
+The AI panel's **Prompts** picker is a group rail with that group's prompts
+beside it — one click runs a prompt. There are two kinds:
+
+- **Rewrite prompts** (`kind: "edit"`) act on the selected text. Select text
+  first, or they stay disabled. The result lands in the diff preview, so nothing
+  changes until you accept it.
+- **Ask prompts** (`kind: "chat"`, marked with a dot) act on the whole note and
+  need no selection. They answer in the chat transcript and never touch the file.
+
+Anything typed in the chat box refines the prompt you click.
 
 Built-in presets:
 
-| Group | Presets |
-| --- | --- |
-| Paper | Tighten (academic), Active voice, Methods-section voice, Plain-language summary |
-| Email | Polite reply, Concise reply, Soften a decline |
-| Notes | Condense to bullets, Clean up dictation |
+| Group | Kind | Presets |
+| --- | --- | --- |
+| Paper | Rewrite | Tighten (academic), Active voice, Methods-section voice, Calibrate claims, Compress to abstract, Plain-language summary |
+| Email | Rewrite | Polite reply, Concise reply, Soften a decline, Follow-up nudge |
+| Notes | Rewrite | Condense to bullets, Clean up dictation, Extract action items, Expand shorthand |
+| Ask | Chat | Summarize this note, Open questions, Skeptical review, Suggest next steps |
 
 Add your own in `$WORKSPACE_ROOT/.webmd/prompts.json`. Reusing a built-in `id`
 replaces that preset, so you can retune one without redefining the rest:
@@ -95,17 +103,25 @@ replaces that preset, so you can retune one without redefining the rest:
       "group": "Paper",
       "system": "You rewrite text in the voice of an NIH Specific Aims page. Return only the replacement Markdown, with no explanations or code fences.",
       "instruction": "Tighten to active voice and cut hedging."
+    },
+    {
+      "id": "ask-reviewer",
+      "label": "Reviewer 2",
+      "group": "Ask",
+      "kind": "chat",
+      "system": "You review a note as a demanding but fair referee. Answer in concise Markdown and do not rewrite the note.",
+      "instruction": "How would a hostile reviewer attack this?"
     }
   ]
 }
 ```
 
-`id`, `label`, and `system` are required; `group` defaults to `Custom` and
-`instruction` is derived from the label when omitted. A `system` prompt should
-tell the model to return only the replacement Markdown — anything else it says
-ends up in your document. System prompts stay on the server and are never sent
-to the browser. Invalid entries are skipped with a warning in the AI panel
-rather than dropping the whole file.
+`id`, `label`, and `system` are required; `group` defaults to `Custom`, `kind`
+defaults to `edit`, and `instruction` is derived from the label when omitted. An
+`edit` preset's `system` prompt should tell the model to return only the
+replacement Markdown — anything else it says ends up in your document. System
+prompts stay on the server and are never sent to the browser. Invalid entries
+are skipped with a warning in the AI panel rather than dropping the whole file.
 
 ## Daily brief integration
 

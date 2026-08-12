@@ -307,7 +307,111 @@ test('lists prompt presets without their system prompts', async () => {
     assert.doesNotMatch(body, /Secret\./);
 
     const { presets } = JSON.parse(body);
-    assert.ok(presets.some((preset) => preset.id === 'academic-tighten'));
+    const tighten = presets.find((preset) => preset.id === 'academic-tighten');
+    assert.equal(tighten.kind, 'edit');
+    assert.equal(
+      presets.find((preset) => preset.id === 'ask-summarize').kind,
+      'chat'
+    );
+    // Presets without an explicit kind stay selection rewrites.
+    assert.equal(
+      presets.find((preset) => preset.id === 'grant-aims').kind,
+      'edit'
+    );
+    assert.ok(presets.every((preset) => !('system' in preset)));
+  } finally {
+    server.close();
+  }
+});
+
+test('runs an AI chat turn from a chat preset', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
+  await fs.writeFile(
+    path.join(root, '.webmd', 'prompts.json'),
+    JSON.stringify({
+      presets: [
+        {
+          id: 'ask-risks',
+          label: 'Risks',
+          group: 'Ask',
+          kind: 'chat',
+          system: 'You list the risks in a note.'
+        }
+      ]
+    })
+  );
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[0].content, /You list the risks in a note\./);
+        // The preset asks the question; the typed text narrows it.
+        assert.match(body.messages[1].content, /Risks, for the current note\./);
+        assert.match(body.messages[1].content, /only the schedule/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode('{"message":{"content":"one risk"}}\n')
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: '/note.md',
+        presetId: 'ask-risks',
+        prompt: 'only the schedule'
+      })
+    });
+
+    assert.equal(response.status, 200);
+    assert.match(await response.text(), /"text":"one risk"/);
+  } finally {
+    server.close();
+  }
+});
+
+test('rejects a prompt preset used for the wrong kind of request', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  const post = (route, body) =>
+    fetch(`${url}/api/ai/${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md', ...body })
+    });
+
+  try {
+    const editAsChat = await post('chat', { presetId: 'academic-tighten' });
+    assert.equal(editAsChat.status, 400);
+    assert.match((await editAsChat.json()).error, /is a "edit" preset/);
+
+    const chatAsEdit = await post('edit', {
+      selectedText: 'rough text',
+      presetId: 'ask-summarize'
+    });
+    assert.equal(chatAsEdit.status, 400);
+    assert.match((await chatAsEdit.json()).error, /is a "chat" preset/);
+
+    const empty = await post('chat', {});
+    assert.equal(empty.status, 400);
+    assert.match((await empty.json()).error, /preset or a question/);
   } finally {
     server.close();
   }

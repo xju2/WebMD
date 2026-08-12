@@ -613,20 +613,79 @@ button {
   text-transform: uppercase;
 }
 
-.ai-preset select {
-  width: 100%;
-  padding: 5px 6px;
+.ai-preset-picker {
+  display: grid;
+  grid-template-columns: minmax(72px, 34%) 1fr;
+  max-height: 156px;
   border: 1px solid #cbd4df;
   border-radius: 8px;
   background: #ffffff;
-  color: #172033;
-  font: inherit;
-  font-size: 0.85rem;
+  overflow: hidden;
 }
 
-.ai-preset select:disabled {
-  background: #f3f6fa;
+.ai-preset-groups {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px;
+  border-right: 1px solid #edf1f6;
+  background: #f7f9fc;
+  overflow-y: auto;
+}
+
+.ai-preset-items {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.ai-preset-group,
+.ai-preset-chip {
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #273246;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.ai-preset-group:hover,
+.ai-preset-chip:not(:disabled):hover {
+  background: #dfe8f6;
+  color: #123f75;
+}
+
+.ai-preset-group.active {
+  background: #dfe8f6;
+  color: #123f75;
+  font-weight: 600;
+}
+
+/* Chat prompts read the note instead of rewriting the selection, so they stay
+   usable with nothing selected. The dot marks that difference in mixed groups. */
+.ai-preset-chip.chat::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #7d93b2;
+  vertical-align: middle;
+}
+
+.ai-preset-chip:disabled {
   color: #93a0b2;
+  cursor: not-allowed;
 }
 
 .ai-preset-warning {

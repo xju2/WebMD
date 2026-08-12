@@ -353,6 +353,60 @@ test('never exposes preset system prompts to the browser', async () => {
   const { presets } = await listPresets(workspace);
 
   for (const preset of publicPresets(presets)) {
-    assert.deepEqual(Object.keys(preset).sort(), ['group', 'id', 'label']);
+    assert.deepEqual(Object.keys(preset).sort(), [
+      'group',
+      'id',
+      'instruction',
+      'kind',
+      'label'
+    ]);
   }
+});
+
+test('normalizes preset kind, defaulting to a selection rewrite', async () => {
+  const workspace = await workspaceWithPresets(
+    JSON.stringify({
+      presets: [
+        { id: 'ask-risks', label: 'Risks', kind: 'CHAT', system: 'System.' },
+        { id: 'shout', label: 'Shout', system: 'System.' },
+        { id: 'odd', label: 'Odd', kind: 'sideways', system: 'System.' }
+      ]
+    })
+  );
+
+  const { presets } = await listPresets(workspace);
+  const byId = new Map(presets.map((preset) => [preset.id, preset]));
+  assert.equal(byId.get('ask-risks').kind, 'chat');
+  assert.equal(byId.get('ask-risks').instruction, 'Risks, for the current note.');
+  assert.equal(byId.get('shout').kind, 'edit');
+  assert.equal(byId.get('odd').kind, 'edit');
+});
+
+test('rejects a preset resolved for the wrong kind', async () => {
+  const workspace = await workspaceWithPresets();
+  await assert.rejects(
+    () => resolvePreset(workspace, 'ask-summarize', 'edit'),
+    /is a "chat" preset/
+  );
+  assert.equal(
+    (await resolvePreset(workspace, 'ask-summarize', 'chat')).kind,
+    'chat'
+  );
+});
+
+test('uses a custom chat system prompt when one is given', async () => {
+  const systems = [];
+  const capture = async (_url, options) => {
+    systems.push(JSON.parse(options.body).messages[0].content);
+    return streamResponse('{"message":{"content":"Hi"}}\n');
+  };
+  const env = { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' };
+
+  await collect(
+    streamAiChat({ prompt: 'Ask', system: 'You list risks.', env, fetchImpl: capture })
+  );
+  await collect(streamAiChat({ prompt: 'Ask', env, fetchImpl: capture }));
+
+  assert.equal(systems[0], 'You list risks.');
+  assert.match(systems[1], /You are WebMD, an AI assistant/);
 });

@@ -299,10 +299,13 @@ The server owns the revision log and periodically writes atomic snapshots to dis
   "messages": [
     { "role": "user", "content": "Condense this client technical scope meeting note structure." }
   ],
-  "contextSelection": "Client requires sub-millisecond typing responses and full SSH encapsulation loops."
+  "contextSelection": "Client requires sub-millisecond typing responses and full SSH encapsulation loops.",
+  "presetId": "ask-summarize"
 }
 
 ```
+
+`presetId` is optional and must name a `kind: "chat"` preset; its server-side system prompt replaces the default assistant persona, and a typed prompt narrows it. Like the edit route, the preset resolves before the stream opens so a bad id returns `400` rather than an SSE error event.
 
 * **Success Signature (`200 OK - Header: Content-Type: text/event-stream`):**
 
@@ -316,13 +319,19 @@ data: {"text": " scope:"}
 #### Prompt Presets
 
 * **Endpoint:** `GET /api/ai/presets`
-* **Role:** Lists the named rewrite prompts available for a workspace: built-in presets merged with `$WORKSPACE_ROOT/.webmd/prompts.json`, where a repeated `id` overrides the built-in. Preset system prompts are deliberately omitted from the response and stay server-side alongside provider credentials.
+* **Role:** Lists the named prompts available for a workspace: built-in presets merged with `$WORKSPACE_ROOT/.webmd/prompts.json`, where a repeated `id` overrides the built-in. `kind` tells the client which route a preset belongs to — `edit` rewrites the selection via `POST /api/ai/edit`, `chat` asks about the whole note via `POST /api/ai/chat` — and `group` is the outer list in the panel's two-pane picker. Preset system prompts are deliberately omitted from the response and stay server-side alongside provider credentials.
 * **Success Signature (`200 OK`):**
 
 ```json
 {
   "presets": [
-    { "id": "academic-tighten", "label": "Tighten (academic)", "group": "Paper" }
+    {
+      "id": "academic-tighten",
+      "label": "Tighten (academic)",
+      "group": "Paper",
+      "kind": "edit",
+      "instruction": "Tighten this passage without changing what it claims."
+    }
   ],
   "warning": "Ignored 1 preset(s) in /.webmd/prompts.json missing id, label, or system: #2."
 }
@@ -344,7 +353,7 @@ data: {"text": " scope:"}
 
 ```
 
-Either `presetId` or `instruction` is required; supplying both refines the preset. Preset resolution happens before the stream opens, so a bad request still returns `400` instead of an SSE error event.
+Either `presetId` or `instruction` is required; supplying both refines the preset. `presetId` must name a `kind: "edit"` preset. Preset resolution happens before the stream opens, so a bad request still returns `400` instead of an SSE error event.
 
 * **Success Signature (`200 OK - Header: Content-Type: text/event-stream`):**
 

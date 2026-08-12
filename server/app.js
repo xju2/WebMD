@@ -133,6 +133,16 @@ export async function createApp({
 
   app.post('/api/ai/chat', asyncHandler(async (req, res) => {
     const workspace = workspaces.get(req.body.root);
+    // Resolve the preset before streaming starts: once SSE headers are out, a
+    // bad request can only be reported as an error event, not a 400.
+    const preset = req.body.presetId
+      ? await resolvePreset(workspace, req.body.presetId, 'chat')
+      : null;
+    const prompt = chatPrompt(preset, req.body.prompt);
+    if (!prompt) {
+      throw new WorkspaceError(400, 'A prompt preset or a question is required.');
+    }
+
     const document = req.body.path
       ? await workspace.loadFile(req.body.path)
       : { content: '' };
@@ -141,7 +151,8 @@ export async function createApp({
       res,
       chatEvents(
         streamAiChat({
-          prompt: req.body.prompt,
+          prompt,
+          system: preset?.system,
           selectedText: req.body.selectedText,
           path: req.body.path,
           documentText: document.content,
@@ -157,7 +168,7 @@ export async function createApp({
     // Resolve the preset before streaming starts: once SSE headers are out, a
     // bad request can only be reported as an error event, not a 400.
     const preset = req.body.presetId
-      ? await resolvePreset(workspace, req.body.presetId)
+      ? await resolvePreset(workspace, req.body.presetId, 'edit')
       : null;
     const instruction = editInstruction(preset, req.body.instruction);
     if (!instruction) {
@@ -240,6 +251,14 @@ function editInstruction(preset, typed) {
   if (!preset) return extra;
   if (!extra) return preset.instruction;
   return `${preset.instruction}\n\nAlso apply this instruction: ${extra}`;
+}
+
+/** Same deal for chat: the preset asks the question, typed text narrows it. */
+function chatPrompt(preset, typed) {
+  const extra = typeof typed === 'string' ? typed.trim() : '';
+  if (!preset) return extra;
+  if (!extra) return preset.instruction;
+  return `${preset.instruction}\n\nFocus on this in particular: ${extra}`;
 }
 
 export async function createWorkspaceRegistry(roots) {
