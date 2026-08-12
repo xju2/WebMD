@@ -1,7 +1,8 @@
 <script>
+  import { indentWithTab } from '@codemirror/commands';
   import { markdown } from '@codemirror/lang-markdown';
   import { EditorState } from '@codemirror/state';
-  import { EditorView } from '@codemirror/view';
+  import { EditorView, keymap } from '@codemirror/view';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
   import { basicSetup } from 'codemirror';
@@ -321,6 +322,10 @@
         doc,
         extensions: [
           basicSetup,
+          // Tab indents by the default two-space unit instead of moving focus,
+          // so a selected block shifts with Tab and back with Shift+Tab.
+          // Escape then Tab still leaves the editor for keyboard-only use.
+          keymap.of([indentWithTab]),
           markdown(),
           EditorView.lineWrapping,
           EditorView.domEventHandlers({
