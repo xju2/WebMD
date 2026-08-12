@@ -923,6 +923,31 @@ button {
   cursor: default;
 }
 
+.reference-button {
+  min-width: 84px;
+  height: 34px;
+  border: 1px solid #9fb2ca;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #174b82;
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 720;
+}
+
+.reference-button.active {
+  border-color: #174b82;
+  background: #174b82;
+  color: #ffffff;
+}
+
+.reference-button:disabled {
+  border-color: #c9d0da;
+  background: #eef1f5;
+  color: #8994a5;
+  cursor: default;
+}
+
 .view-menu {
   position: relative;
   display: flex;
@@ -1081,12 +1106,74 @@ button {
   overflow-wrap: anywhere;
 }
 
-.editor-frame {
-  position: relative;
+.editor-split {
+  display: grid;
   grid-row: 3;
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.editor-split.split {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 38%);
+}
+
+.editor-frame {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.reference-pane {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid #dfe6ee;
+  background: #f9fbfc;
+}
+
+.reference-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid #dfe6ee;
+  background: #ffffff;
+}
+
+.reference-toolbar select {
+  flex: 1;
+  min-width: 0;
+}
+
+.reference-step {
+  display: flex;
+  gap: 2px;
+}
+
+.reference-step button,
+.reference-close {
+  padding: 2px 8px;
+  border: 1px solid #d3dbe6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #35415a;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.reference-step button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.reference-body.preview-pane {
+  max-width: none;
+  padding: 20px 22px 60px;
+  background: #f9fbfc;
 }
 
 .editor-host,
@@ -2437,6 +2524,15 @@ button {
   .app-shell {
     grid-template-columns: 68px minmax(0, 1fr);
     grid-template-rows: minmax(150px, 32vh) minmax(0, 1fr);
+  }
+
+  /* Side by side has no room here, so the editor keeps the whole column. */
+  .editor-split.split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .reference-pane {
+    display: none;
   }
 
   .app-shell.sidebar-hidden,

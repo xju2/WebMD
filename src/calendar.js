@@ -29,6 +29,14 @@ export function stepDailyNote(count, index, step) {
   return next >= 0 && next < count ? next : null;
 }
 
+// The daily note to show beside `currentPath`: the next one older, or the newest
+// note when `currentPath` is not itself a daily note. Never returns currentPath.
+export function defaultReferencePath(paths, currentPath) {
+  const index = paths.indexOf(currentPath);
+  const target = stepDailyNote(paths.length, index, -1);
+  return target === null ? '' : paths[target];
+}
+
 export function dailyNoteDateFromPath(path) {
   const name = String(path ?? '')
     .split('/')

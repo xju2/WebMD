@@ -11,6 +11,7 @@
     dailyNoteContent as buildDailyNoteContent,
     dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
+    defaultReferencePath,
     shiftMonth,
     stepDailyNote
   } from './calendar.js';
@@ -40,6 +41,7 @@
   const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
+  const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
   const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
@@ -99,6 +101,14 @@
   let activePresetGroup = '';
   let selectedRange = null;
   let viewMode = 'edit';
+  let referenceOpen = false;
+  let referencePath = '';
+  let referenceContent = '';
+  let referenceStatus = '';
+  // Pinned once the reader picks a note by hand, so opening another file in the
+  // editor no longer drags the reference along with it.
+  let referencePinned = false;
+  let referenceRun = 0;
   let markdownHelpOpen = false;
   let viewMenuOpen = false;
   let diffFiles = [];
@@ -189,8 +199,17 @@
   $: dailyNoteIndex = dailyNoteEntries.findIndex(
     (entry) => entry.path === selectedPath
   );
-  $: olderDailyNotePath = adjacentDailyNote(-1);
-  $: newerDailyNotePath = adjacentDailyNote(1);
+  // The entries and index are passed in rather than read inside the helper, so
+  // the reactive statement actually depends on them and re-runs once the tree
+  // loads. Reading them only inside adjacentNotePath left these stuck at ''.
+  $: olderDailyNotePath = adjacentNotePath(dailyNoteEntries, dailyNoteIndex, -1);
+  $: newerDailyNotePath = adjacentNotePath(dailyNoteEntries, dailyNoteIndex, 1);
+  $: dailyNotePathList = dailyNoteEntries.map((entry) => entry.path);
+  $: referenceIndex = dailyNoteEntries.findIndex(
+    (entry) => entry.path === referencePath
+  );
+  $: olderReferencePath = adjacentNotePath(dailyNoteEntries, referenceIndex, -1);
+  $: newerReferencePath = adjacentNotePath(dailyNoteEntries, referenceIndex, 1);
   // The Markdown views only collapse while the AI panel owns the sidebar, so
   // closing the panel always brings the editor back.
   $: markdownViewsCollapsed =
@@ -222,6 +241,10 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: referenceBlocks =
+    referenceOpen && referencePath && !referenceStatus
+      ? renderMarkdown(referenceContent)
+      : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: statusClass = status.includes('Offline')
     ? 'offline'
@@ -634,6 +657,7 @@
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
       else if (viewMode === 'graph') await loadGraph();
+      await restoreReferencePane(selectedRoot);
     } catch (err) {
       error = err.message;
     }
@@ -745,6 +769,7 @@
     reconcileDailyNoteFolder();
     await loadOverview();
     if (viewMode === 'graph') await loadGraph();
+    await restoreReferencePane(root);
   }
 
   async function openFile(
@@ -765,6 +790,7 @@
     diffStatus = '';
     error = '';
     clearInlineEdit();
+    followReference(path);
 
     if (fileKind !== 'markdown') {
       showMediaFile(path);
@@ -833,6 +859,7 @@
     diffFiles = [];
     diffStatus = '';
     clearInlineEdit();
+    followReference(path);
     selectedText = '';
     selectedRange = null;
     status = '[Syncing...]';
@@ -955,7 +982,9 @@
       Comma: () => openOlderDailyNote(),
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
-      KeyP: () => selectedPath && setViewMode('preview')
+      KeyP: () => selectedPath && setViewMode('preview'),
+      // Not KeyR: Chrome reserves Cmd/Ctrl+Shift+R for a hard reload.
+      Backslash: () => toggleReferencePane()
     }[event.code];
     if (!run) return;
 
@@ -963,9 +992,9 @@
     run();
   }
 
-  function adjacentDailyNote(step) {
-    const target = stepDailyNote(dailyNoteEntries.length, dailyNoteIndex, step);
-    return target === null ? '' : dailyNoteEntries[target].path;
+  function adjacentNotePath(entries, index, step) {
+    const target = stepDailyNote(entries.length, index, step);
+    return target === null ? '' : entries[target].path;
   }
 
   // Opens through openFile so a missing note is never created on the way.
@@ -979,6 +1008,91 @@
 
   async function openNewerDailyNote() {
     await openAdjacentDailyNote(newerDailyNotePath);
+  }
+
+  // Runs once the tree is loaded, so a stored path can be checked for survival.
+  async function restoreReferencePane(root) {
+    const stored = readReferencePane(root);
+    referenceOpen = stored.open;
+    referencePinned = false;
+    referencePath = '';
+    referenceContent = '';
+    referenceStatus = '';
+    if (!referenceOpen) return;
+
+    const pinned =
+      stored.path && markdownFiles.some((file) => file.path === stored.path);
+    if (pinned) await setReferencePath(stored.path);
+    else await autoPickReference();
+  }
+
+  async function toggleReferencePane() {
+    if (referenceOpen) {
+      closeReferencePane();
+      return;
+    }
+
+    referenceOpen = true;
+    rememberReferencePane(selectedRoot);
+    if (!referencePinned || !referencePath) await autoPickReference();
+    else await loadReferenceFile(selectedRoot, referencePath);
+  }
+
+  function closeReferencePane() {
+    referenceOpen = false;
+    referencePinned = false;
+    referenceContent = '';
+    referenceStatus = '';
+    referenceRun += 1;
+    rememberReferencePane(selectedRoot);
+  }
+
+  // The reference follows the editor until the reader pins a note by hand.
+  async function autoPickReference(openPath = selectedPath) {
+    const path = defaultReferencePath(dailyNotePathList, openPath);
+    referencePinned = false;
+    await setReferencePath(path, { pin: false });
+  }
+
+  function followReference(openPath) {
+    if (referenceOpen && !referencePinned) autoPickReference(openPath);
+  }
+
+  async function setReferencePath(path, { pin = true } = {}) {
+    referencePath = path;
+    if (pin) referencePinned = true;
+    referenceContent = '';
+    referenceStatus = path ? '' : 'No other note to show yet.';
+    rememberReferencePane(selectedRoot);
+    if (path) await loadReferenceFile(selectedRoot, path);
+  }
+
+  async function stepReferenceNote(step) {
+    const path = step < 0 ? olderReferencePath : newerReferencePath;
+    if (path) await setReferencePath(path);
+  }
+
+  function chooseReferencePath(event) {
+    setReferencePath(event.currentTarget.value);
+  }
+
+  // Read-only: never joins the collaboration stream, the save queue, or fileCache.
+  async function loadReferenceFile(root, path) {
+    const run = ++referenceRun;
+    referenceStatus = 'Loading...';
+
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+      );
+      if (run !== referenceRun || root !== selectedRoot) return;
+      referenceContent = file.content;
+      referenceStatus = '';
+    } catch (err) {
+      if (run !== referenceRun || root !== selectedRoot) return;
+      referenceContent = '';
+      referenceStatus = err.status === 404 ? 'Note not found.' : err.message;
+    }
   }
 
   async function loadDailyNoteTemplate(root) {
@@ -2021,6 +2135,38 @@
 
   function workspaceViewModeStorageKey(root) {
     return `${VIEW_MODE_KEY}:${root}`;
+  }
+
+  function readReferencePane(root) {
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem(referencePaneStorageKey(root)) || '{}'
+      );
+      return {
+        open: stored.open === true,
+        path: typeof stored.path === 'string' ? stored.path : ''
+      };
+    } catch {
+      return { open: false, path: '' };
+    }
+  }
+
+  function rememberReferencePane(root = selectedRoot) {
+    try {
+      localStorage.setItem(
+        referencePaneStorageKey(root),
+        JSON.stringify({
+          open: referenceOpen,
+          path: referencePinned ? referencePath : ''
+        })
+      );
+    } catch {
+      // Ignore storage failures; the pane still works this session.
+    }
+  }
+
+  function referencePaneStorageKey(root) {
+    return `${REFERENCE_PANE_KEY}:${root}`;
   }
 
   function rootPathKey(root, path) {
@@ -3210,6 +3356,17 @@
         >
           Delete
         </button>
+        <button
+          aria-pressed={referenceOpen}
+          class:active={referenceOpen}
+          class="reference-button"
+          disabled={!markdownFiles.length}
+          title={`Reference note (${shortcutKey}+Shift+\\)`}
+          type="button"
+          on:click={toggleReferencePane}
+        >
+          Reference
+        </button>
         <div class="view-toggle" aria-label="View mode">
           <button
             class:active={viewMode === 'edit' && selectedIsMarkdown}
@@ -3357,6 +3514,7 @@
               <dd>
                 <code>{shortcutKey}+Shift+E</code> edit
                 <code>{shortcutKey}+Shift+P</code> preview
+                <code>{shortcutKey}+Shift+\</code> reference note
                 <code>{shortcutKey}+Shift+&lt;</code> older day
                 <code>{shortcutKey}+Shift+&gt;</code> newer day
               </dd>
@@ -3370,7 +3528,8 @@
       <div class="error-banner" role="alert">{error}</div>
     {/if}
 
-    <div class:empty={!selectedPath} class="editor-frame">
+    <div class:split={referenceOpen} class="editor-split">
+      <div class:empty={!selectedPath} class="editor-frame">
       {#if !selectedPath && viewMode !== 'graph' && viewMode !== 'calendar'}
         <section class="workspace-home" aria-label="Workspace Home">
           <header class="home-intro">
@@ -3710,6 +3869,64 @@
             {/each}
           </div>
         </section>
+      {/if}
+      </div>
+
+      {#if referenceOpen}
+        <aside class="reference-pane" aria-label="Reference note">
+          <header class="reference-toolbar">
+            <div class="reference-step">
+              <button
+                aria-label="Older reference note"
+                disabled={!olderReferencePath}
+                title="Older note"
+                type="button"
+                on:click={() => stepReferenceNote(-1)}
+              >
+                ‹
+              </button>
+              <button
+                aria-label="Newer reference note"
+                disabled={!newerReferencePath}
+                title="Newer note"
+                type="button"
+                on:click={() => stepReferenceNote(1)}
+              >
+                ›
+              </button>
+            </div>
+            <select
+              aria-label="Reference note"
+              value={referencePath}
+              on:change={chooseReferencePath}
+            >
+              {#if !referencePath}
+                <option value="">No note</option>
+              {/if}
+              {#each markdownFiles as file}
+                <option value={file.path}>{file.path}</option>
+              {/each}
+            </select>
+            <button
+              aria-label="Close reference note"
+              class="reference-close"
+              title="Close reference note"
+              type="button"
+              on:click={closeReferencePane}
+            >
+              x
+            </button>
+          </header>
+          <article class="preview-pane reference-body">
+            {#if referenceStatus}
+              <p class="preview-empty">{referenceStatus}</p>
+            {:else if referenceBlocks.length}
+              {@render markdownBlocks(referenceBlocks)}
+            {:else}
+              <p class="preview-empty">Empty file</p>
+            {/if}
+          </article>
+        </aside>
       {/if}
     </div>
 

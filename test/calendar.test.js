@@ -5,6 +5,7 @@ import {
   dailyNoteContent,
   dailyNoteDate,
   dailyNoteDateFromPath,
+  defaultReferencePath,
   shiftMonth,
   stepDailyNote
 } from '../src/calendar.js';
@@ -68,4 +69,25 @@ test('builds daily note content from a template', () => {
     ),
     '# 2026-08-06\n\nThursday 2026-08-06\n'
   );
+});
+
+test('picks the reference note beside the open file', () => {
+  const paths = [
+    '/raw/dailynotes/2026-08-10.md',
+    '/raw/dailynotes/2026-08-11.md',
+    '/raw/dailynotes/2026-08-12.md'
+  ];
+
+  assert.equal(defaultReferencePath([], '/raw/dailynotes/2026-08-12.md'), '');
+  assert.equal(
+    defaultReferencePath(paths, '/raw/dailynotes/2026-08-12.md'),
+    '/raw/dailynotes/2026-08-11.md'
+  );
+  // Not a daily note, so the newest one is the useful companion.
+  assert.equal(
+    defaultReferencePath(paths, '/notes/inbox.md'),
+    '/raw/dailynotes/2026-08-12.md'
+  );
+  // Nothing sits before the oldest note.
+  assert.equal(defaultReferencePath(paths, '/raw/dailynotes/2026-08-10.md'), '');
 });
