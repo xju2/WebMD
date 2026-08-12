@@ -24,6 +24,7 @@
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
+  import { renderMermaid } from './mermaid.js';
   import {
     pastedImageSources,
     uploadFilesForPastedImageSources,
@@ -50,6 +51,47 @@
 
   function renderMath(source) {
     return katex.renderToString(source, { throwOnError: false });
+  }
+
+  const MERMAID_REDRAW_DELAY = 250;
+
+  // Mermaid renders asynchronously, so diagrams are drawn by an action rather
+  // than inline markup. The preview reparses the whole note on every keystroke,
+  // so redraws are debounced and stale results are dropped.
+  function mermaidDiagram(node, text) {
+    const canvas = node.querySelector('.mermaid-canvas');
+    const message = node.querySelector('.mermaid-error');
+    let token = 0;
+    let timer = null;
+
+    async function draw(source) {
+      const current = ++token;
+      try {
+        const svg = await renderMermaid(source);
+        if (current !== token) return;
+        canvas.innerHTML = svg;
+        message.textContent = '';
+        node.dataset.state = 'ready';
+      } catch (error) {
+        if (current !== token) return;
+        canvas.innerHTML = '';
+        message.textContent = error?.message || 'Could not render this diagram.';
+        node.dataset.state = 'error';
+      }
+    }
+
+    draw(text);
+
+    return {
+      update(next) {
+        clearTimeout(timer);
+        timer = setTimeout(() => draw(next), MERMAID_REDRAW_DELAY);
+      },
+      destroy() {
+        clearTimeout(timer);
+        token += 1;
+      }
+    };
   }
   const CLIENT_ID =
     globalThis.crypto?.randomUUID?.() ||
@@ -2749,6 +2791,16 @@
       </details>
     {:else if block.type === 'rule'}
       <hr />
+    {:else if block.type === 'mermaid'}
+      <div
+        class="mermaid-block"
+        data-state="loading"
+        use:mermaidDiagram={block.text}
+      >
+        <div class="mermaid-canvas" role="img" aria-label="Mermaid diagram"></div>
+        <pre class="mermaid-source"><code>{block.text}</code></pre>
+        <p class="mermaid-error"></p>
+      </div>
     {:else if block.type === 'code'}
       <div class="code-block">
         <div class="code-block-bar">

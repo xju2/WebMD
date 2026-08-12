@@ -1998,6 +1998,46 @@ button {
   background: var(--code-surface);
 }
 
+.preview-pane .mermaid-block {
+  overflow-x: auto;
+  margin: 0.8em 0;
+  padding: 14px;
+  border: 1px solid var(--code-border);
+  border-radius: 8px;
+  background: var(--code-surface);
+  text-align: center;
+}
+
+.preview-pane .mermaid-canvas svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.preview-pane .mermaid-source,
+.preview-pane .mermaid-error {
+  display: none;
+}
+
+.preview-pane .mermaid-block[data-state='error'] .mermaid-canvas {
+  display: none;
+}
+
+.preview-pane .mermaid-block[data-state='error'] .mermaid-source {
+  display: block;
+  padding: 0;
+  text-align: left;
+}
+
+.preview-pane .mermaid-block[data-state='error'] .mermaid-error {
+  display: block;
+  margin: 10px 0 0;
+  color: var(--code-label);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
 .preview-pane .code-block-bar {
   display: flex;
   height: 30px;

@@ -79,6 +79,27 @@ index 42ced7d..19ccce4 100755
   );
 });
 
+test('renders fenced mermaid as diagram blocks', () => {
+  const blocks = renderMarkdown(`\`\`\`mermaid
+flowchart TD
+  A[Start] --> B[Finish]
+\`\`\`
+
+\`\`\`Mermaid
+sequenceDiagram
+  Alice->>Bob: hi
+\`\`\`
+
+\`\`\`js
+console.log("ok");
+\`\`\``);
+
+  assert.equal(blocks[0].type, 'mermaid');
+  assert.equal(blocks[0].text, 'flowchart TD\n  A[Start] --> B[Finish]');
+  assert.equal(blocks[1].type, 'mermaid');
+  assert.equal(blocks[2].type, 'code');
+});
+
 test('drops unsafe link targets', () => {
   assert.equal(parseInline('[bad](javascript:alert(1))')[0].href, '');
 });

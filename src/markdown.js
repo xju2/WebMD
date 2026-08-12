@@ -116,6 +116,8 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
 }
 
 function parseCodeBlock(lang, text) {
+  if (lang.toLowerCase() === 'mermaid') return { type: 'mermaid', lang, text };
+
   const files = lang.toLowerCase() === 'diff' ? parseUnifiedDiff(text) : [];
   return files.length
     ? { type: 'diff', lang, text, files }

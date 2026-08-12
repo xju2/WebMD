@@ -22,7 +22,8 @@
     "@lezer/highlight": "^1.2.3",
     "codemirror": "^6.0.2",
     "express": "^5.1.0",
-    "katex": "^0.18.0"
+    "katex": "^0.18.0",
+    "mermaid": "^11.16.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.1.0",
