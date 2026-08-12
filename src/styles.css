@@ -2420,7 +2420,7 @@ button {
   font-weight: 720;
 }
 
-.inline-edit-actions button:hover {
+.inline-edit-actions button:hover:not(:disabled) {
   border-color: #9fb2ca;
   background: #eef2f6;
   color: #123f75;
@@ -2430,6 +2430,14 @@ button {
   border-color: #9fb2ca;
   background: #174b82;
   color: #ffffff;
+}
+
+/* Accept stays disabled until the stream ends, so it has to read as disabled. */
+.inline-edit-actions button:disabled {
+  border-color: #dde2e9;
+  background: #eef1f5;
+  color: #b7bec9;
+  cursor: default;
 }
 
 .inline-edit-diff {
