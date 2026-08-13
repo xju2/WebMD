@@ -61,6 +61,9 @@
   }
 
   const MERMAID_REDRAW_DELAY = 250;
+  // Must match the single breakpoint in styles.css so the markup and the
+  // stylesheet always agree on what counts as a narrow screen.
+  const NARROW_LAYOUT_QUERY = '(max-width: 760px)';
 
   // Mermaid renders asynchronously, so diagrams are drawn by an action rather
   // than inline markup. The preview reparses the whole note on every keystroke,
@@ -165,6 +168,9 @@
   let referenceRun = 0;
   let markdownHelpOpen = false;
   let viewMenuOpen = false;
+  // Phone-width layout. The toolbar has no room for every action there, so the
+  // rarely used ones move into the ... menu instead of overflowing off-screen.
+  let narrowLayout = false;
   let diffFiles = [];
   let diffStatus = '';
   let sidebarVisible = true;
@@ -311,15 +317,30 @@
       ? 'syncing'
       : 'saved';
 
+  let narrowLayoutQuery = null;
+
+  function syncNarrowLayout() {
+    const next = Boolean(narrowLayoutQuery?.matches);
+    if (next === narrowLayout) return;
+    narrowLayout = next;
+    // The ... menu carries different items on each side of the breakpoint, so
+    // a resize should not leave a half-stale menu open.
+    closeViewMenu();
+  }
+
   onMount(async () => {
     searchHistory = readSearchHistory();
     createEditor('');
+    narrowLayoutQuery = window.matchMedia(NARROW_LAYOUT_QUERY);
+    syncNarrowLayout();
+    narrowLayoutQuery.addEventListener('change', syncNarrowLayout);
     document.addEventListener('selectionchange', updateBrowserSelectedText);
     window.addEventListener('popstate', openNavigationState);
     await loadRoots();
   });
 
   onDestroy(() => {
+    narrowLayoutQuery?.removeEventListener('change', syncNarrowLayout);
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
     closeDocumentEvents();
@@ -1865,6 +1886,21 @@
     markdownHelpOpen = true;
   }
 
+  function chooseUpload() {
+    closeViewMenu();
+    uploadInput?.click();
+  }
+
+  async function chooseDelete() {
+    closeViewMenu();
+    await deleteSelectedFile();
+  }
+
+  async function chooseReferencePane() {
+    closeViewMenu();
+    await toggleReferencePane();
+  }
+
   async function showDiff() {
     if (!selectedPath || !selectedIsMarkdown) return;
     if (hasUnsavedChanges()) await saveNow();
@@ -3013,6 +3049,41 @@
   </article>
 {/snippet}
 
+<!-- Rendered in the toolbar on a wide screen and inside the ... menu on a
+     narrow one, so the control itself only exists once. -->
+{#snippet assetFolderControl()}
+  <div class="asset-folder-control">
+    <label>
+      Assets
+      <select
+        aria-label="Image asset folder"
+        value={imageAssetFolder}
+        on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
+      >
+        {#each imageAssetFolderOptions as folder}
+          <option value={folder}>{folder}</option>
+        {/each}
+        <option value={NEW_IMAGE_ASSET_FOLDER}>New folder...</option>
+      </select>
+    </label>
+    {#if creatingImageAssetFolder}
+      <form
+        class="asset-folder-new"
+        on:submit|preventDefault={createImageAssetFolder}
+      >
+        <input
+          aria-label="New image asset folder"
+          bind:value={imageAssetFolderDraft}
+          placeholder="/assets"
+        />
+        <button disabled={!newImageAssetFolderPath()} type="submit">
+          Create
+        </button>
+      </form>
+    {/if}
+  </div>
+{/snippet}
+
 <svelte:window on:keydown={handleShortcut} />
 
 <main
@@ -3439,37 +3510,9 @@
         </button>
       </div>
       <div class="topbar-actions">
-        <div class="asset-folder-control">
-          <label>
-            Assets
-            <select
-              aria-label="Image asset folder"
-              value={imageAssetFolder}
-              on:change={(event) =>
-                chooseImageAssetFolder(event.currentTarget.value)}
-            >
-              {#each imageAssetFolderOptions as folder}
-                <option value={folder}>{folder}</option>
-              {/each}
-              <option value={NEW_IMAGE_ASSET_FOLDER}>New folder...</option>
-            </select>
-          </label>
-          {#if creatingImageAssetFolder}
-            <form
-              class="asset-folder-new"
-              on:submit|preventDefault={createImageAssetFolder}
-            >
-              <input
-                aria-label="New image asset folder"
-                bind:value={imageAssetFolderDraft}
-                placeholder="/assets"
-              />
-              <button disabled={!newImageAssetFolderPath()} type="submit">
-                Create
-              </button>
-            </form>
-          {/if}
-        </div>
+        {#if !narrowLayout}
+          {@render assetFolderControl()}
+        {/if}
         <input
           bind:this={uploadInput}
           class="hidden"
@@ -3502,33 +3545,35 @@
             ›
           </button>
         </div>
-        <button
-          class="upload-button"
-          disabled={!workspaceRoots.length}
-          type="button"
-          on:click={() => uploadInput?.click()}
-        >
-          Upload
-        </button>
-        <button
-          class="delete-button"
-          disabled={!selectedPath}
-          type="button"
-          on:click={deleteSelectedFile}
-        >
-          Delete
-        </button>
-        <button
-          aria-pressed={referenceOpen}
-          class:active={referenceOpen}
-          class="reference-button"
-          disabled={!markdownFiles.length}
-          title={`Reference note (${shortcutKey}+Shift+\\)`}
-          type="button"
-          on:click={toggleReferencePane}
-        >
-          Reference
-        </button>
+        {#if !narrowLayout}
+          <button
+            class="upload-button"
+            disabled={!workspaceRoots.length}
+            type="button"
+            on:click={() => uploadInput?.click()}
+          >
+            Upload
+          </button>
+          <button
+            class="delete-button"
+            disabled={!selectedPath}
+            type="button"
+            on:click={deleteSelectedFile}
+          >
+            Delete
+          </button>
+          <button
+            aria-pressed={referenceOpen}
+            class:active={referenceOpen}
+            class="reference-button"
+            disabled={!markdownFiles.length}
+            title={`Reference note (${shortcutKey}+Shift+\\)`}
+            type="button"
+            on:click={toggleReferencePane}
+          >
+            Reference
+          </button>
+        {/if}
         <div class="view-toggle" aria-label="View mode">
           <button
             class:active={viewMode === 'edit' && selectedIsMarkdown}
@@ -3595,6 +3640,36 @@
               <button role="menuitem" type="button" on:click={openMarkdownHelp}>
                 Markdown help
               </button>
+              {#if narrowLayout}
+                <hr class="view-menu-divider" />
+                <button
+                  disabled={!workspaceRoots.length}
+                  role="menuitem"
+                  type="button"
+                  on:click={chooseUpload}
+                >
+                  Upload
+                </button>
+                <button
+                  disabled={!selectedPath}
+                  role="menuitem"
+                  type="button"
+                  on:click={chooseDelete}
+                >
+                  Delete
+                </button>
+                <button
+                  aria-pressed={referenceOpen}
+                  class:active={referenceOpen}
+                  disabled={!markdownFiles.length}
+                  role="menuitem"
+                  type="button"
+                  on:click={chooseReferencePane}
+                >
+                  Reference
+                </button>
+                {@render assetFolderControl()}
+              {/if}
             </div>
           {/if}
         </div>

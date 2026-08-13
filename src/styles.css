@@ -1032,6 +1032,39 @@ button {
   cursor: default;
 }
 
+.view-menu-divider {
+  height: 0;
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid #e1e5eb;
+}
+
+/* The folder picker keeps its own control styling inside the menu instead of
+   inheriting the menu item look. */
+.view-menu-list .asset-folder-control {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+}
+
+.view-menu-list .asset-folder-control label {
+  flex-wrap: wrap;
+}
+
+.view-menu-list .asset-folder-control select,
+.view-menu-list .asset-folder-control input {
+  width: 100%;
+}
+
+.view-menu-list .asset-folder-new button {
+  padding: 0 10px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 720;
+  text-align: center;
+}
+
 .upload-button,
 .delete-button {
   min-width: 68px;
@@ -2728,7 +2761,14 @@ button {
   }
 
   .topbar-actions {
+    /* Upload, Delete, Reference, and the asset folder move into the ... menu
+       here, but wrapping keeps anything that is left from clipping off-screen. */
+    flex-wrap: wrap;
     justify-content: space-between;
+  }
+
+  .view-menu-list {
+    max-width: calc(100vw - 24px);
   }
 
   .asset-folder-control {
