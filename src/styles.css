@@ -2236,6 +2236,110 @@ button {
   color: #778296;
 }
 
+.palette-layer {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  padding: 12vh 18px 18px;
+  justify-items: center;
+  align-items: start;
+}
+
+.palette-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(15 23 42 / 32%);
+  cursor: default;
+}
+
+.palette {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(440px, 100%);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #cbd4df;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgb(21 32 51 / 24%);
+}
+
+.palette input {
+  flex: 0 0 auto;
+  padding: 13px 15px;
+  border: 0;
+  border-bottom: 1px solid #dfe6ee;
+  border-radius: 0;
+  outline: none;
+  color: #172033;
+  font-size: 0.95rem;
+}
+
+.palette-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.palette-result {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  margin: 1px 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #273246;
+  text-align: left;
+  cursor: pointer;
+}
+
+.palette-result.active {
+  background: #dfe8f6;
+  color: #123f75;
+}
+
+.palette-result span,
+.palette-result small,
+.palette-result em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-result span {
+  font-weight: 720;
+}
+
+.palette-result small,
+.palette-result em {
+  color: #657286;
+  font-size: 0.78rem;
+}
+
+.palette-result em {
+  font-style: normal;
+}
+
+.palette footer {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 14px;
+  padding: 8px 15px;
+  border-top: 1px solid #dfe6ee;
+  color: #7a8595;
+  font-size: 0.74rem;
+}
+
 .markdown-help-layer {
   position: fixed;
   z-index: 20;

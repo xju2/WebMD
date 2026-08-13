@@ -27,6 +27,12 @@
   import { renderMarkdown } from './markdown.js';
   import { renderMermaid } from './mermaid.js';
   import {
+    clampPaletteIndex,
+    paletteResultLabel,
+    recentPaletteResults,
+    stepPaletteIndex
+  } from './palette.js';
+  import {
     pastedImageSources,
     uploadFilesForPastedImageSources,
     uploadPayloadForFile
@@ -112,6 +118,11 @@
   let searchHistory = [];
   let searchResults = [];
   let searchStatus = '';
+  let paletteOpen = false;
+  let paletteQuery = '';
+  let paletteResults = [];
+  let paletteStatus = '';
+  let paletteIndex = -1;
   let recentPaths = [];
   let overview = {
     fileCount: 0,
@@ -177,12 +188,16 @@
   let editorHost;
   let treeHost;
   let searchInput;
+  let paletteInput;
+  let paletteHost;
   let uploadInput;
   let editorView;
   let saveTimer;
   let retryTimer;
   let searchTimer;
   let searchRun = 0;
+  let paletteTimer;
+  let paletteRun = 0;
   let fileCache = new Map();
   let navigationBackStack = [];
   let navigationForwardStack = [];
@@ -289,6 +304,7 @@
       ? renderMarkdown(referenceContent)
       : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
+  $: if (paletteOpen) queuePaletteSearch(paletteQuery.trim(), selectedRoot);
   $: statusClass = status.includes('Offline')
     ? 'offline'
     : status.includes('Syncing')
@@ -1021,6 +1037,21 @@
   // unusable here because macOS turns Alt+letter into a dead key that would
   // type an accent into the editor instead.
   function handleShortcut(event) {
+    // Quick open is the one plain Cmd/Ctrl combination. It reads the
+    // platform modifier rather than either one, because Ctrl+K on macOS is
+    // already the editor's delete-to-end-of-line.
+    if (
+      event.code === 'KeyK' &&
+      !event.shiftKey &&
+      !event.altKey &&
+      (shortcutKey === 'Cmd' ? event.metaKey : event.ctrlKey)
+    ) {
+      event.preventDefault();
+      if (paletteOpen) closePalette();
+      else openPalette();
+      return;
+    }
+
     if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey)
       return;
 
@@ -2097,13 +2128,6 @@
     await loadOverview();
   }
 
-  async function focusWorkspaceSearch() {
-    sidebarVisible = true;
-    sidebarView = 'files';
-    await tick();
-    searchInput?.focus();
-  }
-
   function toggleSidebar(view) {
     if (sidebarVisible && sidebarView === view) {
       sidebarVisible = false;
@@ -2632,9 +2656,7 @@
 
   async function searchWorkspace(query, root, run) {
     try {
-      const results = await requestJson(
-        `/api/workspace/search?root=${encodeURIComponent(root)}&q=${encodeURIComponent(query)}`
-      );
+      const results = await fetchWorkspaceSearch(query, root);
       if (run === searchRun && root === selectedRoot) {
         searchResults = results;
         searchStatus = results.length ? '' : 'No matches';
@@ -2645,10 +2667,93 @@
     }
   }
 
+  function fetchWorkspaceSearch(query, root) {
+    return requestJson(
+      `/api/workspace/search?root=${encodeURIComponent(root)}&q=${encodeURIComponent(query)}`
+    );
+  }
+
   async function openSearchResult(result) {
     rememberSearch(searchQuery);
     if (result.fileKind === 'markdown') setViewMode('preview');
     await openFile(result.path);
+  }
+
+  async function openPalette() {
+    paletteOpen = true;
+    paletteQuery = '';
+    await tick();
+    paletteInput?.focus();
+  }
+
+  function closePalette() {
+    clearTimeout(paletteTimer);
+    paletteRun += 1;
+    paletteOpen = false;
+    paletteQuery = '';
+    paletteResults = [];
+    paletteStatus = '';
+    paletteIndex = -1;
+  }
+
+  // An empty query lists the recent files, so the palette always opens onto
+  // something to pick rather than an empty box.
+  function queuePaletteSearch(query, root) {
+    clearTimeout(paletteTimer);
+    const run = ++paletteRun;
+
+    if (!query) {
+      setPaletteResults(recentPaletteResults(continueFiles), '');
+      return;
+    }
+
+    paletteStatus = 'Searching...';
+    paletteTimer = setTimeout(() => searchPalette(query, root, run), 150);
+  }
+
+  async function searchPalette(query, root, run) {
+    try {
+      const results = await fetchWorkspaceSearch(query, root);
+      if (run === paletteRun && root === selectedRoot)
+        setPaletteResults(results, results.length ? '' : 'No matches');
+    } catch (err) {
+      if (run === paletteRun && root === selectedRoot)
+        setPaletteResults([], err.message);
+    }
+  }
+
+  function setPaletteResults(results, status) {
+    paletteResults = results;
+    paletteStatus = status;
+    paletteIndex = clampPaletteIndex(results.length, paletteIndex);
+  }
+
+  function movePaletteIndex(step) {
+    paletteIndex = stepPaletteIndex(paletteResults.length, paletteIndex, step);
+    paletteHost
+      ?.querySelector(`.palette-result:nth-of-type(${paletteIndex + 1})`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }
+
+  async function openPaletteResult(result) {
+    if (!result) return;
+    if (paletteQuery.trim()) rememberSearch(paletteQuery);
+    closePalette();
+    if (result.fileKind === 'markdown') setViewMode('preview');
+    await openFile(result.path);
+  }
+
+  function handlePaletteKeydown(event) {
+    const run = {
+      ArrowDown: () => movePaletteIndex(1),
+      ArrowUp: () => movePaletteIndex(-1),
+      Enter: () => openPaletteResult(paletteResults[paletteIndex]),
+      Escape: () => closePalette()
+    }[event.key];
+    if (!run) return;
+
+    event.preventDefault();
+    run();
   }
 
   function readSearchHistory() {
@@ -3496,6 +3601,54 @@
       </div>
     </header>
 
+    {#if paletteOpen}
+      <div class="palette-layer">
+        <button
+          aria-label="Close quick open"
+          class="palette-backdrop"
+          type="button"
+          on:click={closePalette}
+        ></button>
+        <dialog aria-label="Quick open" class="palette" open>
+          <input
+            bind:this={paletteInput}
+            bind:value={paletteQuery}
+            aria-label="Search files"
+            placeholder="Search files and notes"
+            type="search"
+            on:keydown={handlePaletteKeydown}
+          />
+          <div bind:this={paletteHost} class="palette-results" aria-live="polite">
+            {#each paletteResults as result, index}
+              <button
+                class:active={index === paletteIndex}
+                class="palette-result"
+                type="button"
+                on:click={() => openPaletteResult(result)}
+                on:mouseenter={() => (paletteIndex = index)}
+              >
+                <span>{result.name}</span>
+                <small>{paletteResultLabel(result)}</small>
+                {#if result.preview}
+                  <em>{result.preview}</em>
+                {/if}
+              </button>
+            {/each}
+            {#if paletteStatus}
+              <p class="empty-copy">{paletteStatus}</p>
+            {:else if !paletteResults.length}
+              <p class="empty-copy">Type to search the workspace.</p>
+            {/if}
+          </div>
+          <footer>
+            <span>Up/Down to move</span>
+            <span>Enter to open</span>
+            <span>Esc to close</span>
+          </footer>
+        </dialog>
+      </div>
+    {/if}
+
     {#if markdownHelpOpen}
       <div class="markdown-help-layer">
         <button
@@ -3630,8 +3783,9 @@
                 </div>
                 <button
                   class="home-link"
+                  title={`Quick open (${shortcutKey}+K)`}
                   type="button"
-                  on:click={focusWorkspaceSearch}
+                  on:click={openPalette}
                 >
                   Find
                 </button>
