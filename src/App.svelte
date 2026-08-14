@@ -51,6 +51,7 @@
     formatDueLabel,
     groupTasksByUrgency,
     priorityMark,
+    taskLinkSegments,
     taskProgress,
     taskUrgency,
     toggleTaskLine
@@ -1481,14 +1482,39 @@
   }
 
   /** Opens the note a task lives in and puts the cursor on its line. */
-  async function openTask(task) {
-    await openFile(task.path);
-    if (selectedPath !== task.path || !editorView) return;
+  async function openTask(task, event) {
+    // A link in the task text belongs to the link, not to the row.
+    if (event?.target?.closest?.('a')) return;
 
+    await openFile(task.path);
+    if (selectedPath !== task.path) return;
+
+    // The reader came from a list of tasks, not from the editor, so the note
+    // opens in preview — where the box can be ticked — rather than dropping a
+    // cursor into the source. Not remembered, so it does not quietly replace
+    // whichever mode the note is usually read in.
+    setViewMode('preview', { remember: false });
     await tick();
-    const doc = editorView.state.doc;
-    const line = doc.line(Math.min(task.line + 1, doc.lines));
-    selectEditorRange(line.from, line.to);
+    revealPreviewLine(task.line);
+  }
+
+  function openTaskOnKey(task, event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target?.closest?.('a')) return;
+    event.preventDefault();
+    openTask(task);
+  }
+
+  /** Scrolls a source line into view in the preview and marks it briefly. */
+  function revealPreviewLine(line) {
+    const target = document.querySelector(
+      `.preview-pane [data-line="${line}"]`
+    );
+    if (!target) return;
+
+    target.scrollIntoView({ block: 'center' });
+    target.classList.add('line-flash');
+    setTimeout(() => target.classList.remove('line-flash'), 1200);
   }
 
   function moveCalendarMonth(amount) {
@@ -4486,12 +4512,16 @@
                   <ul>
                     {#each group.tasks as task}
                       <li>
-                        <button
+                        <!-- A div rather than a button: the text can contain
+                             links, and an anchor inside a button is invalid. -->
+                        <div
                           class="task-row"
                           class:task-row-done={task.checked}
                           title={`${task.path}:${task.line + 1}`}
-                          type="button"
-                          on:click={() => openTask(task)}
+                          role="button"
+                          tabindex="0"
+                          on:click={(event) => openTask(task, event)}
+                          on:keydown={(event) => openTaskOnKey(task, event)}
                         >
                           {#if task.priority}
                             <span
@@ -4500,9 +4530,19 @@
                               {priorityMark(task.priority)}
                             </span>
                           {/if}
-                          <span class="task-row-text"
-                            >{task.displayText || task.text}</span
-                          >
+                          <span class="task-row-text">
+                            {#each taskLinkSegments(task.displayText || task.text) as segment}
+                              {#if segment.type === 'link'}
+                                <a
+                                  href={segment.href}
+                                  rel="noreferrer"
+                                  target="_blank">{segment.text}</a
+                                >
+                              {:else}
+                                {segment.text}
+                              {/if}
+                            {/each}
+                          </span>
                           {#each task.tags || [] as tag}
                             <span class="task-tag">#{tag}</span>
                           {/each}
@@ -4516,7 +4556,7 @@
                           {#if group.kind !== 'file'}
                             <span class="task-row-path">{task.path}</span>
                           {/if}
-                        </button>
+                        </div>
                       </li>
                     {/each}
                   </ul>

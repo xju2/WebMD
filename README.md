@@ -175,9 +175,10 @@ support — is left in the task's text untouched.
 ### Tasks view
 
 The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
-task in the workspace. Clicking a row opens its note with the cursor on that
-line. Tasks inside fenced code blocks are ignored, so an example in a how-to
-never turns into work.
+task in the workspace. Clicking a row opens its note in preview, scrolled to
+that task and ready to tick. A `[text](url)` link in a task shows as just its
+text and opens in a new tab, without opening the note. Tasks inside fenced code
+blocks are ignored, so an example in a how-to never turns into work.
 
 **Sections** is a dashboard: a task is filed under the first section whose terms
 it matches, and whatever matches nothing lands in **Other tasks**. That keeps a

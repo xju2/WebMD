@@ -1716,6 +1716,35 @@ button {
   text-decoration: line-through;
 }
 
+/* A link in a task reads as part of the sentence until it is worth reaching
+   for, so it stays the row's colour and only underlines on hover. */
+.task-row-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #b3bcc9;
+  text-underline-offset: 2px;
+}
+
+.task-row-text a:hover {
+  color: #1c5fa8;
+  text-decoration-color: currentColor;
+}
+
+/* Marks the line a task was opened from, so it is findable in a long note. */
+.line-flash {
+  animation: line-flash 1.2s ease-out;
+  border-radius: 4px;
+}
+
+@keyframes line-flash {
+  from {
+    background: #fdf0c4;
+  }
+  to {
+    background: transparent;
+  }
+}
+
 .task-group ul {
   margin: 0;
   padding: 0;

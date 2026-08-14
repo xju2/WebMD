@@ -44,6 +44,7 @@ const FENCE = /^\s*(```|~~~)/;
 // at least one letter, so `#123` stays an issue reference.
 const TAG_PATTERN = /(^|\s)#([\p{L}\p{N}_/-]*\p{L}[\p{L}\p{N}_/-]*)/gu;
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const MAX_HEADING_LEVEL = 6;
 
 /**
@@ -142,6 +143,45 @@ export function extractTags(text = '') {
     return lead;
   });
   return { text: rest.replace(/\s{2,}/g, ' ').trim(), tags };
+}
+
+/**
+ * A task's text split into plain runs and Markdown links, so the Tasks view can
+ * show `[the paper](https://arxiv.org/…)` as just "the paper" without losing
+ * the ability to open it. Only links are recognised — every other character is
+ * left exactly as written, because a task row is not a Markdown preview.
+ */
+export function taskLinkSegments(text = '') {
+  const source = String(text);
+  const segments = [];
+  let last = 0;
+
+  const push = (value) => {
+    if (!value) return;
+    const previous = segments[segments.length - 1];
+    if (previous?.type === 'text') previous.text += value;
+    else segments.push({ type: 'text', text: value });
+  };
+
+  for (const match of source.matchAll(MARKDOWN_LINK)) {
+    push(source.slice(last, match.index));
+    const href = safeTaskHref(match[2]);
+    // A link the browser should not follow stays on the row as plain text
+    // rather than quietly vanishing.
+    if (href) segments.push({ type: 'link', text: match[1], href });
+    else push(match[0]);
+    last = match.index + match[0].length;
+  }
+
+  push(source.slice(last));
+  return segments;
+}
+
+// Mirrors safeHref in markdown.js. Kept local because markdown.js already
+// imports this module, and a cycle between them is not worth one regex.
+function safeTaskHref(href) {
+  const trimmed = href.trim();
+  return /^(https?:|mailto:|#|\/)/i.test(trimmed) ? trimmed : '';
 }
 
 /** A note's frontmatter `tags:`, lowercased, however it was written. */

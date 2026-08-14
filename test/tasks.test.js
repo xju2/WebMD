@@ -10,6 +10,7 @@ import {
   parseTaskFields,
   sortTasks,
   stampCompletion,
+  taskLinkSegments,
   taskProgress,
   taskUrgency,
   toggleTaskLine
@@ -165,6 +166,42 @@ test('keeps the written text and offers a tag-free version for display', () => {
 test('carries a task over with its tags intact', () => {
   assert.deepEqual(carriedTaskLines('- [ ] Read it #Paper', '2026-08-13'), [
     '- [ ] Read it #Paper ↩ [[2026-08-13]]'
+  ]);
+});
+
+test('splits a markdown link out of a task, keeping only its text', () => {
+  assert.deepEqual(
+    taskLinkSegments(
+      'Read [the paper](https://arxiv.org/abs/1706.03762) again'
+    ),
+    [
+      { type: 'text', text: 'Read ' },
+      {
+        type: 'link',
+        text: 'the paper',
+        href: 'https://arxiv.org/abs/1706.03762'
+      },
+      { type: 'text', text: ' again' }
+    ]
+  );
+});
+
+test('leaves a task with no link as a single run of text', () => {
+  assert.deepEqual(taskLinkSegments('Email Sarah'), [
+    { type: 'text', text: 'Email Sarah' }
+  ]);
+  assert.deepEqual(taskLinkSegments(''), []);
+});
+
+test('leaves a link the browser should not follow as plain text', () => {
+  assert.deepEqual(taskLinkSegments('Try [this](javascript:alert(1)) out'), [
+    { type: 'text', text: 'Try [this](javascript:alert(1)) out' }
+  ]);
+});
+
+test('keeps bracket text that is not a link exactly as written', () => {
+  assert.deepEqual(taskLinkSegments('Check [draft] and [[Note]] today'), [
+    { type: 'text', text: 'Check [draft] and [[Note]] today' }
   ]);
 });
 
