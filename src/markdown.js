@@ -33,7 +33,7 @@ export function renderMarkdown(
       continue;
     }
 
-    const fence = line.match(/^```(\S*)?\s*$/);
+    const fence = line.match(/^```(.*)$/);
     if (fence) {
       const code = [];
       index += 1;
@@ -43,7 +43,7 @@ export function renderMarkdown(
       }
       if (index < lines.length) index += 1;
       blocks.push({
-        ...parseCodeBlock(fence[1] || '', code.join('\n')),
+        ...parseCodeBlock(parseInfoString(fence[1] || ''), code.join('\n')),
         line: start
       });
       continue;
@@ -134,13 +134,31 @@ export function renderMarkdown(
   return blocks;
 }
 
-function parseCodeBlock(lang, text) {
+// Accepts ```lang, ```lang title="x", and ```lang,title="x". The language is
+// the leading token; the rest is key="value" pairs split on commas or spaces.
+// Unknown keys are ignored.
+function parseInfoString(info) {
+  const trimmed = info.trim();
+  if (!trimmed) return { lang: '', title: '' };
+
+  const [, lang = '', rest = ''] = trimmed.match(/^([^\s,]*)[\s,]*([\s\S]*)$/);
+  let title = '';
+  const attribute = /([\w-]+)\s*=\s*("([^"]*)"|'([^']*)'|[^\s,]*)/g;
+  let match;
+  while ((match = attribute.exec(rest))) {
+    if (match[1].toLowerCase() !== 'title') continue;
+    title = match[3] ?? match[4] ?? match[2];
+  }
+  return { lang, title };
+}
+
+function parseCodeBlock({ lang, title }, text) {
   if (lang.toLowerCase() === 'mermaid') return { type: 'mermaid', lang, text };
 
   const files = lang.toLowerCase() === 'diff' ? parseUnifiedDiff(text) : [];
   return files.length
     ? { type: 'diff', lang, text, files }
-    : { type: 'code', lang, text };
+    : { type: 'code', lang, title, text };
 }
 
 export function parseInline(text) {

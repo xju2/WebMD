@@ -3341,7 +3341,14 @@
     {:else if block.type === 'code'}
       <div class="code-block" data-line={block.line}>
         <div class="code-block-bar">
-          <span class="code-lang">{languageLabel(block.lang)}</span>
+          <span class="code-block-label">
+            {#if block.title}
+              <span class="code-title">{block.title}</span>
+            {/if}
+            <span class="code-lang" class:code-lang-muted={block.title}
+              >{languageLabel(block.lang)}</span
+            >
+          </span>
           <span class="code-copy-zone">
             {#if copiedCode === block}
               <span class="code-copy-message">Copied</span>

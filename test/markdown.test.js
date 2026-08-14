@@ -112,6 +112,53 @@ console.log("ok");
   assert.equal(blocks[2].type, 'code');
 });
 
+test('reads a title out of the code fence info string', () => {
+  const blocks = renderMarkdown(`\`\`\`bash,title="training cmds"
+fundra train
+\`\`\`
+
+\`\`\`bash title="deploy cmds"
+fundra deploy
+\`\`\`
+
+\`\`\`python title='eval' caption="ignored"
+run()
+\`\`\`
+
+\`\`\`mermaid title="flow"
+flowchart TD
+  A --> B
+\`\`\``);
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.lang, block.title, block.text]),
+    [
+      ['code', 'bash', 'training cmds', 'fundra train'],
+      ['code', 'bash', 'deploy cmds', 'fundra deploy'],
+      ['code', 'python', 'eval', 'run()'],
+      ['mermaid', 'mermaid', undefined, 'flowchart TD\n  A --> B']
+    ]
+  );
+});
+
+test('keeps plain fences working without attributes', () => {
+  const blocks = renderMarkdown(`\`\`\`
+bare
+\`\`\`
+
+\`\`\`js
+console.log("ok");
+\`\`\``);
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.lang, block.title]),
+    [
+      ['code', '', ''],
+      ['code', 'js', '']
+    ]
+  );
+});
+
 test('drops unsafe link targets', () => {
   assert.equal(parseInline('[bad](javascript:alert(1))')[0].href, '');
 });
