@@ -21,7 +21,12 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
-  import { arxivCitation, arxivPasteId, quotedBlockPaste } from './editor.js';
+  import {
+    arxivCitation,
+    arxivPasteId,
+    quotedBlockPaste,
+    sourceColumnForWord
+  } from './editor.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
@@ -2835,11 +2840,40 @@
 
   function selectEditorRange(from, to) {
     setViewMode('edit');
-    editorView.dispatch({
-      selection: { anchor: from, head: to },
-      effects: EditorView.scrollIntoView(from, { y: 'center' })
+    // The editor host was display:none, so wait for setViewMode's remeasure before scrolling.
+    requestAnimationFrame(() => {
+      editorView.dispatch({
+        selection: { anchor: from, head: to },
+        effects: EditorView.scrollIntoView(from, { y: 'center' })
+      });
+      editorView.focus();
     });
-    editorView.focus();
+  }
+
+  /** Double-clicking rendered text opens the editor on the matching source line. */
+  function handlePreviewDoubleClick(event) {
+    if (!editorView || !selectedIsMarkdown) return;
+    if (
+      event.target.closest(
+        'a, input, button, summary, .mermaid-block, .code-block-bar'
+      )
+    )
+      return;
+
+    const host = event.target.closest('[data-line]');
+    const line = Number(host?.dataset.line);
+    if (!Number.isInteger(line) || line < 0) return;
+
+    const doc = editorView.state.doc;
+    const target = doc.line(Math.min(line + 1, doc.lines));
+    const word = sourceColumnForWord(
+      target.text,
+      window.getSelection()?.toString() ?? ''
+    );
+    selectEditorRange(
+      target.from + (word ? word.from : 0),
+      target.from + (word ? word.to : 0)
+    );
   }
 
   function setViewMode(mode, { remember = true } = {}) {
@@ -2901,9 +2935,9 @@
 {#snippet markdownBlocks(blocks)}
   {#each blocks as block}
     {#if block.type === 'frontmatter'}
-      <dl class="frontmatter">
+      <dl class="frontmatter" data-line={block.line}>
         {#each block.fields as field}
-          <div>
+          <div data-line={field.line}>
             <dt>{field.key}</dt>
             <dd class:frontmatter-list={field.list}>
               {#each field.values as value}
@@ -2914,15 +2948,20 @@
         {/each}
       </dl>
     {:else if block.type === 'heading'}
-      <svelte:element this={`h${block.level}`}>
+      <svelte:element this={`h${block.level}`} data-line={block.line}>
         {@render inline(block.children)}
       </svelte:element>
     {:else if block.type === 'paragraph'}
-      <p>{@render inline(block.children)}</p>
+      <p data-line={block.line}>{@render inline(block.children)}</p>
     {:else if block.type === 'quote'}
-      <blockquote>{@render inline(block.children)}</blockquote>
+      <blockquote data-line={block.line}>
+        {@render inline(block.children)}
+      </blockquote>
     {:else if block.type === 'callout'}
-      <aside class={`callout callout-${block.variant}`}>
+      <aside
+        class={`callout callout-${block.variant}`}
+        data-line={block.line}
+      >
         <p class="callout-title">{@render inline(block.title)}</p>
         {#if block.children.length}
           <div class="callout-body">
@@ -2931,15 +2970,16 @@
         {/if}
       </aside>
     {:else if block.type === 'details'}
-      <details>
+      <details data-line={block.line}>
         <summary>{@render inline(block.summary)}</summary>
         {@render markdownBlocks(block.children)}
       </details>
     {:else if block.type === 'rule'}
-      <hr />
+      <hr data-line={block.line} />
     {:else if block.type === 'mermaid'}
       <div
         class="mermaid-block"
+        data-line={block.line}
         data-state="loading"
         use:mermaidDiagram={block.text}
       >
@@ -2948,7 +2988,7 @@
         <p class="mermaid-error"></p>
       </div>
     {:else if block.type === 'code'}
-      <div class="code-block">
+      <div class="code-block" data-line={block.line}>
         <div class="code-block-bar">
           <span class="code-lang">{languageLabel(block.lang)}</span>
           <span class="code-copy-zone">
@@ -2980,10 +3020,10 @@
         {@render diffFile(file)}
       {/each}
     {:else if block.type === 'table'}
-      <div class="table-scroll">
+      <div class="table-scroll" data-line={block.line}>
         <table>
           <thead>
-            <tr>
+            <tr data-line={block.line}>
               {#each block.headers as header, column}
                 <th class={`align-${block.alignments[column]}`}>
                   {@render inline(header)}
@@ -2992,8 +3032,8 @@
             </tr>
           </thead>
           <tbody>
-            {#each block.rows as row}
-              <tr>
+            {#each block.rows as row, rowIndex}
+              <tr data-line={block.rowLines[rowIndex]}>
                 {#each row as cell, column}
                   <td class={`align-${block.alignments[column]}`}>
                     {@render inline(cell)}
@@ -3005,11 +3045,12 @@
         </table>
       </div>
     {:else if block.type === 'list'}
-      <svelte:element this={block.ordered ? 'ol' : 'ul'}>
+      <svelte:element this={block.ordered ? 'ol' : 'ul'} data-line={block.line}>
         {#each block.items as item}
           <li
             class:task={item.task}
             class:task-done={item.task && item.checked}
+            data-line={item.line}
           >
             {#if item.task}
               <input
@@ -3802,6 +3843,7 @@
                 <code>{shortcutKey}+Shift+\</code> reference note
                 <code>{shortcutKey}+Shift+&lt;</code> older day
                 <code>{shortcutKey}+Shift+&gt;</code> newer day
+                <code>Double-click</code> edit previewed text
               </dd>
             </div>
           </dl>
@@ -4088,6 +4130,7 @@
           aria-label="Rendered Markdown preview"
           class:hidden={viewMode !== 'preview'}
           class="preview-pane"
+          on:dblclick={handlePreviewDoubleClick}
         >
           {#if renderedBlocks.length}
             {@render markdownBlocks(renderedBlocks)}

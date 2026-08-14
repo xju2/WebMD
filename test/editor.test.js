@@ -4,7 +4,8 @@ import {
   arxivCitation,
   arxivLinkPaste,
   arxivPasteId,
-  quotedBlockPaste
+  quotedBlockPaste,
+  sourceColumnForWord
 } from '../src/editor.js';
 
 const ABS_LINK = '[arXiv:2608.00146](https://arxiv.org/abs/2608.00146)';
@@ -162,4 +163,24 @@ test('leaves normal multiline paste alone', () => {
     }),
     null
   );
+});
+
+test('locates a double-clicked word on its source line', () => {
+  assert.deepEqual(sourceColumnForWord('We measured the decay rate.', 'decay'), {
+    from: 16,
+    to: 21
+  });
+});
+
+test('locates the first occurrence of a repeated word', () => {
+  assert.deepEqual(sourceColumnForWord('rate over rate', 'rate'), {
+    from: 0,
+    to: 4
+  });
+});
+
+test('reports no column when the word is absent or empty', () => {
+  assert.equal(sourceColumnForWord('# Heading', 'missing'), null);
+  assert.equal(sourceColumnForWord('# Heading', '  \n'), null);
+  assert.equal(sourceColumnForWord(), null);
 });

@@ -3,8 +3,15 @@ import { parseFrontmatter } from './frontmatter.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
-export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
-  const { attributes, body } = parseFrontmatter(source);
+// Blocks carry `line`, the 0-based source line they start on, so the preview can jump to the editor.
+export function renderMarkdown(
+  source = '',
+  taskCounter = { value: 0 },
+  lineOffset = 0
+) {
+  const { attributes, body, bodyLine, attributeLines } =
+    parseFrontmatter(source);
+  const base = lineOffset + bodyLine;
   const lines = body.split('\n');
   const blocks = [];
   let index = 0;
@@ -12,12 +19,14 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
   const fields = Object.entries(attributes).map(([key, value]) => ({
     key,
     list: Array.isArray(value),
-    values: (Array.isArray(value) ? value : [value]).map(parseInline)
+    values: (Array.isArray(value) ? value : [value]).map(parseInline),
+    line: lineOffset + (attributeLines[key] ?? 0)
   }));
-  if (fields.length) blocks.push({ type: 'frontmatter', fields });
+  if (fields.length) blocks.push({ type: 'frontmatter', fields, line: 0 });
 
   while (index < lines.length) {
     const line = lines[index];
+    const start = base + index;
     if (!line.trim()) {
       index += 1;
       continue;
@@ -32,7 +41,10 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
         index += 1;
       }
       if (index < lines.length) index += 1;
-      blocks.push(parseCodeBlock(fence[1] || '', code.join('\n')));
+      blocks.push({
+        ...parseCodeBlock(fence[1] || '', code.join('\n')),
+        line: start
+      });
       continue;
     }
 
@@ -41,14 +53,15 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
       blocks.push({
         type: 'heading',
         level: heading[1].length,
-        children: parseInline(heading[2])
+        children: parseInline(heading[2]),
+        line: start
       });
       index += 1;
       continue;
     }
 
     if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line.trim())) {
-      blocks.push({ type: 'rule' });
+      blocks.push({ type: 'rule', line: start });
       index += 1;
       continue;
     }
@@ -59,7 +72,7 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
         quote.push(lines[index].replace(/^>\s?/, ''));
         index += 1;
       }
-      blocks.push(parseQuote(quote, taskCounter));
+      blocks.push({ ...parseQuote(quote, taskCounter, start), line: start });
       continue;
     }
 
@@ -71,13 +84,16 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
         index += 1;
       }
       if (index < lines.length) index += 1;
-      blocks.push(parseDetails(details, taskCounter));
+      blocks.push({
+        ...parseDetails(details, taskCounter, start + 1),
+        line: start
+      });
       continue;
     }
 
-    const table = parseTable(lines, index);
+    const table = parseTable(lines, index, base);
     if (table) {
-      blocks.push(table.block);
+      blocks.push({ ...table.block, line: start });
       index = table.nextIndex;
       continue;
     }
@@ -90,10 +106,11 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
         const item = parseListItem(lines[index]);
         if (!item || item.ordered !== ordered) break;
         if (item.task) item.taskIndex = taskCounter.value++;
+        item.line = base + index;
         items.push(item);
         index += 1;
       }
-      blocks.push({ type: 'list', ordered, items });
+      blocks.push({ type: 'list', ordered, items, line: start });
       continue;
     }
 
@@ -108,7 +125,8 @@ export function renderMarkdown(source = '', taskCounter = { value: 0 }) {
     }
     blocks.push({
       type: 'paragraph',
-      children: parseInline(paragraph.join(' '))
+      children: parseInline(paragraph.join(' ')),
+      line: start
     });
   }
 
@@ -173,18 +191,20 @@ function parseInlineToken(token) {
   return { type: 'em', text: token.slice(1, -1) };
 }
 
-function parseTable(lines, index) {
+function parseTable(lines, index, base = 0) {
   if (!isTableStart(lines[index], lines[index + 1])) return null;
 
   const headers = parseTableRow(lines[index]);
   const alignments = parseTableDivider(lines[index + 1]);
   const rows = [];
+  const rowLines = [];
   index += 2;
 
   while (index < lines.length && lines[index].trim()) {
     const row = parseTableRow(lines[index]);
     if (!row) break;
     rows.push(normalizeTableCells(row, headers.length).map(parseInline));
+    rowLines.push(base + index);
     index += 1;
   }
 
@@ -193,7 +213,8 @@ function parseTable(lines, index) {
       type: 'table',
       alignments,
       headers: headers.map(parseInline),
-      rows
+      rows,
+      rowLines
     },
     nextIndex: index
   };
@@ -266,7 +287,7 @@ function parseListItem(line) {
   };
 }
 
-function parseQuote(lines, taskCounter) {
+function parseQuote(lines, taskCounter, start = 0) {
   const marker = lines[0]?.match(
     /^\[!(note|tldr|deadline|info|idea|warning|error|code|prompt)\]\s*(.*)$/i
   );
@@ -278,18 +299,19 @@ function parseQuote(lines, taskCounter) {
     type: 'callout',
     variant,
     title: parseInline(title),
-    children: renderMarkdown(lines.slice(1).join('\n'), taskCounter)
+    children: renderMarkdown(lines.slice(1).join('\n'), taskCounter, start + 1)
   };
 }
 
-function parseDetails(lines, taskCounter) {
+function parseDetails(lines, taskCounter, start = 0) {
   const summary = lines[0]?.trim().match(/^<summary>(.*)<\/summary>\s*$/i);
   return {
     type: 'details',
     summary: parseInline(summary ? summary[1].trim() || 'Details' : 'Details'),
     children: renderMarkdown(
       (summary ? lines.slice(1) : lines).join('\n'),
-      taskCounter
+      taskCounter,
+      summary ? start + 1 : start
     )
   };
 }

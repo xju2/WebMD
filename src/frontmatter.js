@@ -5,10 +5,12 @@ export function parseFrontmatter(source = '') {
     (line, index) => index > 0 && line.trim() === '---'
   );
   if (lines[0]?.trim() !== '---' || end === -1) {
-    return { attributes: {}, body: text };
+    return { attributes: {}, body: text, bodyLine: 0, attributeLines: {} };
   }
 
   const attributes = {};
+  // Source line of each field, so the preview can jump to the one that was clicked.
+  const attributeLines = {};
   const metadataLines = lines.slice(1, end);
 
   for (let index = 0; index < metadataLines.length; index += 1) {
@@ -19,15 +21,26 @@ export function parseFrontmatter(source = '') {
     if (rawValue.trim()) {
       const value = parseValue(rawValue);
       const hasValue = Array.isArray(value) ? value.length : Boolean(value);
-      if (hasValue) attributes[field] = value;
+      if (hasValue) {
+        attributes[field] = value;
+        attributeLines[field] = index + 1;
+      }
       continue;
     }
 
     const list = readBlockList(metadataLines, index + 1);
-    if (list.length) attributes[field] = list;
+    if (list.length) {
+      attributes[field] = list;
+      attributeLines[field] = index + 1;
+    }
   }
 
-  return { attributes, body: lines.slice(end + 1).join('\n') };
+  return {
+    attributes,
+    body: lines.slice(end + 1).join('\n'),
+    bodyLine: end + 1,
+    attributeLines
+  };
 }
 
 export function parseMetadataQuery(query = '') {

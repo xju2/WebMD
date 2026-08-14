@@ -239,3 +239,98 @@ test('parses embedded wiki links for media previews', () => {
     text: 'plot'
   });
 });
+
+test('records the source line each block starts on', () => {
+  const blocks = renderMarkdown(`# Title
+
+Intro paragraph.
+
+- first
+- second
+
+| a | b |
+| --- | --- |
+| 1 | 2 |
+| 3 | 4 |
+
+---
+`);
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.line]),
+    [
+      ['heading', 0],
+      ['paragraph', 2],
+      ['list', 4],
+      ['table', 7],
+      ['rule', 12]
+    ]
+  );
+  assert.deepEqual(
+    blocks[2].items.map((item) => item.line),
+    [4, 5]
+  );
+  assert.deepEqual(blocks[3].rowLines, [9, 10]);
+});
+
+test('counts frontmatter lines when mapping body blocks', () => {
+  const blocks = renderMarkdown(`---
+title: Notes
+---
+# Trigger
+
+Act now.
+`);
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.line]),
+    [
+      ['frontmatter', 0],
+      ['heading', 3],
+      ['paragraph', 5]
+    ]
+  );
+});
+
+test('maps nested callout and details children to absolute lines', () => {
+  const blocks = renderMarkdown(`Intro.
+
+> [!note] Heads up
+> Nested paragraph.
+
+<details>
+<summary>More</summary>
+Hidden paragraph.
+</details>
+`);
+
+  assert.equal(blocks[1].type, 'callout');
+  assert.equal(blocks[1].line, 2);
+  assert.deepEqual(
+    blocks[1].children.map((child) => [child.type, child.line]),
+    [['paragraph', 3]]
+  );
+  assert.equal(blocks[2].type, 'details');
+  assert.equal(blocks[2].line, 5);
+  assert.deepEqual(
+    blocks[2].children.map((child) => [child.type, child.line]),
+    [['paragraph', 7]]
+  );
+});
+
+test('maps each frontmatter field to its own source line', () => {
+  const blocks = renderMarkdown(`---
+title: Notes
+tags: [a, b]
+---
+Body.
+`);
+
+  assert.deepEqual(
+    blocks[0].fields.map((field) => [field.key, field.line]),
+    [
+      ['title', 1],
+      ['tags', 2]
+    ]
+  );
+});

@@ -47,6 +47,15 @@ function collapseSpaces(value) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
+/** Where a word double-clicked in the preview sits on its source line, if it survived rendering. */
+export function sourceColumnForWord(line = '', word = '') {
+  const needle = typeof word === 'string' ? word.trim() : '';
+  if (!needle || typeof line !== 'string') return null;
+
+  const from = line.indexOf(needle);
+  return from === -1 ? null : { from, to: from + needle.length };
+}
+
 export function quotedBlockPaste(text, { beforeCursor = '', previousLine = '' } = {}) {
   if (!text.includes('\n')) return null;
 
