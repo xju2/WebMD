@@ -1,7 +1,7 @@
 <script>
   import { indentWithTab } from '@codemirror/commands';
   import { markdown } from '@codemirror/lang-markdown';
-  import { EditorState } from '@codemirror/state';
+  import { EditorState, Transaction } from '@codemirror/state';
   import { EditorView, keymap } from '@codemirror/view';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
@@ -436,36 +436,40 @@
   function createEditor(doc) {
     editorView = new EditorView({
       parent: editorHost,
-      state: EditorState.create({
-        doc,
-        extensions: [
-          basicSetup,
-          // Tab indents by the default two-space unit instead of moving focus,
-          // so a selected block shifts with Tab and back with Shift+Tab.
-          // Escape then Tab still leaves the editor for keyboard-only use.
-          keymap.of([indentWithTab]),
-          markdown(),
-          EditorView.lineWrapping,
-          EditorView.domEventHandlers({
-            dragover: handleEditorDragOver,
-            drop: handleEditorDrop,
-            paste: handleEditorPaste
-          }),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged) {
-              content = update.state.doc.toString();
-              if (!applyingServerText) {
-                queueLocalUpdate(update.changes);
-                // Dispatching from inside an update is not allowed, and the
-                // expansion is a separate edit for undo anyway.
-                queueMicrotask(expandTaskShorthandInEditor);
-              }
+      state: editorState(doc)
+    });
+  }
+
+  function editorState(doc) {
+    return EditorState.create({
+      doc,
+      extensions: [
+        basicSetup,
+        // Tab indents by the default two-space unit instead of moving focus,
+        // so a selected block shifts with Tab and back with Shift+Tab.
+        // Escape then Tab still leaves the editor for keyboard-only use.
+        keymap.of([indentWithTab]),
+        markdown(),
+        EditorView.lineWrapping,
+        EditorView.domEventHandlers({
+          dragover: handleEditorDragOver,
+          drop: handleEditorDrop,
+          paste: handleEditorPaste
+        }),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) {
+            content = update.state.doc.toString();
+            if (!applyingServerText) {
+              queueLocalUpdate(update.changes);
+              // Dispatching from inside an update is not allowed, and the
+              // expansion is a separate edit for undo anyway.
+              queueMicrotask(expandTaskShorthandInEditor);
             }
-            if (update.docChanged || update.selectionSet)
-              updateSelectedText(update.state);
-          })
-        ]
-      })
+          }
+          if (update.docChanged || update.selectionSet)
+            updateSelectedText(update.state);
+        })
+      ]
     });
   }
 
@@ -1595,12 +1599,15 @@
     setEditorContent('');
   }
 
+  /**
+   * Loading a file replaces the whole state rather than dispatching a change,
+   * so the undo history starts empty on every note. Dispatching would leave the
+   * load itself undoable: Cmd+Z would pull the previous note's text into this
+   * one, and the autosave would then write it to disk.
+   */
   function setEditorContent(nextContent) {
-    applyingServerText = true;
-    editorView.dispatch({
-      changes: { from: 0, to: editorView.state.doc.length, insert: nextContent }
-    });
-    applyingServerText = false;
+    editorView.setState(editorState(nextContent));
+    content = editorView.state.doc.toString();
     updateSelectedText(editorView.state);
   }
 
@@ -2012,7 +2019,12 @@
     );
 
     applyingServerText = true;
-    editorView.dispatch({ changes: changesForEditor });
+    // A collaborator's edit is not this user's to undo; the history still maps
+    // its own events over the incoming changes.
+    editorView.dispatch({
+      changes: changesForEditor,
+      annotations: Transaction.addToHistory.of(false)
+    });
     applyingServerText = false;
     content = editorView.state.doc.toString();
 
