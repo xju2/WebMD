@@ -52,6 +52,7 @@
     groupTasksByUrgency,
     priorityMark,
     taskLinkSegments,
+    taskShorthandEdits,
     taskProgress,
     taskUrgency,
     toggleTaskLine
@@ -115,7 +116,8 @@
       } catch (error) {
         if (current !== token) return;
         canvas.innerHTML = '';
-        message.textContent = error?.message || 'Could not render this diagram.';
+        message.textContent =
+          error?.message || 'Could not render this diagram.';
         node.dataset.state = 'error';
       }
     }
@@ -311,13 +313,21 @@
   // The entries and index are passed in rather than read inside the helper, so
   // the reactive statement actually depends on them and re-runs once the tree
   // loads. Reading them only inside adjacentNotePath left these stuck at ''.
-  $: olderDailyNotePath = adjacentNotePath(dailyNoteEntries, dailyNoteIndex, -1);
+  $: olderDailyNotePath = adjacentNotePath(
+    dailyNoteEntries,
+    dailyNoteIndex,
+    -1
+  );
   $: newerDailyNotePath = adjacentNotePath(dailyNoteEntries, dailyNoteIndex, 1);
   $: dailyNotePathList = dailyNoteEntries.map((entry) => entry.path);
   $: referenceIndex = dailyNoteEntries.findIndex(
     (entry) => entry.path === referencePath
   );
-  $: olderReferencePath = adjacentNotePath(dailyNoteEntries, referenceIndex, -1);
+  $: olderReferencePath = adjacentNotePath(
+    dailyNoteEntries,
+    referenceIndex,
+    -1
+  );
   $: newerReferencePath = adjacentNotePath(dailyNoteEntries, referenceIndex, 1);
   // The Markdown views only collapse while the AI panel owns the sidebar, so
   // closing the panel always brings the editor back.
@@ -444,7 +454,12 @@
           EditorView.updateListener.of((update) => {
             if (update.docChanged) {
               content = update.state.doc.toString();
-              if (!applyingServerText) queueLocalUpdate(update.changes);
+              if (!applyingServerText) {
+                queueLocalUpdate(update.changes);
+                // Dispatching from inside an update is not allowed, and the
+                // expansion is a separate edit for undo anyway.
+                queueMicrotask(expandTaskShorthandInEditor);
+              }
             }
             if (update.docChanged || update.selectionSet)
               updateSelectedText(update.state);
@@ -812,7 +827,11 @@
 
       const result = await response.json();
       // The reader may have moved on while a slow model was thinking.
-      if (abort.signal.aborted || root !== selectedRoot || path !== selectedPath)
+      if (
+        abort.signal.aborted ||
+        root !== selectedRoot ||
+        path !== selectedPath
+      )
         return;
 
       const suggestions = (result.suggestions ?? []).filter(
@@ -2022,9 +2041,36 @@
     saveTimer = setTimeout(flushPendingUpdates, 150);
   }
 
+  /**
+   * Turns `due:friday` and `p2` into their emoji on every task line except the
+   * one the caret sits on, which is very likely still half-typed. Switching
+   * away from the editor passes `all`, so the last line typed is not left in
+   * shorthand.
+   */
+  function expandTaskShorthandInEditor(all = false) {
+    if (!editorView || !selectedPath || !selectedIsMarkdown) return;
+
+    const { doc, selection } = editorView.state;
+    const caretLine = doc.lineAt(selection.main.head).number;
+    const changes = taskShorthandEdits(
+      doc.toString(),
+      dailyNoteDate(new Date())
+    )
+      .filter((edit) => all || edit.line + 1 !== caretLine)
+      .map((edit) => {
+        const line = doc.line(edit.line + 1);
+        return { from: line.from, to: line.to, insert: edit.text };
+      });
+
+    if (changes.length) editorView.dispatch({ changes });
+  }
+
   async function saveNow() {
-    clearTimeout(saveTimer);
     if (!selectedPath || !selectedIsMarkdown) return;
+    // Before the timer is cleared, so the expansion's own edit is saved with
+    // the rest rather than left waiting behind a cancelled flush.
+    expandTaskShorthandInEditor(true);
+    clearTimeout(saveTimer);
     if (
       collaborationEnabled &&
       (pendingUpdates.length || inFlightUpdates.length)
@@ -3309,10 +3355,7 @@
         {@render inline(block.children)}
       </blockquote>
     {:else if block.type === 'callout'}
-      <aside
-        class={`callout callout-${block.variant}`}
-        data-line={block.line}
-      >
+      <aside class={`callout callout-${block.variant}`} data-line={block.line}>
         <p class="callout-title">{@render inline(block.title)}</p>
         {#if block.children.length}
           <div class="callout-body">
@@ -3334,7 +3377,11 @@
         data-state="loading"
         use:mermaidDiagram={block.text}
       >
-        <div class="mermaid-canvas" role="img" aria-label="Mermaid diagram"></div>
+        <div
+          class="mermaid-canvas"
+          role="img"
+          aria-label="Mermaid diagram"
+        ></div>
         <pre class="mermaid-source"><code>{block.text}</code></pre>
         <p class="mermaid-error"></p>
       </div>
@@ -4159,7 +4206,11 @@
             type="search"
             on:keydown={handlePaletteKeydown}
           />
-          <div bind:this={paletteHost} class="palette-results" aria-live="polite">
+          <div
+            bind:this={paletteHost}
+            class="palette-results"
+            aria-live="polite"
+          >
             {#each paletteResults as result, index}
               <button
                 class:active={index === paletteIndex}
@@ -4250,6 +4301,21 @@
               </dd>
             </div>
             <div>
+              <dt>Task shorthand</dt>
+              <dd>
+                <code>due:2026-08-20</code>
+                <code>due:today</code>
+                <code>due:tomorrow</code>
+                <code>due:friday</code>
+                <code>due:+3d</code>
+                <code>due:+2w</code>
+                <code>created:</code>
+                <code>done:</code>
+                <code>p1</code>…<code>p5</code>
+                becomes the emoji when you leave the line
+              </dd>
+            </div>
+            <div>
               <dt>Table</dt>
               <dd><code>| Name | Notes |</code> <code>| --- | --- |</code></dd>
             </div>
@@ -4289,633 +4355,634 @@
 
     <div class:split={referenceOpen} class="editor-split">
       <div class:empty={!selectedPath} class="editor-frame">
-      {#if !selectedPath && !workspacePaneOpen}
-        <section class="workspace-home" aria-label="Workspace Home">
-          <header class="home-intro">
-            <div>
-              <p class="home-eyebrow">{activeWorkspaceName}</p>
-              <h1>Workspace Home</h1>
-              <p>Capture, resume, and review your research.</p>
-            </div>
-            <div class="home-counts" aria-label="Workspace file counts">
-              <strong>{overview.markdownCount}</strong>
-              <span>notes</span>
-              <strong>{overview.fileCount}</strong>
-              <span>files</span>
-            </div>
-          </header>
-
-          {#if overviewStatus}
-            <p class="home-status">{overviewStatus}</p>
-          {/if}
-
-          <div class="home-grid">
-            <article class="home-card home-today">
-              <p class="home-card-label">Capture</p>
-              <h2>Today</h2>
-              <p>Start or continue today’s research note.</p>
-              <small>{todayNotePath()}</small>
-              <button
-                class="home-primary"
-                type="button"
-                on:click={() => openDailyNote()}
-              >
-                Open today’s note
-              </button>
-            </article>
-
-            <article class="home-card">
-              <div class="home-card-heading">
-                <div>
-                  <p class="home-card-label">Resume</p>
-                  <h2>Continue</h2>
-                </div>
-                <button
-                  class="home-link"
-                  title={`Quick open (${shortcutKey}+K)`}
-                  type="button"
-                  on:click={openPalette}
-                >
-                  Find
-                </button>
+        {#if !selectedPath && !workspacePaneOpen}
+          <section class="workspace-home" aria-label="Workspace Home">
+            <header class="home-intro">
+              <div>
+                <p class="home-eyebrow">{activeWorkspaceName}</p>
+                <h1>Workspace Home</h1>
+                <p>Capture, resume, and review your research.</p>
               </div>
-              {#if continueFiles.length}
-                <div class="home-list">
-                  {#each continueFiles as file}
-                    <button type="button" on:click={() => openFile(file.path)}>
-                      <span>{file.name}</span>
-                      <small>{file.path}</small>
-                    </button>
-                  {/each}
-                </div>
-              {:else}
-                <p class="home-empty">
-                  Open a note and it will stay within reach here.
-                </p>
-              {/if}
-            </article>
-          </div>
-        </section>
-      {/if}
-      <div
-        bind:this={editorHost}
-        class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
-        class="editor-host"
-      ></div>
-      {#if viewMode === 'tasks'}
-        <section class="tasks-pane" aria-label="Workspace tasks">
-          <header class="tasks-toolbar">
-            <h2>Tasks</h2>
-            <div class="tasks-summary">
-              <span>
-                {openTaskCount} open{showCompletedTasks
-                  ? `, ${doneTaskCount} done`
-                  : ''}
-              </span>
-              <div
-                class="tasks-grouping"
-                role="group"
-                aria-label="Group tasks by"
-              >
-                <button
-                  type="button"
-                  class:active={taskGrouping === 'sections'}
-                  aria-pressed={taskGrouping === 'sections'}
-                  on:click={() => (taskGrouping = 'sections')}
-                >
-                  Sections
-                </button>
-                <button
-                  type="button"
-                  class:active={taskGrouping === 'urgency'}
-                  aria-pressed={taskGrouping === 'urgency'}
-                  on:click={() => (taskGrouping = 'urgency')}
-                >
-                  Urgency
-                </button>
+              <div class="home-counts" aria-label="Workspace file counts">
+                <strong>{overview.markdownCount}</strong>
+                <span>notes</span>
+                <strong>{overview.fileCount}</strong>
+                <span>files</span>
               </div>
-              <label class="tasks-toggle">
-                <input
-                  type="checkbox"
-                  checked={showCompletedTasks}
-                  on:change={toggleCompletedTasks}
-                />
-                Completed
-              </label>
-              {#if taskGrouping === 'sections'}
+            </header>
+
+            {#if overviewStatus}
+              <p class="home-status">{overviewStatus}</p>
+            {/if}
+
+            <div class="home-grid">
+              <article class="home-card home-today">
+                <p class="home-card-label">Capture</p>
+                <h2>Today</h2>
+                <p>Start or continue today’s research note.</p>
+                <small>{todayNotePath()}</small>
                 <button
+                  class="home-primary"
                   type="button"
-                  aria-expanded={editingSections}
-                  on:click={() => (editingSections = !editingSections)}
+                  on:click={() => openDailyNote()}
                 >
-                  {editingSections ? 'Done' : 'Edit sections'}
+                  Open today’s note
                 </button>
-              {/if}
-              <button
-                type="button"
-                on:click={() => loadTasks(selectedRoot)}
-              >
-                Refresh
-              </button>
+              </article>
+
+              <article class="home-card">
+                <div class="home-card-heading">
+                  <div>
+                    <p class="home-card-label">Resume</p>
+                    <h2>Continue</h2>
+                  </div>
+                  <button
+                    class="home-link"
+                    title={`Quick open (${shortcutKey}+K)`}
+                    type="button"
+                    on:click={openPalette}
+                  >
+                    Find
+                  </button>
+                </div>
+                {#if continueFiles.length}
+                  <div class="home-list">
+                    {#each continueFiles as file}
+                      <button
+                        type="button"
+                        on:click={() => openFile(file.path)}
+                      >
+                        <span>{file.name}</span>
+                        <small>{file.path}</small>
+                      </button>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="home-empty">
+                    Open a note and it will stay within reach here.
+                  </p>
+                {/if}
+              </article>
             </div>
-          </header>
-          {#if tasksStatus}
-            <p class="tasks-note">{tasksStatus}</p>
-          {/if}
-          {#if editingSections && taskGrouping === 'sections'}
-            <div class="task-sections-editor">
-              <p class="tasks-note">
-                A task joins the first section whose terms it matches. Terms
-                match its inline <code>#tags</code>, its note's frontmatter
-                <code>tags:</code>, and the headings it sits under.
-              </p>
-              {#each taskSections as section, index (section.id)}
-                <div class="task-section-edit">
+          </section>
+        {/if}
+        <div
+          bind:this={editorHost}
+          class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
+          class="editor-host"
+        ></div>
+        {#if viewMode === 'tasks'}
+          <section class="tasks-pane" aria-label="Workspace tasks">
+            <header class="tasks-toolbar">
+              <h2>Tasks</h2>
+              <div class="tasks-summary">
+                <span>
+                  {openTaskCount} open{showCompletedTasks
+                    ? `, ${doneTaskCount} done`
+                    : ''}
+                </span>
+                <div
+                  class="tasks-grouping"
+                  role="group"
+                  aria-label="Group tasks by"
+                >
+                  <button
+                    type="button"
+                    class:active={taskGrouping === 'sections'}
+                    aria-pressed={taskGrouping === 'sections'}
+                    on:click={() => (taskGrouping = 'sections')}
+                  >
+                    Sections
+                  </button>
+                  <button
+                    type="button"
+                    class:active={taskGrouping === 'urgency'}
+                    aria-pressed={taskGrouping === 'urgency'}
+                    on:click={() => (taskGrouping = 'urgency')}
+                  >
+                    Urgency
+                  </button>
+                </div>
+                <label class="tasks-toggle">
                   <input
-                    class="task-section-label"
-                    aria-label="Section name"
-                    value={section.label}
-                    on:change={(event) =>
-                      updateTaskSection(index, {
-                        label: event.currentTarget.value.trim() || section.label
-                      })}
+                    type="checkbox"
+                    checked={showCompletedTasks}
+                    on:change={toggleCompletedTasks}
                   />
-                  {#if section.catchAll}
-                    <span class="task-section-hint">everything else</span>
-                  {:else}
+                  Completed
+                </label>
+                {#if taskGrouping === 'sections'}
+                  <button
+                    type="button"
+                    aria-expanded={editingSections}
+                    on:click={() => (editingSections = !editingSections)}
+                  >
+                    {editingSections ? 'Done' : 'Edit sections'}
+                  </button>
+                {/if}
+                <button type="button" on:click={() => loadTasks(selectedRoot)}>
+                  Refresh
+                </button>
+              </div>
+            </header>
+            {#if tasksStatus}
+              <p class="tasks-note">{tasksStatus}</p>
+            {/if}
+            {#if editingSections && taskGrouping === 'sections'}
+              <div class="task-sections-editor">
+                <p class="tasks-note">
+                  A task joins the first section whose terms it matches. Terms
+                  match its inline <code>#tags</code>, its note's frontmatter
+                  <code>tags:</code>, and the headings it sits under.
+                </p>
+                {#each taskSections as section, index (section.id)}
+                  <div class="task-section-edit">
                     <input
-                      aria-label="Include terms"
-                      placeholder="include: paper, idea"
-                      value={formatTermList(section.include)}
+                      class="task-section-label"
+                      aria-label="Section name"
+                      value={section.label}
                       on:change={(event) =>
                         updateTaskSection(index, {
-                          include: parseTermList(event.currentTarget.value)
+                          label:
+                            event.currentTarget.value.trim() || section.label
                         })}
                     />
+                    {#if section.catchAll}
+                      <span class="task-section-hint">everything else</span>
+                    {:else}
+                      <input
+                        aria-label="Include terms"
+                        placeholder="include: paper, idea"
+                        value={formatTermList(section.include)}
+                        on:change={(event) =>
+                          updateTaskSection(index, {
+                            include: parseTermList(event.currentTarget.value)
+                          })}
+                      />
+                    {/if}
+                    <input
+                      aria-label="Exclude terms"
+                      placeholder="exclude:"
+                      value={formatTermList(section.exclude)}
+                      on:change={(event) =>
+                        updateTaskSection(index, {
+                          exclude: parseTermList(event.currentTarget.value)
+                        })}
+                    />
+                    <select
+                      aria-label="Which tasks"
+                      value={section.status}
+                      on:change={(event) =>
+                        updateTaskSection(index, {
+                          status: event.currentTarget.value
+                        })}
+                    >
+                      {#each SECTION_STATUSES as status}
+                        <option value={status}>{status}</option>
+                      {/each}
+                    </select>
+                    <button
+                      type="button"
+                      title="Move up"
+                      disabled={index === 0}
+                      on:click={() => moveTaskSection(index, -1)}>↑</button
+                    >
+                    <button
+                      type="button"
+                      title="Move down"
+                      disabled={index === taskSections.length - 1}
+                      on:click={() => moveTaskSection(index, 1)}>↓</button
+                    >
+                    <button
+                      type="button"
+                      title="Remove section"
+                      on:click={() => removeTaskSection(index)}>✕</button
+                    >
+                  </div>
+                {/each}
+                <div class="task-sections-actions">
+                  <button type="button" on:click={addTaskSection}>
+                    Add section
+                  </button>
+                  <button type="button" on:click={resetTaskSections}>
+                    Reset to defaults
+                  </button>
+                </div>
+              </div>
+            {/if}
+            {#if taskPanes.length}
+              {#each taskPanes as pane (pane.id)}
+                <details
+                  class={`task-group task-group-${pane.id}`}
+                  open={pane.count > 0}
+                >
+                  <summary>{pane.label} <span>{pane.count}</span></summary>
+                  {#each pane.groups as group (group.key)}
+                    {#if group.label}
+                      <h4 class="task-source" title={group.label}>
+                        {group.label}
+                      </h4>
+                    {/if}
+                    <ul>
+                      {#each group.tasks as task}
+                        <li>
+                          <!-- A div rather than a button: the text can contain
+                             links, and an anchor inside a button is invalid. -->
+                          <div
+                            class="task-row"
+                            class:task-row-done={task.checked}
+                            title={`${task.path}:${task.line + 1}`}
+                            role="button"
+                            tabindex="0"
+                            on:click={(event) => openTask(task, event)}
+                            on:keydown={(event) => openTaskOnKey(task, event)}
+                          >
+                            {#if task.priority}
+                              <span
+                                class={`task-priority task-priority-${task.priority}`}
+                              >
+                                {priorityMark(task.priority)}
+                              </span>
+                            {/if}
+                            <span class="task-row-text">
+                              {#each taskLinkSegments(task.displayText || task.text) as segment}
+                                {#if segment.type === 'link'}
+                                  <a
+                                    href={segment.href}
+                                    rel="noreferrer"
+                                    target="_blank">{segment.text}</a
+                                  >
+                                {:else}
+                                  {segment.text}
+                                {/if}
+                              {/each}
+                            </span>
+                            {#each task.tags || [] as tag}
+                              <span class="task-tag">#{tag}</span>
+                            {/each}
+                            {#if task.due}
+                              <span
+                                class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
+                              >
+                                {`📅 ${formatDueLabel(task.due)}`}
+                              </span>
+                            {/if}
+                            {#if group.kind !== 'file'}
+                              <span class="task-row-path">{task.path}</span>
+                            {/if}
+                          </div>
+                        </li>
+                      {/each}
+                    </ul>
+                  {/each}
+                  {#if !pane.count}
+                    <p class="tasks-note">Nothing here yet.</p>
                   {/if}
-                  <input
-                    aria-label="Exclude terms"
-                    placeholder="exclude:"
-                    value={formatTermList(section.exclude)}
-                    on:change={(event) =>
-                      updateTaskSection(index, {
-                        exclude: parseTermList(event.currentTarget.value)
-                      })}
-                  />
+                </details>
+              {/each}
+            {:else if !tasksStatus}
+              <p class="preview-empty">
+                No open tasks. Write <code>- [ ] something</code> in a note to start
+                one.
+              </p>
+            {/if}
+          </section>
+        {/if}
+        {#if viewMode === 'calendar'}
+          <section class="calendar-pane" aria-label="Daily notes calendar">
+            <header class="calendar-toolbar">
+              <div class="calendar-month-nav">
+                <button
+                  aria-label="Previous month"
+                  type="button"
+                  on:click={() => moveCalendarMonth(-1)}
+                >
+                  ‹
+                </button>
+                <h2>{calendarMonthName}</h2>
+                <button
+                  aria-label="Next month"
+                  type="button"
+                  on:click={() => moveCalendarMonth(1)}
+                >
+                  ›
+                </button>
+              </div>
+              <div class="calendar-controls">
+                <label>
+                  Folder
                   <select
-                    aria-label="Which tasks"
-                    value={section.status}
+                    aria-label="Daily notes folder"
+                    value={dailyNoteFolder}
                     on:change={(event) =>
-                      updateTaskSection(index, {
-                        status: event.currentTarget.value
-                      })}
+                      chooseDailyNoteFolder(event.currentTarget.value)}
                   >
-                    {#each SECTION_STATUSES as status}
-                      <option value={status}>{status}</option>
+                    {#each dailyNoteFolderOptions as folder}
+                      <option
+                        value={folder}
+                        disabled={folder === dailyNoteFolder &&
+                          dailyNoteFolderMissing}
+                      >
+                        {folder}{folder === dailyNoteFolder &&
+                        dailyNoteFolderMissing
+                          ? ' (missing here)'
+                          : ''}
+                      </option>
                     {/each}
                   </select>
-                  <button
-                    type="button"
-                    title="Move up"
-                    disabled={index === 0}
-                    on:click={() => moveTaskSection(index, -1)}>↑</button
+                </label>
+                <label>
+                  Template
+                  <select
+                    aria-label="Daily note template"
+                    value={dailyNoteTemplatePath}
+                    on:change={(event) =>
+                      chooseDailyNoteTemplate(event.currentTarget.value)}
                   >
-                  <button
-                    type="button"
-                    title="Move down"
-                    disabled={index === taskSections.length - 1}
-                    on:click={() => moveTaskSection(index, 1)}>↓</button
-                  >
-                  <button
-                    type="button"
-                    title="Remove section"
-                    on:click={() => removeTaskSection(index)}>✕</button
-                  >
-                </div>
-              {/each}
-              <div class="task-sections-actions">
-                <button type="button" on:click={addTaskSection}>
-                  Add section
-                </button>
-                <button type="button" on:click={resetTaskSections}>
-                  Reset to defaults
-                </button>
-              </div>
-            </div>
-          {/if}
-          {#if taskPanes.length}
-            {#each taskPanes as pane (pane.id)}
-              <details
-                class={`task-group task-group-${pane.id}`}
-                open={pane.count > 0}
-              >
-                <summary>{pane.label} <span>{pane.count}</span></summary>
-                {#each pane.groups as group (group.key)}
-                  {#if group.label}
-                    <h4 class="task-source" title={group.label}>
-                      {group.label}
-                    </h4>
-                  {/if}
-                  <ul>
-                    {#each group.tasks as task}
-                      <li>
-                        <!-- A div rather than a button: the text can contain
-                             links, and an anchor inside a button is invalid. -->
-                        <div
-                          class="task-row"
-                          class:task-row-done={task.checked}
-                          title={`${task.path}:${task.line + 1}`}
-                          role="button"
-                          tabindex="0"
-                          on:click={(event) => openTask(task, event)}
-                          on:keydown={(event) => openTaskOnKey(task, event)}
-                        >
-                          {#if task.priority}
-                            <span
-                              class={`task-priority task-priority-${task.priority}`}
-                            >
-                              {priorityMark(task.priority)}
-                            </span>
-                          {/if}
-                          <span class="task-row-text">
-                            {#each taskLinkSegments(task.displayText || task.text) as segment}
-                              {#if segment.type === 'link'}
-                                <a
-                                  href={segment.href}
-                                  rel="noreferrer"
-                                  target="_blank">{segment.text}</a
-                                >
-                              {:else}
-                                {segment.text}
-                              {/if}
-                            {/each}
-                          </span>
-                          {#each task.tags || [] as tag}
-                            <span class="task-tag">#{tag}</span>
-                          {/each}
-                          {#if task.due}
-                            <span
-                              class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
-                            >
-                              {`📅 ${formatDueLabel(task.due)}`}
-                            </span>
-                          {/if}
-                          {#if group.kind !== 'file'}
-                            <span class="task-row-path">{task.path}</span>
-                          {/if}
-                        </div>
-                      </li>
+                    <option value="">None</option>
+                    {#if dailyNoteTemplateMissing}
+                      <option value={dailyNoteTemplatePath} disabled>
+                        {dailyNoteTemplatePath} (missing)
+                      </option>
+                    {/if}
+                    {#each markdownFiles as file}
+                      <option value={file.path}>{file.path}</option>
                     {/each}
-                  </ul>
-                {/each}
-                {#if !pane.count}
-                  <p class="tasks-note">Nothing here yet.</p>
-                {/if}
-              </details>
-            {/each}
-          {:else if !tasksStatus}
-            <p class="preview-empty">
-              No open tasks. Write <code>- [ ] something</code> in a note to start
-              one.
-            </p>
-          {/if}
-        </section>
-      {/if}
-      {#if viewMode === 'calendar'}
-        <section class="calendar-pane" aria-label="Daily notes calendar">
-          <header class="calendar-toolbar">
-            <div class="calendar-month-nav">
-              <button
-                aria-label="Previous month"
-                type="button"
-                on:click={() => moveCalendarMonth(-1)}
-              >
-                ‹
-              </button>
-              <h2>{calendarMonthName}</h2>
-              <button
-                aria-label="Next month"
-                type="button"
-                on:click={() => moveCalendarMonth(1)}
-              >
-                ›
-              </button>
-            </div>
-            <div class="calendar-controls">
-              <label>
-                Folder
-                <select
-                  aria-label="Daily notes folder"
-                  value={dailyNoteFolder}
-                  on:change={(event) =>
-                    chooseDailyNoteFolder(event.currentTarget.value)}
-                >
-                  {#each dailyNoteFolderOptions as folder}
-                    <option
-                      value={folder}
-                      disabled={folder === dailyNoteFolder &&
-                        dailyNoteFolderMissing}
-                    >
-                      {folder}{folder === dailyNoteFolder &&
-                      dailyNoteFolderMissing
-                        ? ' (missing here)'
-                        : ''}
-                    </option>
-                  {/each}
-                </select>
-              </label>
-              <label>
-                Template
-                <select
-                  aria-label="Daily note template"
-                  value={dailyNoteTemplatePath}
-                  on:change={(event) =>
-                    chooseDailyNoteTemplate(event.currentTarget.value)}
-                >
-                  <option value="">None</option>
-                  {#if dailyNoteTemplateMissing}
-                    <option value={dailyNoteTemplatePath} disabled>
-                      {dailyNoteTemplatePath} (missing)
-                    </option>
-                  {/if}
-                  {#each markdownFiles as file}
-                    <option value={file.path}>{file.path}</option>
-                  {/each}
-                </select>
-              </label>
-              <button type="button" on:click={showCurrentMonth}>Today</button>
-            </div>
-            {#if dailyNoteFolderMissing}
-              <p class="calendar-folder-warning">
-                Using / because {dailyNoteFolder} is not in this connection.
-              </p>
-            {/if}
-          </header>
-          <div class="calendar-grid" aria-label={calendarMonthName}>
-            {#each WEEK_DAYS as weekday}
-              <span class="calendar-weekday">{weekday}</span>
-            {/each}
-            {#each calendarDays as day}
-              {@const path = calendarDayPath(day)}
-              {@const hasNote = dailyNotePaths.has(path)}
-              <button
-                aria-label={`${hasNote ? 'Open' : 'Create'} note for ${calendarDayLabel(day)}`}
-                class:outside-month={!day.currentMonth}
-                class:today={day.today}
-                class:has-note={hasNote}
-                class="calendar-day"
-                title={`${hasNote ? 'Open' : 'Create'} ${path}`}
-                type="button"
-                on:click={() => openDailyNote(day.date)}
-              >
-                <span>{day.date.getDate()}</span>
-                {#if hasNote}<i aria-label="Note exists"></i>{/if}
-              </button>
-            {/each}
-          </div>
-        </section>
-      {/if}
-      {#if viewMode === 'graph'}
-        <section class="graph-pane" aria-label="Workspace graph">
-          <header class="graph-toolbar">
-            <div>
-              <strong>Knowledge graph</strong>
-              <span
-                >{graphView.nodes.length} notes · {graphView.edges.length} links</span
-              >
-            </div>
-            <div class="graph-controls">
-              <label>
-                Scope
-                <select value={graphScope} on:change={chooseGraphScope}>
-                  <option value="wiki">Wiki</option>
-                  <option
-                    value="local"
-                    disabled={!selectedPath || !selectedIsMarkdown}
-                    >Local</option
-                  >
-                  <option value="all">All notes</option>
-                </select>
-              </label>
-              <button type="button" on:click={resetGraphViewport}
-                >Reset view</button
-              >
-            </div>
-          </header>
-          <div class="graph-canvas">
-            {#if graphStatus}
-              <p class="graph-empty">{graphStatus}</p>
-            {:else if !graphView.nodes.length}
-              <p class="graph-empty">No notes in this graph scope.</p>
-            {:else}
-              <svg
-                bind:this={graphSvg}
-                aria-label="Interactive note graph"
-                role="img"
-                viewBox={`${graphViewport.x} ${graphViewport.y} ${graphViewport.width} ${graphViewport.height}`}
-                on:pointerdown={startGraphPan}
-                on:pointermove={moveGraphPointer}
-                on:pointerup={endGraphPointer}
-                on:pointercancel={endGraphPointer}
-                on:wheel|preventDefault={zoomGraph}
-              >
-                <rect
-                  class="graph-background"
-                  x="-5000"
-                  y="-5000"
-                  width="10000"
-                  height="10000"
-                />
-                <g class="graph-edges">
-                  {#each graphView.edges as edge}
-                    <line
-                      class:active={graphEdgeState(edge) === 'active'}
-                      class:dimmed={graphEdgeState(edge) === 'dimmed'}
-                      x1={edge.source.x}
-                      y1={edge.source.y}
-                      x2={edge.target.x}
-                      y2={edge.target.y}
-                    />
-                  {/each}
-                </g>
-                <g class="graph-nodes">
-                  {#each graphView.nodes as node}
-                    <g
-                      aria-label={node.path}
-                      class:connected={hoveredGraphPath === node.path}
-                      class={`graph-node graph-node-${node.group}`}
-                      role="link"
-                      tabindex="0"
-                      transform={`translate(${node.x} ${node.y})`}
-                      on:keydown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          openGraphNode(node);
-                        }
-                      }}
-                      on:mouseenter={() => (hoveredGraphPath = node.path)}
-                      on:mouseleave={() => (hoveredGraphPath = '')}
-                      on:pointerdown|stopPropagation={() => {}}
-                      on:pointerup|stopPropagation={() => openGraphNode(node)}
-                    >
-                      <circle r={node.radius} />
-                      {#if node.degree >= 20 || hoveredGraphPath === node.path || node.path === selectedPath}
-                        <text x={node.radius + 5} y="4">{node.name}</text>
-                      {/if}
-                      <title>{node.path}</title>
-                    </g>
-                  {/each}
-                </g>
-              </svg>
-            {/if}
-          </div>
-          {#if graphData.unresolved}
-            <footer>
-              {graphData.unresolved} unresolved wiki-link mentions are not drawn.
-            </footer>
-          {/if}
-        </section>
-      {/if}
-      {#if selectedPath && selectedIsMarkdown}
-        <article
-          aria-label="Rendered Markdown preview"
-          class:hidden={viewMode !== 'preview'}
-          class="preview-pane"
-          on:dblclick={handlePreviewDoubleClick}
-        >
-          {#if noteProgress.total}
-            <div
-              aria-label={`${noteProgress.done} of ${noteProgress.total} tasks done`}
-              class="task-progress"
-            >
-              <div class="task-progress-track">
-                <div
-                  class="task-progress-fill"
-                  style={`width: ${Math.round((noteProgress.done / noteProgress.total) * 100)}%`}
-                ></div>
+                  </select>
+                </label>
+                <button type="button" on:click={showCurrentMonth}>Today</button>
               </div>
-              <span>{noteProgress.done}/{noteProgress.total} done</span>
+              {#if dailyNoteFolderMissing}
+                <p class="calendar-folder-warning">
+                  Using / because {dailyNoteFolder} is not in this connection.
+                </p>
+              {/if}
+            </header>
+            <div class="calendar-grid" aria-label={calendarMonthName}>
+              {#each WEEK_DAYS as weekday}
+                <span class="calendar-weekday">{weekday}</span>
+              {/each}
+              {#each calendarDays as day}
+                {@const path = calendarDayPath(day)}
+                {@const hasNote = dailyNotePaths.has(path)}
+                <button
+                  aria-label={`${hasNote ? 'Open' : 'Create'} note for ${calendarDayLabel(day)}`}
+                  class:outside-month={!day.currentMonth}
+                  class:today={day.today}
+                  class:has-note={hasNote}
+                  class="calendar-day"
+                  title={`${hasNote ? 'Open' : 'Create'} ${path}`}
+                  type="button"
+                  on:click={() => openDailyNote(day.date)}
+                >
+                  <span>{day.date.getDate()}</span>
+                  {#if hasNote}<i aria-label="Note exists"></i>{/if}
+                </button>
+              {/each}
             </div>
-          {/if}
-          {#if renderedBlocks.length}
-            {@render markdownBlocks(renderedBlocks)}
-          {:else}
-            <p class="preview-empty">Empty file</p>
-          {/if}
-        </article>
-        <section
-          aria-label="Git diff"
-          class:hidden={viewMode !== 'diff'}
-          class="diff-pane"
-        >
-          {#if diffStatus}
-            <p class="preview-empty">{diffStatus}</p>
-          {:else}
-            {#each diffFiles as file}
-              {@render diffFile(file)}
-            {/each}
-          {/if}
-        </section>
-      {:else if selectedPath && !workspacePaneOpen}
-        <section
-          aria-label="Read-only media preview"
-          class:image={selectedFileKind === 'image'}
-          class:pdf={selectedFileKind === 'pdf'}
-          class="media-pane"
-        >
-          {#if selectedFileKind === 'image'}
-            <img src={mediaPreviewUrl} alt={basename(selectedPath)} />
-          {:else if selectedFileKind === 'pdf'}
-            <object
-              class="media-pdf"
-              data={mediaPreviewUrl}
-              title={basename(selectedPath)}
-              type="application/pdf"
-            >
-              <a href={mediaPreviewUrl} rel="noreferrer" target="_blank">
-                Open {basename(selectedPath)}
-              </a>
-            </object>
-          {/if}
-        </section>
-      {/if}
-      {#if inlineEditPreview && inlineEditPreview.root === selectedRoot && inlineEditPreview.path === selectedPath}
-        <section class="inline-edit-panel" aria-label="AI edit preview">
-          <header class="inline-edit-header">
-            <strong>AI edit preview</strong>
-            <div class="inline-edit-actions">
-              <button type="button" on:click={rejectInlineEdit}>
-                {inlineEditPreview.streaming ? 'Cancel' : 'Reject'}
-              </button>
-              <button
-                class="primary"
-                disabled={inlineEditPreview.streaming}
-                type="button"
-                on:click={acceptInlineEdit}
-              >
-                Accept
-              </button>
-            </div>
-          </header>
-          <div class="inline-edit-diff">
-            {#each inlineEditPreview.diffFiles as file}
-              {@render diffFile(file)}
-            {/each}
-          </div>
-        </section>
-      {/if}
-      {#if relatedPanel && relatedPanel.root === selectedRoot && relatedPanel.path === selectedPath}
-        <section class="inline-edit-panel" aria-label="Related notes">
-          <header class="inline-edit-header">
-            <strong>Related notes</strong>
-            <div class="inline-edit-actions">
-              <button type="button" on:click={dismissRelatedLinks}>
-                Dismiss
-              </button>
-              <button
-                class="primary"
-                disabled={!relatedPanel.selected.size}
-                type="button"
-                on:click={applyRelatedLinks}
-              >
-                Insert links
-              </button>
-            </div>
-          </header>
-          <div class="related-body">
-            {#if relatedPanel.warning}
-              <p class="ai-preset-warning">{relatedPanel.warning}</p>
-            {/if}
-            {#if relatedPanel.suggestions.length}
-              <ul class="related-list">
-                {#each relatedPanel.suggestions as suggestion}
-                  <li class="related-item">
-                    <label class="related-choice">
-                      <input
-                        checked={relatedPanel.selected.has(suggestion.path)}
-                        type="checkbox"
-                        on:change={() => toggleRelatedSuggestion(suggestion)}
+          </section>
+        {/if}
+        {#if viewMode === 'graph'}
+          <section class="graph-pane" aria-label="Workspace graph">
+            <header class="graph-toolbar">
+              <div>
+                <strong>Knowledge graph</strong>
+                <span
+                  >{graphView.nodes.length} notes · {graphView.edges.length} links</span
+                >
+              </div>
+              <div class="graph-controls">
+                <label>
+                  Scope
+                  <select value={graphScope} on:change={chooseGraphScope}>
+                    <option value="wiki">Wiki</option>
+                    <option
+                      value="local"
+                      disabled={!selectedPath || !selectedIsMarkdown}
+                      >Local</option
+                    >
+                    <option value="all">All notes</option>
+                  </select>
+                </label>
+                <button type="button" on:click={resetGraphViewport}
+                  >Reset view</button
+                >
+              </div>
+            </header>
+            <div class="graph-canvas">
+              {#if graphStatus}
+                <p class="graph-empty">{graphStatus}</p>
+              {:else if !graphView.nodes.length}
+                <p class="graph-empty">No notes in this graph scope.</p>
+              {:else}
+                <svg
+                  bind:this={graphSvg}
+                  aria-label="Interactive note graph"
+                  role="img"
+                  viewBox={`${graphViewport.x} ${graphViewport.y} ${graphViewport.width} ${graphViewport.height}`}
+                  on:pointerdown={startGraphPan}
+                  on:pointermove={moveGraphPointer}
+                  on:pointerup={endGraphPointer}
+                  on:pointercancel={endGraphPointer}
+                  on:wheel|preventDefault={zoomGraph}
+                >
+                  <rect
+                    class="graph-background"
+                    x="-5000"
+                    y="-5000"
+                    width="10000"
+                    height="10000"
+                  />
+                  <g class="graph-edges">
+                    {#each graphView.edges as edge}
+                      <line
+                        class:active={graphEdgeState(edge) === 'active'}
+                        class:dimmed={graphEdgeState(edge) === 'dimmed'}
+                        x1={edge.source.x}
+                        y1={edge.source.y}
+                        x2={edge.target.x}
+                        y2={edge.target.y}
                       />
-                      <span class="related-bullet"
-                        >{relatedBulletText(suggestion)}</span
+                    {/each}
+                  </g>
+                  <g class="graph-nodes">
+                    {#each graphView.nodes as node}
+                      <g
+                        aria-label={node.path}
+                        class:connected={hoveredGraphPath === node.path}
+                        class={`graph-node graph-node-${node.group}`}
+                        role="link"
+                        tabindex="0"
+                        transform={`translate(${node.x} ${node.y})`}
+                        on:keydown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openGraphNode(node);
+                          }
+                        }}
+                        on:mouseenter={() => (hoveredGraphPath = node.path)}
+                        on:mouseleave={() => (hoveredGraphPath = '')}
+                        on:pointerdown|stopPropagation={() => {}}
+                        on:pointerup|stopPropagation={() => openGraphNode(node)}
                       >
-                    </label>
-                    <span class="related-path">{suggestion.path}</span>
-                  </li>
-                {/each}
-              </ul>
-              <p class="related-note">
-                Appended to a <code>## Related</code> section at the end of this
-                note. No other file is changed.
-              </p>
-            {:else}
-              <p class="empty-copy">
-                Nothing in this workspace looked related enough to link.
-              </p>
+                        <circle r={node.radius} />
+                        {#if node.degree >= 20 || hoveredGraphPath === node.path || node.path === selectedPath}
+                          <text x={node.radius + 5} y="4">{node.name}</text>
+                        {/if}
+                        <title>{node.path}</title>
+                      </g>
+                    {/each}
+                  </g>
+                </svg>
+              {/if}
+            </div>
+            {#if graphData.unresolved}
+              <footer>
+                {graphData.unresolved} unresolved wiki-link mentions are not drawn.
+              </footer>
             {/if}
-          </div>
-        </section>
-      {/if}
+          </section>
+        {/if}
+        {#if selectedPath && selectedIsMarkdown}
+          <article
+            aria-label="Rendered Markdown preview"
+            class:hidden={viewMode !== 'preview'}
+            class="preview-pane"
+            on:dblclick={handlePreviewDoubleClick}
+          >
+            {#if noteProgress.total}
+              <div
+                aria-label={`${noteProgress.done} of ${noteProgress.total} tasks done`}
+                class="task-progress"
+              >
+                <div class="task-progress-track">
+                  <div
+                    class="task-progress-fill"
+                    style={`width: ${Math.round((noteProgress.done / noteProgress.total) * 100)}%`}
+                  ></div>
+                </div>
+                <span>{noteProgress.done}/{noteProgress.total} done</span>
+              </div>
+            {/if}
+            {#if renderedBlocks.length}
+              {@render markdownBlocks(renderedBlocks)}
+            {:else}
+              <p class="preview-empty">Empty file</p>
+            {/if}
+          </article>
+          <section
+            aria-label="Git diff"
+            class:hidden={viewMode !== 'diff'}
+            class="diff-pane"
+          >
+            {#if diffStatus}
+              <p class="preview-empty">{diffStatus}</p>
+            {:else}
+              {#each diffFiles as file}
+                {@render diffFile(file)}
+              {/each}
+            {/if}
+          </section>
+        {:else if selectedPath && !workspacePaneOpen}
+          <section
+            aria-label="Read-only media preview"
+            class:image={selectedFileKind === 'image'}
+            class:pdf={selectedFileKind === 'pdf'}
+            class="media-pane"
+          >
+            {#if selectedFileKind === 'image'}
+              <img src={mediaPreviewUrl} alt={basename(selectedPath)} />
+            {:else if selectedFileKind === 'pdf'}
+              <object
+                class="media-pdf"
+                data={mediaPreviewUrl}
+                title={basename(selectedPath)}
+                type="application/pdf"
+              >
+                <a href={mediaPreviewUrl} rel="noreferrer" target="_blank">
+                  Open {basename(selectedPath)}
+                </a>
+              </object>
+            {/if}
+          </section>
+        {/if}
+        {#if inlineEditPreview && inlineEditPreview.root === selectedRoot && inlineEditPreview.path === selectedPath}
+          <section class="inline-edit-panel" aria-label="AI edit preview">
+            <header class="inline-edit-header">
+              <strong>AI edit preview</strong>
+              <div class="inline-edit-actions">
+                <button type="button" on:click={rejectInlineEdit}>
+                  {inlineEditPreview.streaming ? 'Cancel' : 'Reject'}
+                </button>
+                <button
+                  class="primary"
+                  disabled={inlineEditPreview.streaming}
+                  type="button"
+                  on:click={acceptInlineEdit}
+                >
+                  Accept
+                </button>
+              </div>
+            </header>
+            <div class="inline-edit-diff">
+              {#each inlineEditPreview.diffFiles as file}
+                {@render diffFile(file)}
+              {/each}
+            </div>
+          </section>
+        {/if}
+        {#if relatedPanel && relatedPanel.root === selectedRoot && relatedPanel.path === selectedPath}
+          <section class="inline-edit-panel" aria-label="Related notes">
+            <header class="inline-edit-header">
+              <strong>Related notes</strong>
+              <div class="inline-edit-actions">
+                <button type="button" on:click={dismissRelatedLinks}>
+                  Dismiss
+                </button>
+                <button
+                  class="primary"
+                  disabled={!relatedPanel.selected.size}
+                  type="button"
+                  on:click={applyRelatedLinks}
+                >
+                  Insert links
+                </button>
+              </div>
+            </header>
+            <div class="related-body">
+              {#if relatedPanel.warning}
+                <p class="ai-preset-warning">{relatedPanel.warning}</p>
+              {/if}
+              {#if relatedPanel.suggestions.length}
+                <ul class="related-list">
+                  {#each relatedPanel.suggestions as suggestion}
+                    <li class="related-item">
+                      <label class="related-choice">
+                        <input
+                          checked={relatedPanel.selected.has(suggestion.path)}
+                          type="checkbox"
+                          on:change={() => toggleRelatedSuggestion(suggestion)}
+                        />
+                        <span class="related-bullet"
+                          >{relatedBulletText(suggestion)}</span
+                        >
+                      </label>
+                      <span class="related-path">{suggestion.path}</span>
+                    </li>
+                  {/each}
+                </ul>
+                <p class="related-note">
+                  Appended to a <code>## Related</code> section at the end of this
+                  note. No other file is changed.
+                </p>
+              {:else}
+                <p class="empty-copy">
+                  Nothing in this workspace looked related enough to link.
+                </p>
+              {/if}
+            </div>
+          </section>
+        {/if}
       </div>
 
       {#if referenceOpen}

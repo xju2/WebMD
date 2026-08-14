@@ -47,6 +47,30 @@ const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const MAX_HEADING_LEVEL = 6;
 
+// Typing shorthand, so the emoji never have to be typed at all: `due:friday`
+// and `p2` on a task line become `📅 <date>` and `⏫` once the caret leaves the
+// line. Only the emoji are stored, so a note stays plain Obsidian syntax.
+const SHORTHAND_FIELDS = {
+  due: 'due',
+  created: 'created',
+  added: 'created',
+  done: 'done'
+};
+const SHORTHAND_DATE = /(^|\s)(due|created|added|done):(\S+)/giu;
+const SHORTHAND_PRIORITY = /(^|\s)p([1-5])(?=\s|$)/giu;
+const PRIORITY_BY_LEVEL = ['highest', 'high', 'medium', 'low', 'lowest'];
+const RELATIVE_DAYS = { yesterday: -1, today: 0, tod: 0, tomorrow: 1, tmr: 1 };
+const OFFSET_SHORTHAND = /^\+(\d+)([dw])$/;
+const WEEKDAYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday'
+];
+
 /**
  * Splits a task's text into its plain prose and its metadata fields. Anything
  * unrecognised — including a malformed date or a second copy of a field — is
@@ -92,6 +116,112 @@ export function formatTaskFields(text = '', fields = {}) {
   ]
     .filter(Boolean)
     .join(' ');
+}
+
+/**
+ * Rewrites the task lines of a note that use typing shorthand, as a list of
+ * `{ line, text }` replacements against `content`'s 0-based lines. Returned as
+ * edits rather than a new document so the editor can apply them without
+ * disturbing the caret, and can hold back the line still being typed.
+ *
+ * Only lines that actually carry shorthand appear, so a task the author has
+ * hand-formatted is never reflowed.
+ */
+export function taskShorthandEdits(content = '', todayText = '') {
+  const { body, bodyLine } = parseFrontmatter(content);
+  const edits = [];
+  let fence = '';
+
+  body.split('\n').forEach((line, index) => {
+    const marker = FENCE.exec(line);
+    if (marker) {
+      if (!fence) fence = marker[1];
+      else if (marker[1] === fence) fence = '';
+      return;
+    }
+    if (fence) return;
+
+    const match = TASK_LINE.exec(line);
+    if (!match) return;
+
+    const [, prefix, mark, gap, taskBody] = match;
+    const expanded = expandTaskBody(taskBody, todayText);
+    if (expanded === taskBody) return;
+    edits.push({
+      line: bodyLine + index,
+      text: `${prefix}${mark}${gap}${expanded}`
+    });
+  });
+
+  return edits;
+}
+
+/** taskShorthandEdits applied to the whole note. */
+export function expandTaskShorthand(content = '', todayText = '') {
+  const edits = taskShorthandEdits(content, todayText);
+  if (!edits.length) return content;
+
+  const lines = content.split('\n');
+  edits.forEach((edit) => {
+    lines[edit.line] = edit.text;
+  });
+  return lines.join('\n');
+}
+
+// Shorthand that resolves to nothing recognisable — a typo, or a word that
+// merely looks like a field — is left alone rather than guessed at, so the
+// author sees it stay put and can fix it.
+function expandTaskBody(body, todayText) {
+  const overrides = {};
+  let rest = body;
+
+  rest = rest.replace(SHORTHAND_DATE, (match, lead, name, value) => {
+    const date = resolveShorthandDate(value, todayText);
+    if (!date) return match;
+    overrides[SHORTHAND_FIELDS[name.toLowerCase()]] = date;
+    return lead;
+  });
+
+  rest = rest.replace(SHORTHAND_PRIORITY, (match, lead, level) => {
+    overrides.priority = PRIORITY_BY_LEVEL[Number(level) - 1];
+    return lead;
+  });
+
+  if (!Object.keys(overrides).length) return body;
+
+  const fields = parseTaskFields(rest);
+  return formatTaskFields(fields.text, { ...fields, ...overrides });
+}
+
+/**
+ * A shorthand date value as `YYYY-MM-DD`, or '' when it means nothing. Accepts
+ * a plain date, `today`/`tomorrow`/`yesterday`, an offset such as `+3d` or
+ * `+2w`, and a weekday name or its three-letter form, which reads as the next
+ * one still to come — `friday` on a Friday is a week away, not today.
+ */
+export function resolveShorthandDate(value = '', todayText = '') {
+  const text = String(value).trim().toLowerCase();
+  if (isDateText(text)) return text;
+  if (!isDateText(todayText)) return '';
+
+  if (Object.hasOwn(RELATIVE_DAYS, text))
+    return shiftDateText(todayText, RELATIVE_DAYS[text]);
+
+  const offset = OFFSET_SHORTHAND.exec(text);
+  if (offset)
+    return shiftDateText(
+      todayText,
+      Number(offset[1]) * (offset[2] === 'w' ? 7 : 1)
+    );
+
+  const weekday = WEEKDAYS.findIndex(
+    (name) => name === text || (text.length === 3 && name.startsWith(text))
+  );
+  if (weekday < 0) return '';
+
+  const [year, month, day] = todayText.split('-').map(Number);
+  const current = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return shiftDateText(todayText, ((weekday - current + 6) % 7) + 1);
 }
 
 /**

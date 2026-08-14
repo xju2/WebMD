@@ -172,6 +172,36 @@ A note in preview shows how far along it is (`7/12 done`) above the text.
 Anything unrecognised — including recurring tasks (`🔁`), which WebMD does not
 support — is left in the task's text untouched.
 
+### Typing shorthand
+
+The emoji never have to be typed. On a task line, write `due:` and a date, or
+`p1`–`p5` for priority, and the editor rewrites it as soon as the caret leaves
+the line — so the file itself stays plain Obsidian syntax:
+
+```markdown
+- [ ] Submit the abstract due:friday p2
+```
+
+becomes
+
+```markdown
+- [ ] Submit the abstract ⏫ 📅 2026-08-21
+```
+
+| Shorthand                               | Means                                        |
+| --------------------------------------- | -------------------------------------------- |
+| `due:` `created:` (or `added:`) `done:` | `📅` `➕` `✅`                               |
+| `p1` `p2` `p3` `p4` `p5`                | `🔺` `⏫` `🔼` `🔽` `⏬`                     |
+| `2026-08-20`                            | That date                                    |
+| `today` `tomorrow` `yesterday`          | Also `tod` and `tmr`                         |
+| `monday` … `sunday`                     | The next one to come; `mon` … `sun` work too |
+| `+3d` `+2w`                             | Days or weeks from today                     |
+
+Shorthand replaces a field the line already has, so `due:tomorrow` on a task
+that is already dated just moves it. Anything that does not resolve to a real
+date — `due:someday`, or a typo — is left exactly as typed rather than guessed
+at, and shorthand in ordinary prose or inside a fenced code block is ignored.
+
 ### Tasks view
 
 The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open

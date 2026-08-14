@@ -4,14 +4,17 @@ import {
   carriedTaskLines,
   clearCompletion,
   collectTasks,
+  expandTaskShorthand,
   extractTags,
   formatTaskFields,
   groupTasksByUrgency,
   parseTaskFields,
+  resolveShorthandDate,
   sortTasks,
   stampCompletion,
   taskLinkSegments,
   taskProgress,
+  taskShorthandEdits,
   taskUrgency,
   toggleTaskLine
 } from '../src/tasks.js';
@@ -305,4 +308,77 @@ test('counts progress across a note', () => {
     done: 2,
     total: 3
   });
+});
+
+// 2026-08-14 is a Friday, which the weekday cases below lean on.
+const FRIDAY = '2026-08-14';
+
+test('expands typed shorthand into the emoji convention', () => {
+  assert.equal(
+    expandTaskShorthand('- [ ] Submit the abstract due:2026-08-20 p2', FRIDAY),
+    '- [ ] Submit the abstract ⏫ 📅 2026-08-20'
+  );
+});
+
+test('keeps a task line that carries no shorthand byte for byte', () => {
+  const line = '  - [x]   Draft   outline ✅ 2026-08-14';
+  assert.equal(expandTaskShorthand(line, FRIDAY), line);
+  assert.deepEqual(taskShorthandEdits(line, FRIDAY), []);
+});
+
+test('shorthand overrides a field the line already carries', () => {
+  assert.equal(
+    expandTaskShorthand('- [ ] Ship it 📅 2026-08-30 due:today', FRIDAY),
+    '- [ ] Ship it 📅 2026-08-14'
+  );
+});
+
+test('resolves relative and weekday shorthand dates', () => {
+  assert.equal(resolveShorthandDate('today', FRIDAY), '2026-08-14');
+  assert.equal(resolveShorthandDate('tomorrow', FRIDAY), '2026-08-15');
+  assert.equal(resolveShorthandDate('yesterday', FRIDAY), '2026-08-13');
+  assert.equal(resolveShorthandDate('+3d', FRIDAY), '2026-08-17');
+  assert.equal(resolveShorthandDate('+2w', FRIDAY), '2026-08-28');
+  assert.equal(resolveShorthandDate('MONDAY', FRIDAY), '2026-08-17');
+  assert.equal(resolveShorthandDate('mon', FRIDAY), '2026-08-17');
+  // The same weekday means the next one, never today.
+  assert.equal(resolveShorthandDate('friday', FRIDAY), '2026-08-21');
+  assert.equal(resolveShorthandDate('2026-02-30', FRIDAY), '');
+  assert.equal(resolveShorthandDate('someday', FRIDAY), '');
+});
+
+test('leaves unrecognised shorthand in the task text', () => {
+  const line = '- [ ] Ask about due:someday p9';
+  assert.equal(expandTaskShorthand(line, FRIDAY), line);
+});
+
+test('ignores shorthand outside tasks and inside code fences', () => {
+  const content = [
+    'Notes about due:tomorrow in prose.',
+    '',
+    '```markdown',
+    '- [ ] Example due:tomorrow',
+    '```',
+    '',
+    '- [ ] Real work due:tomorrow'
+  ].join('\n');
+  assert.deepEqual(taskShorthandEdits(content, FRIDAY), [
+    { line: 6, text: '- [ ] Real work 📅 2026-08-15' }
+  ]);
+});
+
+test('expands shorthand under frontmatter and keeps the origin link last', () => {
+  const content = [
+    '---',
+    'tags: [work]',
+    '---',
+    '',
+    '- [ ] Email Sarah due:mon p1 ↩ [[2026-08-11]]'
+  ].join('\n');
+  assert.deepEqual(taskShorthandEdits(content, FRIDAY), [
+    {
+      line: 4,
+      text: '- [ ] Email Sarah 🔺 📅 2026-08-17 ↩ [[2026-08-11]]'
+    }
+  ]);
 });
