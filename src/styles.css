@@ -13,6 +13,7 @@
   --tok-comment: #6b7686;
   --tok-function: #1e5fbd;
   --tok-type: #0f766e;
+  --tok-property: #a02c68;
   --tok-punctuation: #58637a;
 
   color: #172033;
@@ -2713,6 +2714,10 @@ button {
 
 .preview-pane .tok-type {
   color: var(--tok-type);
+}
+
+.preview-pane .tok-property {
+  color: var(--tok-property);
 }
 
 .preview-pane .tok-operator,

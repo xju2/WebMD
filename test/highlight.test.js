@@ -24,6 +24,33 @@ test('highlights C and C++ fenced code aliases', () => {
   assert.match(cpp, /tok-string/);
 });
 
+test('highlights shell fenced code aliases', () => {
+  const bash = highlightCodeBlock(
+    'bash',
+    '# build it\nfor f in *.txt; do\n  echo "found $f"\ndone\n'
+  );
+  const sh = highlightCodeBlock('sh', 'echo "hi"\n');
+
+  assert.match(bash, /tok-comment/);
+  assert.match(bash, /tok-keyword/);
+  assert.match(bash, /tok-string/);
+  assert.match(bash, /tok-function/);
+  assert.match(sh, /tok-string/);
+});
+
+test('highlights JSON and YAML fenced code', () => {
+  const json = highlightCodeBlock('json', '{\n  "a": [1, true],\n  "b": "x"\n}');
+  const yaml = highlightCodeBlock('yml', '# note\nname: test\nflag: "on"\n');
+
+  assert.match(json, /tok-property/);
+  assert.match(json, /tok-number/);
+  assert.match(json, /tok-constant/);
+  assert.match(json, /tok-string/);
+  assert.match(yaml, /tok-comment/);
+  assert.match(yaml, /tok-property/);
+  assert.match(yaml, /tok-string/);
+});
+
 test('escapes unsupported code fences', () => {
   assert.equal(
     highlightCodeBlock('txt', '<script>alert(1)</script>'),
@@ -45,7 +72,9 @@ test('wraps every source line in its own span', () => {
 test('labels fenced code languages', () => {
   assert.equal(languageLabel('py'), 'Python');
   assert.equal(languageLabel('C++'), 'C++');
-  assert.equal(languageLabel('Bash'), 'bash');
+  assert.equal(languageLabel('Bash'), 'Bash');
+  assert.equal(languageLabel('YML'), 'YAML');
+  assert.equal(languageLabel('rust'), 'rust');
   assert.equal(languageLabel(''), '');
   assert.equal(languageLabel(), '');
 });

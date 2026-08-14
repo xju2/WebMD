@@ -1,6 +1,12 @@
 import { cppLanguage } from '@codemirror/lang-cpp';
+import { jsonLanguage } from '@codemirror/lang-json';
 import { pythonLanguage } from '@codemirror/lang-python';
+import { yamlLanguage } from '@codemirror/lang-yaml';
+import { StreamLanguage } from '@codemirror/language';
+import { shell } from '@codemirror/legacy-modes/mode/shell';
 import { highlightCode, tagHighlighter, tags } from '@lezer/highlight';
+
+const shellLanguage = StreamLanguage.define(shell);
 
 const languages = new Map([
   ['py', pythonLanguage],
@@ -12,7 +18,15 @@ const languages = new Map([
   ['cxx', cppLanguage],
   ['h', cppLanguage],
   ['hpp', cppLanguage],
-  ['hxx', cppLanguage]
+  ['hxx', cppLanguage],
+  ['bash', shellLanguage],
+  ['sh', shellLanguage],
+  ['shell', shellLanguage],
+  ['zsh', shellLanguage],
+  ['console', shellLanguage],
+  ['json', jsonLanguage],
+  ['yaml', yamlLanguage],
+  ['yml', yamlLanguage]
 ]);
 
 const labels = new Map([
@@ -25,10 +39,18 @@ const labels = new Map([
   ['cxx', 'C++'],
   ['h', 'C header'],
   ['hpp', 'C++ header'],
-  ['hxx', 'C++ header']
+  ['hxx', 'C++ header'],
+  ['bash', 'Bash'],
+  ['sh', 'Shell'],
+  ['shell', 'Shell'],
+  ['zsh', 'Zsh'],
+  ['console', 'Shell'],
+  ['json', 'JSON'],
+  ['yaml', 'YAML'],
+  ['yml', 'YAML']
 ]);
 
-const highlighter = tagHighlighter([
+const baseTags = [
   {
     tag: [
       tags.keyword,
@@ -54,8 +76,22 @@ const highlighter = tagHighlighter([
     class: 'tok-type'
   },
   { tag: [tags.bool, tags.atom, tags.null, tags.self], class: 'tok-constant' },
+  {
+    tag: [tags.propertyName, tags.definition(tags.propertyName)],
+    class: 'tok-property'
+  },
   { tag: tags.operator, class: 'tok-operator' },
   { tag: tags.punctuation, class: 'tok-punctuation' }
+];
+
+const highlighter = tagHighlighter(baseTags);
+
+// The shell mode tags command names and `$vars` alike as plain variable names,
+// so give them the function color here rather than staining every identifier in
+// the languages that tag ordinary variables the same way.
+const shellHighlighter = tagHighlighter([
+  ...baseTags,
+  { tag: tags.variableName, class: 'tok-function' }
 ]);
 
 // Each source line becomes its own block-level span so the preview can hang-
@@ -70,7 +106,7 @@ export function highlightCodeBlock(lang = '', code = '') {
   highlightCode(
     code,
     language.parser.parse(code),
-    highlighter,
+    language === shellLanguage ? shellHighlighter : highlighter,
     (text, classes) => {
       const escaped = escapeHtml(text);
       lines[lines.length - 1] += classes
