@@ -50,6 +50,15 @@ export async function createApp({
     res.json(await workspaces.get(req.query.root).loadFile(req.query.path));
   }));
 
+  app.get('/api/workspace/tasks', asyncHandler(async (req, res) => {
+    res.json(
+      await workspaces.get(req.query.root).listTasks({
+        includeDone: req.query.include === 'all',
+        limit: req.query.limit
+      })
+    );
+  }));
+
   app.get('/api/workspace/search', asyncHandler(async (req, res) => {
     res.json(
       await workspaces.get(req.query.root).searchFiles(req.query.q, {

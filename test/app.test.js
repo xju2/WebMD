@@ -636,3 +636,45 @@ test('rejects an arXiv lookup without a valid identifier', async () => {
     server.close();
   }
 });
+
+test('lists open tasks across the workspace', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(
+    path.join(root, 'plan.md'),
+    [
+      '# Plan',
+      '- [ ] Submit the abstract 📅 2026-08-20 ⏫',
+      '- [x] Draft outline ✅ 2026-08-14',
+      '```markdown',
+      '- [ ] Only an example',
+      '```',
+      ''
+    ].join('\n')
+  );
+  await fs.writeFile(path.join(root, 'notes.md'), '- [ ] Email Sarah\n');
+
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/workspace/tasks`);
+    assert.equal(response.status, 200);
+    const { tasks, total } = await response.json();
+
+    assert.equal(total, 2);
+    assert.deepEqual(
+      tasks.map((task) => [task.path, task.line, task.text, task.due, task.priority]),
+      [
+        ['/notes.md', 0, 'Email Sarah', '', ''],
+        ['/plan.md', 1, 'Submit the abstract', '2026-08-20', 'high']
+      ]
+    );
+
+    const all = await (await fetch(`${url}/api/workspace/tasks?include=all`)).json();
+    assert.deepEqual(
+      all.tasks.map((task) => task.checked),
+      [false, false, true]
+    );
+  } finally {
+    server.close();
+  }
+});

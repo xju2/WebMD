@@ -10,9 +10,11 @@
   import {
     calendarDays as buildCalendarDays,
     dailyNoteContent as buildDailyNoteContent,
+    dailyNoteDate,
     dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
     defaultReferencePath,
+    previousDailyNotePath,
     shiftMonth,
     stepDailyNote
   } from './calendar.js';
@@ -42,7 +44,17 @@
     uploadFilesForPastedImageSources,
     uploadPayloadForFile
   } from './uploads.js';
-  import { relatedInsertion } from './related-links.js';
+  import { relatedInsertion, shortestWikiTarget } from './related-links.js';
+  import {
+    carriedTaskLines,
+    collectTasks,
+    formatDueLabel,
+    groupTasksByUrgency,
+    priorityMark,
+    taskProgress,
+    taskUrgency,
+    toggleTaskLine
+  } from './tasks.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
@@ -51,6 +63,8 @@
   const RECENT_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
+  // 'tasks' and 'calendar' are workspace-wide views rather than ways of looking
+  // at the open note, so neither is remembered as a file's view mode.
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
@@ -168,6 +182,11 @@
   let activePresetGroup = '';
   let selectedRange = null;
   let viewMode = 'edit';
+  // Refreshed whenever a task surface opens, so a session left running past
+  // midnight does not keep grading due dates against yesterday.
+  let todayText = dailyNoteDate(new Date());
+  let workspaceTasks = [];
+  let tasksStatus = '';
   let referenceOpen = false;
   let referencePath = '';
   let referenceContent = '';
@@ -315,6 +334,13 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: taskGroups = groupTasksByUrgency(workspaceTasks, todayText);
+  // The views that take over the whole frame instead of showing the open file.
+  $: workspacePaneOpen =
+    viewMode === 'graph' || viewMode === 'calendar' || viewMode === 'tasks';
+  $: noteProgress = taskProgress(
+    selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : []
+  );
   $: referenceBlocks =
     referenceOpen && referencePath && !referenceStatus
       ? renderMarkdown(referenceContent)
@@ -832,20 +858,22 @@
     relatedStatus = '';
   }
 
-  function toggleTask(taskIndex) {
-    if (typeof taskIndex !== 'number' || !editorView) return;
-    const taskLine = /^\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[([ xX])\]/gm;
-    let match;
-    let seen = -1;
-    while ((match = taskLine.exec(content))) {
-      seen += 1;
-      if (seen !== taskIndex) continue;
-      const from = match.index + match[0].length - 2;
-      editorView.dispatch({
-        changes: { from, to: from + 1, insert: match[1] === ' ' ? 'x' : ' ' }
-      });
-      return;
-    }
+  // Keyed on the item's source line rather than its position among the tasks:
+  // counting tasks needed a second regex that did not skip code fences, so a
+  // `- [ ]` inside one shifted every checkbox after it onto the wrong line.
+  function toggleTask(sourceLine) {
+    if (!editorView || !Number.isInteger(sourceLine) || sourceLine < 0) return;
+
+    const doc = editorView.state.doc;
+    if (sourceLine + 1 > doc.lines) return;
+
+    const target = doc.line(sourceLine + 1);
+    const insert = toggleTaskLine(target.text, dailyNoteDate(new Date()));
+    if (insert === target.text) return;
+
+    editorView.dispatch({
+      changes: { from: target.from, to: target.to, insert }
+    });
   }
 
   function rejectInlineEdit() {
@@ -1098,10 +1126,11 @@
         return;
       }
 
-      const nextContent = buildDailyNoteContent(
-        date,
+      const nextContent = await withCarriedTasks(
+        buildDailyNoteContent(date, path, await loadDailyNoteTemplate(root)),
+        root,
         path,
-        await loadDailyNoteTemplate(root)
+        date
       );
       try {
         await requestJson('/api/workspace/save', {
@@ -1127,6 +1156,36 @@
         queueRetry();
         await applyWorkspaceViewMode(root, path);
       }
+    }
+  }
+
+  /**
+   * Appends the previous daily note's unfinished tasks to a daily note that is
+   * about to be created.
+   *
+   * Runs only on creation, so a note can never be carried into twice — and
+   * since yesterday's note carried its own backlog forward the same way, a task
+   * keeps travelling until it is ticked, however long the gap between notes.
+   * Carryover is a convenience: any failure leaves the template content alone
+   * rather than blocking the new note.
+   */
+  async function withCarriedTasks(templateContent, root, path, date) {
+    const previousPath = previousDailyNotePath(dailyNoteEntries, date);
+    if (!previousPath) return templateContent;
+
+    try {
+      const previous = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(previousPath)}`
+      );
+      const origin = shortestWikiTarget(previousPath, path, workspaceFiles, {
+        dailyNoteFolder: activeDailyNoteFolder
+      });
+      const lines = carriedTaskLines(previous.content, origin);
+      if (!lines.length) return templateContent;
+
+      return `${templateContent.replace(/\s+$/, '')}\n\n## Carried over\n\n${lines.join('\n')}\n`;
+    } catch {
+      return templateContent;
     }
   }
 
@@ -1212,6 +1271,7 @@
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
       KeyP: () => selectedPath && setViewMode('preview'),
+      KeyT: () => workspaceRoots.length && showTasks(),
       // Not KeyR: Chrome reserves Cmd/Ctrl+Shift+R for a hard reload.
       Backslash: () => toggleReferencePane()
     }[event.code];
@@ -1350,6 +1410,47 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
+  }
+
+  async function showTasks() {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    viewMode = 'tasks';
+    todayText = dailyNoteDate(new Date());
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+    await loadTasks(selectedRoot);
+  }
+
+  async function loadTasks(root) {
+    tasksStatus = 'Loading tasks...';
+    try {
+      const result = await requestJson(
+        `/api/workspace/tasks?root=${encodeURIComponent(root)}`
+      );
+      if (root !== selectedRoot) return;
+      workspaceTasks = result.tasks;
+      tasksStatus =
+        result.total > result.tasks.length
+          ? `Showing the first ${result.tasks.length} of ${result.total} open tasks.`
+          : '';
+    } catch (err) {
+      if (root !== selectedRoot) return;
+      workspaceTasks = [];
+      tasksStatus = err.message;
+    }
+  }
+
+  /** Opens the note a task lives in and puts the cursor on its line. */
+  async function openTask(task) {
+    await openFile(task.path);
+    if (selectedPath !== task.path || !editorView) return;
+
+    await tick();
+    const doc = editorView.state.doc;
+    const line = doc.line(Math.min(task.line + 1, doc.lines));
+    selectEditorRange(line.from, line.to);
   }
 
   function moveCalendarMonth(amount) {
@@ -3003,6 +3104,7 @@
 
   function setViewMode(mode, { remember = true } = {}) {
     viewMode = mode;
+    if (mode === 'preview') todayText = dailyNoteDate(new Date());
     selectedText = '';
     selectedRange = null;
     if (remember) rememberWorkspaceViewMode(mode);
@@ -3057,7 +3159,7 @@
   {/each}
 {/snippet}
 
-{#snippet markdownBlocks(blocks)}
+{#snippet markdownBlocks(blocks, readOnly = false)}
   {#each blocks as block}
     {#if block.type === 'frontmatter'}
       <dl class="frontmatter" data-line={block.line}>
@@ -3090,14 +3192,14 @@
         <p class="callout-title">{@render inline(block.title)}</p>
         {#if block.children.length}
           <div class="callout-body">
-            {@render markdownBlocks(block.children)}
+            {@render markdownBlocks(block.children, readOnly)}
           </div>
         {/if}
       </aside>
     {:else if block.type === 'details'}
       <details data-line={block.line}>
         <summary>{@render inline(block.summary)}</summary>
-        {@render markdownBlocks(block.children)}
+        {@render markdownBlocks(block.children, readOnly)}
       </details>
     {:else if block.type === 'rule'}
       <hr data-line={block.line} />
@@ -3180,11 +3282,46 @@
             {#if item.task}
               <input
                 checked={item.checked}
+                disabled={readOnly}
                 type="checkbox"
-                on:change={() => toggleTask(item.taskIndex)}
+                on:change={() => toggleTask(item.line)}
               />
             {/if}
             <span>{@render inline(item.children)}</span>
+            {#if item.meta}
+              {@const urgency = taskUrgency(item.meta.due, todayText)}
+              {#if item.meta.priority}
+                <span
+                  class={`task-priority task-priority-${item.meta.priority}`}
+                  title={`${item.meta.priority} priority`}
+                >
+                  {priorityMark(item.meta.priority)}
+                </span>
+              {/if}
+              {#if item.meta.due}
+                <span
+                  class={`task-due task-due-${urgency}`}
+                  title={`Due ${item.meta.due}`}
+                >
+                  {`📅 ${formatDueLabel(item.meta.due)}`}
+                </span>
+              {/if}
+              {#if item.meta.done}
+                <span class="task-stamp" title={`Done ${item.meta.done}`}>
+                  {`✅ ${formatDueLabel(item.meta.done)}`}
+                </span>
+              {/if}
+              {#if item.meta.origin}
+                <a
+                  class="task-origin wiki-link"
+                  href={wikiLinkHref(item.meta.origin)}
+                  title={`Carried over from ${item.meta.origin}`}
+                  on:click={(event) => openWikiLink(event, item.meta.origin)}
+                >
+                  {`↩ ${item.meta.origin}`}
+                </a>
+              {/if}
+            {/if}
           </li>
         {/each}
       </svelte:element>
@@ -3307,6 +3444,22 @@
         <path d="M8.5 12.5h2" />
         <path d="M13.5 12.5h2" />
         <path d="M8.5 16h2" />
+      </svg>
+    </button>
+    <button
+      aria-label="Open tasks"
+      class:active={viewMode === 'tasks'}
+      class="global-action tasks-launcher"
+      disabled={!workspaceRoots.length}
+      title={`Tasks (${shortcutKey}+Shift+T)`}
+      type="button"
+      on:click={showTasks}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M4 7.5 6 9.5l3.5-4" />
+        <path d="M4 16.5 6 18.5l3.5-4" />
+        <path d="M12.5 7.5H20" />
+        <path d="M12.5 16.5H20" />
       </svg>
     </button>
     <button
@@ -3959,6 +4112,13 @@
               <dd><code>- [ ] Follow up</code> <code>- [x] Done</code></dd>
             </div>
             <div>
+              <dt>Task dates</dt>
+              <dd>
+                <code>- [ ] Ship it 📅 2026-08-20 ⏫</code>
+                <code>✅ set on tick</code>
+              </dd>
+            </div>
+            <div>
               <dt>Table</dt>
               <dd><code>| Name | Notes |</code> <code>| --- | --- |</code></dd>
             </div>
@@ -3998,7 +4158,7 @@
 
     <div class:split={referenceOpen} class="editor-split">
       <div class:empty={!selectedPath} class="editor-frame">
-      {#if !selectedPath && viewMode !== 'graph' && viewMode !== 'calendar'}
+      {#if !selectedPath && !workspacePaneOpen}
         <section class="workspace-home" aria-label="Workspace Home">
           <header class="home-intro">
             <div>
@@ -4071,6 +4231,66 @@
         class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
         class="editor-host"
       ></div>
+      {#if viewMode === 'tasks'}
+        <section class="tasks-pane" aria-label="Workspace tasks">
+          <header class="tasks-toolbar">
+            <h2>Tasks</h2>
+            <div class="tasks-summary">
+              <span>{workspaceTasks.length} open</span>
+              <button
+                type="button"
+                on:click={() => loadTasks(selectedRoot)}
+              >
+                Refresh
+              </button>
+            </div>
+          </header>
+          {#if tasksStatus}
+            <p class="tasks-note">{tasksStatus}</p>
+          {/if}
+          {#if taskGroups.length}
+            {#each taskGroups as group}
+              <section class={`task-group task-group-${group.key || 'none'}`}>
+                <h3>{group.label} <span>{group.tasks.length}</span></h3>
+                <ul>
+                  {#each group.tasks as task}
+                    <li>
+                      <button
+                        class="task-row"
+                        title={`${task.path}:${task.line + 1}`}
+                        type="button"
+                        on:click={() => openTask(task)}
+                      >
+                        {#if task.priority}
+                          <span
+                            class={`task-priority task-priority-${task.priority}`}
+                          >
+                            {priorityMark(task.priority)}
+                          </span>
+                        {/if}
+                        <span class="task-row-text">{task.text}</span>
+                        {#if task.due}
+                          <span
+                            class={`task-due task-due-${group.key}`}
+                          >
+                            {`📅 ${formatDueLabel(task.due)}`}
+                          </span>
+                        {/if}
+                        <span class="task-row-path">{task.path}</span>
+                      </button>
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+            {/each}
+          {:else if !tasksStatus}
+            <p class="preview-empty">
+              No open tasks. Write <code>- [ ] something</code> in a note to start
+              one.
+            </p>
+          {/if}
+        </section>
+      {/if}
       {#if viewMode === 'calendar'}
         <section class="calendar-pane" aria-label="Daily notes calendar">
           <header class="calendar-toolbar">
@@ -4273,6 +4493,20 @@
           class="preview-pane"
           on:dblclick={handlePreviewDoubleClick}
         >
+          {#if noteProgress.total}
+            <div
+              aria-label={`${noteProgress.done} of ${noteProgress.total} tasks done`}
+              class="task-progress"
+            >
+              <div class="task-progress-track">
+                <div
+                  class="task-progress-fill"
+                  style={`width: ${Math.round((noteProgress.done / noteProgress.total) * 100)}%`}
+                ></div>
+              </div>
+              <span>{noteProgress.done}/{noteProgress.total} done</span>
+            </div>
+          {/if}
           {#if renderedBlocks.length}
             {@render markdownBlocks(renderedBlocks)}
           {:else}
@@ -4292,7 +4526,7 @@
             {/each}
           {/if}
         </section>
-      {:else if selectedPath && viewMode !== 'graph' && viewMode !== 'calendar'}
+      {:else if selectedPath && !workspacePaneOpen}
         <section
           aria-label="Read-only media preview"
           class:image={selectedFileKind === 'image'}
@@ -4443,7 +4677,7 @@
             {#if referenceStatus}
               <p class="preview-empty">{referenceStatus}</p>
             {:else if referenceBlocks.length}
-              {@render markdownBlocks(referenceBlocks)}
+              {@render markdownBlocks(referenceBlocks, true)}
             {:else}
               <p class="preview-empty">Empty file</p>
             {/if}

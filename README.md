@@ -147,6 +147,56 @@ note it names, so it can never be a dead link. Notes the file already links to
 are never suggested again, and the model can only choose from the shortlist, so
 it cannot invent a path.
 
+## Tasks
+
+Any `- [ ]` checkbox is a task. Ticking one in the preview writes today's date
+into the note, so a finished task records *when* it was finished:
+
+```markdown
+- [ ] Write the intro
+- [x] Draft outline ✅ 2026-08-14
+```
+
+Tasks can also carry a due date and a priority, in the Obsidian Tasks emoji
+convention, so notes stay portable and readable as plain text:
+
+| Field | Syntax | Effect |
+| --- | --- | --- |
+| Due | `📅 2026-08-20` | Preview badges it red when overdue, amber when due today |
+| Done | `✅ 2026-08-14` | Written and removed for you as the box is ticked |
+| Created | `➕ 2026-08-01` | Shown as typed; never written automatically |
+| Priority | `🔺` `⏫` `🔼` `🔽` `⏬` | Highest to lowest; sorts the Tasks view |
+
+A note in preview shows how far along it is (`7/12 done`) above the text.
+Anything unrecognised — including recurring tasks (`🔁`), which WebMD does not
+support — is left in the task's text untouched.
+
+### Tasks view
+
+The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
+task in the workspace, grouped **Overdue / Today / This week / Later / No date**
+and sorted by due date then priority. Clicking a row opens its note with the
+cursor on that line. Tasks inside fenced code blocks are ignored, so an example
+in a how-to never turns into work.
+
+### Carried-over tasks
+
+When a daily note is created, its predecessor's unfinished tasks are appended to
+it under `## Carried over`, each tagged with where it came from:
+
+```markdown
+## Carried over
+
+- [ ] Email Sarah 📅 2026-08-12 ↩ [[2026-08-11]]
+- [ ] Fix the build ↩ [[2026-08-09]]
+```
+
+This happens only at creation, so a note is never carried into twice. Because
+each day's note carries its own backlog forward the same way, a task keeps
+travelling until it is ticked, however long the gap between notes — and the `↩`
+backlink keeps pointing at the note that first raised it rather than at
+yesterday.
+
 ## Daily brief integration
 
 WebMD displays today's Codex-generated daily brief from:

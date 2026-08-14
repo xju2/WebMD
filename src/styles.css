@@ -1489,6 +1489,138 @@ button {
   line-height: 1.5;
 }
 
+.tasks-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow-y: auto;
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: 32px;
+  background: #f7f9fb;
+}
+
+.tasks-toolbar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #dfe6ee;
+  background: #ffffff;
+}
+
+.tasks-toolbar h2 {
+  margin: 0;
+  color: #172033;
+  font-size: 1.08rem;
+}
+
+.tasks-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #667085;
+  font-size: 0.9rem;
+}
+
+.tasks-summary button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.tasks-note {
+  margin: 12px 16px 0;
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+.task-group {
+  margin: 20px 16px 0;
+}
+
+.task-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: #172033;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.task-group h3 span {
+  border-radius: 999px;
+  background: #e6e8ec;
+  color: #667085;
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  padding: 0 7px;
+}
+
+.task-group-overdue h3 {
+  color: #a8261c;
+}
+
+.task-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-group li + li {
+  border-top: 1px solid #e9edf2;
+}
+
+.task-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #273246;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.task-row:hover {
+  background: #eef2f7;
+}
+
+.task-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The note a task lives in is context, not the headline, so it stays quiet and
+   is the first thing to give up room on a narrow pane. */
+.task-row-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: #8a94a6;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .calendar-pane {
   position: absolute;
   inset: 0;
@@ -1867,6 +1999,96 @@ button {
    own text dims, so open subtasks stay readable under a ticked parent. */
 .preview-pane li.task-done > span {
   color: #667085;
+}
+
+/* Metadata pills trail the task text and wrap under it on a narrow pane rather
+   than pushing the sentence off the edge. */
+.preview-pane li.task {
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.preview-pane li.task input {
+  align-self: flex-start;
+}
+
+.task-due,
+.task-stamp,
+.task-priority,
+.task-origin {
+  border-radius: 999px;
+  flex: 0 0 auto;
+  font-size: 0.78em;
+  line-height: 1.6;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+/* Only the dates a decision hangs on are coloured. Anything further out stays
+   grey so a long backlog does not read as a wall of alarm. */
+.task-due-overdue {
+  background: #fde8e6;
+  color: #a8261c;
+  font-weight: 650;
+}
+
+.task-due-today {
+  background: #fdf0d5;
+  color: #8a5a00;
+  font-weight: 650;
+}
+
+.task-due-soon {
+  background: #eef1f5;
+  color: #3d4a5c;
+}
+
+.task-due-later,
+.task-due- {
+  background: #f4f5f7;
+  color: #667085;
+}
+
+.task-stamp {
+  background: #edf6ee;
+  color: #3f7148;
+}
+
+.task-priority {
+  padding: 0 2px;
+}
+
+.preview-pane a.task-origin {
+  color: #667085;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.preview-pane a.task-origin:hover {
+  text-decoration: underline;
+}
+
+.task-progress {
+  align-items: center;
+  color: #667085;
+  display: flex;
+  font-size: 0.85rem;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.task-progress-track {
+  background: #e6e8ec;
+  border-radius: 999px;
+  flex: 1 1 auto;
+  height: 6px;
+  max-width: 220px;
+  overflow: hidden;
+}
+
+.task-progress-fill {
+  background: #3f7148;
+  height: 100%;
 }
 
 .preview-pane a {

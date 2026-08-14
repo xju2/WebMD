@@ -30,6 +30,18 @@ console.log("ok");
   assert.equal(blocks[3].lang, 'js');
 });
 
+test('lifts task metadata out of the rendered text', () => {
+  const blocks = renderMarkdown(
+    '- [ ] Submit the abstract 📅 2026-08-20 ⏫\n- plain'
+  );
+
+  const [task, plain] = blocks[0].items;
+  assert.equal(task.children[0].text, 'Submit the abstract');
+  assert.equal(task.meta.due, '2026-08-20');
+  assert.equal(task.meta.priority, 'high');
+  assert.equal(plain.meta, null);
+});
+
 test('renders YAML frontmatter as a property block ahead of the body', () => {
   const source = `---
 type: Playbook

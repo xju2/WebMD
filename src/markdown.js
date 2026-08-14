@@ -1,5 +1,6 @@
 import { parseUnifiedDiff } from './diff.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { parseTaskFields } from './tasks.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
@@ -279,11 +280,15 @@ function parseListItem(line) {
   if (!match) return null;
 
   const task = match[2].match(/^\[([ xX])\]\s+(.+)$/);
+  // A task's due date, priority, and completion stamp render as pills rather
+  // than as part of the sentence, so they come off the text before inlines.
+  const fields = task ? parseTaskFields(task[2]) : null;
   return {
     ordered: /^\d/.test(match[1]),
     task: !!task,
     checked: task ? task[1].toLowerCase() === 'x' : false,
-    children: parseInline(task ? task[2] : match[2])
+    meta: fields,
+    children: parseInline(fields ? fields.text : match[2])
   };
 }
 

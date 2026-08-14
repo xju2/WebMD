@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
+import { collectTasks } from '../src/tasks.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
@@ -64,6 +65,9 @@ export async function createWorkspace(workspaceRoot) {
     markdownFiles: async () =>
       (await files()).filter((file) => file.fileKind === 'markdown'),
     overview: () => readOverview(root),
+    // Rides the same cached corpus as search and the link graph, so the Tasks
+    // view costs no extra walk of the workspace.
+    listTasks: async (options) => listTasks(await files(), options),
     readTree: async () => {
       invalidate();
       return readTree(root, root);
@@ -115,6 +119,23 @@ export async function createWorkspace(workspaceRoot) {
     },
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
+}
+
+const TASK_LIMIT = 500;
+
+function listTasks(corpus, { includeDone = false, limit = TASK_LIMIT } = {}) {
+  const cap = Math.min(Math.max(Number(limit) || TASK_LIMIT, 1), TASK_LIMIT);
+  const tasks = corpus
+    .filter((file) => file.fileKind === 'markdown')
+    .sort((left, right) => left.path.localeCompare(right.path))
+    .flatMap((file) =>
+      collectTasks(file.content)
+        .filter((task) => task.text && (includeDone || !task.checked))
+        .map((task) => ({ ...task, path: file.path }))
+    );
+
+  // `total` is reported before the cap so the view can say what it is hiding.
+  return { tasks: tasks.slice(0, cap), total: tasks.length };
 }
 
 function buildWorkspaceGraph(corpus) {
