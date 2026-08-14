@@ -25,6 +25,27 @@ WORKSPACE_ROOT=/absolute/path/to/notes
 PORT=3000
 ```
 
+## Auto-Commit
+
+If a workspace root is a git repo, `AUTO_COMMIT_MINUTES` snapshots it on an
+interval, and once more when the server shuts down:
+
+```conf
+AUTO_COMMIT_MINUTES=15
+```
+
+Unset or `0` disables it. Each tick runs `git add -A` and commits everything git
+would track under that root — including changes you deliberately left unstaged —
+as `WebMD autosave <date> <time>`. Nothing is pushed. A clean tree, a directory
+that is not a repo, and a repo mid-merge or mid-rebase are all skipped. Commits
+run with `--no-verify` and signing off, so no hook or passphrase prompt can
+block an unattended snapshot; if git has no `user.email` configured anywhere,
+the commit is attributed to `WebMD <webmd@localhost>`.
+
+This is the safety net that outlives the browser: the editor's undo history is
+per-note and dies with the tab, so `git show HEAD:note.md` (or
+`git checkout HEAD -- note.md`) is what recovers a note deleted by mistake.
+
 ## SSH Tunnel
 
 On the remote server:

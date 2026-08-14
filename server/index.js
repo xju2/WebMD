@@ -1,4 +1,5 @@
 import { createApp } from './app.js';
+import { startAutoCommit } from './autocommit.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -12,6 +13,7 @@ const workspaceRoots = (process.env.WORKSPACE_ROOTS || process.env.WORKSPACE_ROO
   .split(path.delimiter)
   .filter(Boolean);
 const port = Number(process.env.PORT || 3000);
+const autoCommitMinutes = Number(process.env.AUTO_COMMIT_MINUTES || 0);
 
 if (!workspaceRoots.length) {
   console.error('WORKSPACE_ROOT or WORKSPACE_ROOTS is required (set in the environment or ~/.webmd.conf).');
@@ -25,6 +27,16 @@ try {
     setImmediate(() => console.log(`WebMD listening on http://127.0.0.1:${port}`));
   });
 
+  const autoCommit = startAutoCommit({
+    roots: workspaceRoots,
+    intervalMs: autoCommitMinutes * 60 * 1000,
+    onError: (root, error) =>
+      console.error(`Auto-commit failed for ${root}: ${error.message}`)
+  });
+  if (autoCommitMinutes > 0) {
+    console.log(`Auto-committing every ${autoCommitMinutes} min.`);
+  }
+
   // listen() reports failures as an async event, so the try/catch never sees them.
   server.on('error', (error) => {
     console.error(
@@ -35,7 +47,13 @@ try {
     process.exit(1);
   });
 
-  process.on('SIGTERM', () => server.close(() => process.exit(0)));
+  // One last snapshot on the way out, so stopping the server does not strand
+  // the edits made since the previous tick.
+  process.on('SIGTERM', async () => {
+    autoCommit.stop();
+    await autoCommit.runOnce();
+    server.close(() => process.exit(0));
+  });
 } catch (error) {
   console.error(error.message);
   process.exit(1);
