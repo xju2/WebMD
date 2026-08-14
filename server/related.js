@@ -4,9 +4,11 @@ import { resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const WIKI_LINK = /!?\[\[([^\]]+)\]\]/g;
 const MAX_NOTE_CHARS = 8000;
-const SNIPPET_CHARS = 220;
+const SNIPPET_CHARS = 600;
 export const MAX_SUGGESTIONS = 5;
-const MAX_REASON_CHARS = 140;
+// Long enough for a reason to name the specific thing the two notes share —
+// the problem, decision, or number — which is what makes a link worth clicking.
+const MAX_REASON_CHARS = 200;
 
 // Small and deliberately generic: the IDF term weighting already discounts
 // words that appear everywhere in a given workspace, so this list only has to
@@ -22,16 +24,42 @@ const STOPWORDS = new Set(
 
 const SYSTEM_PROMPT = `You connect a Markdown note to other notes in the same personal knowledge workspace.
 
-You are given the note and a numbered list of candidate notes that share vocabulary with it. Choose the candidates whose subject matter genuinely continues, explains, or precedes what this note is about — the ones its author would want to click through to months from now. Shared jargon alone is not a connection.
+You are given the note and a numbered list of candidate notes that share vocabulary with it. Most of these notes are daily notes: dated logs of what the author worked on that day, spanning the same handful of long-running projects. Because of that, belonging to the same project is the baseline, not a connection. A link earns its place only when reading the other note changes how the author would read this one.
+
+A real connection is a specific relationship between the two notes. For example:
+- The other note poses a problem, question, or blocker that this note resolves, or the reverse.
+- The other note records the decision, configuration, or number that this note depends on or revises.
+- This note contradicts, corrects, or supersedes a result or conclusion in the other note.
+- The two notes are consecutive attempts at the same specific problem, so the other one is the previous state of this work.
+- The other note explains a method, tool, or concept this note uses without explaining.
+- This note is the follow-through on a task, promise, or next step the other note wrote down.
+
+These are not connections, and you must not return them:
+- Both notes are about the same project, codebase, dataset, or research area.
+- Both notes mention the same tool, model, library, or person in passing.
+- Both notes cover similar kinds of work (training runs, meetings, evaluation, writing).
+- The notes are near each other in time.
 
 Return only a JSON array, with no prose and no code fences:
-[{"path": "<a path copied exactly from the candidate list>", "reason": "<one short clause>"}]
+[{"path": "<a path copied exactly from the candidate list>", "reason": "<one sentence>"}]
 
 Rules:
 - Never invent a path. Every path must appear verbatim in the candidate list.
-- Return at most ${MAX_SUGGESTIONS}, ordered strongest first. Prefer three strong links to five weak ones.
+- Return at most ${MAX_SUGGESTIONS}, ordered strongest first. Two strong links beat five weak ones, and returning none beats padding.
 - Return [] when nothing in the list is genuinely related. That is a normal answer, not a failure.
-- Each reason is one line under ${MAX_REASON_CHARS} characters saying what the two notes share. Do not restate the title.`;
+- Each reason is one sentence under ${MAX_REASON_CHARS} characters that names the specific thread — the problem, decision, number, or claim — and says how the two notes stand in relation to it. If you cannot name that thread from the text you were given, drop the candidate instead of describing the overlap in general terms.
+- Do not restate the title, and do not begin with "Both notes".
+
+Good reasons:
+- "Names the eval harness OOM that this note traces to the batch-size default."
+- "Sets the learning-rate schedule this note replaces after the loss spike."
+- "The same tracking-efficiency drop was chased here first, ruling out the detector geometry."
+- "Records the promise to rerun the ablation that this note reports results for."
+
+Bad reasons, because any two notes in this workspace could carry them:
+- "Both notes cover Fundra work including model evaluation and training configuration."
+- "Shared focus on model training and infrastructure."
+- "Continues work on the same project."`;
 
 /**
  * Candidate notes for `target`, ranked by TF-IDF cosine similarity over the
@@ -245,12 +273,16 @@ function titleInText(filePath, targetTerms) {
   return tokens.length > 0 && tokens.every((token) => targetTerms.has(token));
 }
 
+// Several lines rather than one: a reason can only name the specific problem or
+// decision a candidate holds if the digest actually shows more than its opener.
 function snippetOf(content) {
   const { body } = parseFrontmatter(String(content || ''));
-  const prose = body
+  const lines = body
     .split('\n')
     .map((line) => line.trim())
-    .find((line) => line && !line.startsWith('#') && !line.startsWith('---'));
+    .filter((line) => line && !line.startsWith('#') && !line.startsWith('---'));
+
+  const prose = lines.join(' ');
   if (!prose) return '';
   return prose.length > SNIPPET_CHARS
     ? `${prose.slice(0, SNIPPET_CHARS)}...`
