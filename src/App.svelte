@@ -65,10 +65,13 @@
     parseTermList,
     sanitizeSections
   } from './task-sections.js';
+  import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const TASK_SECTIONS_KEY = 'webmd:task-sections';
+  const TASK_BOARD_KEY = 'webmd:task-board';
+  const TASK_GROUPINGS = ['board', 'sections', 'urgency'];
   const SEARCH_HISTORY_LIMIT = 8;
   const RECENT_FILES_KEY = 'webmd:recent-files';
   const RECENT_FILES_LIMIT = 5;
@@ -199,10 +202,15 @@
   let todayText = dailyNoteDate(new Date());
   let workspaceTasks = [];
   let tasksStatus = '';
-  // The Tasks view is a dashboard of sections the reader defines. Grouping by
-  // urgency is kept as the other way to look at the same list.
+  // The Tasks view opens on the board: four ranked lanes, which is the only one
+  // of the three that answers "what now". Sections (a dashboard of filters the
+  // reader defines) and urgency (strictly by due date) stay as the other two
+  // ways of looking at the same list.
   let taskSections = sanitizeSections(null);
-  let taskGrouping = 'sections';
+  let taskGrouping = 'board';
+  let taskFilter = '';
+  let taskFilterInput = null;
+  let collapsedLanes = [];
   let showCompletedTasks = false;
   let editingSections = false;
   let referenceOpen = false;
@@ -360,14 +368,23 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
-  $: taskGroups = groupTasksByUrgency(workspaceTasks, todayText);
-  $: taskSectionGroups = groupTasksIntoSections(workspaceTasks, taskSections, {
+  // The filter box narrows the list once, before any of the three views slice
+  // it, so switching between them keeps whatever you were looking for.
+  $: matchingTasks = filterTasks(workspaceTasks, taskFilter);
+  $: taskGroups = groupTasksByUrgency(matchingTasks, todayText);
+  $: taskBoard = groupTasksIntoBoard(matchingTasks, taskSections, {
+    today: todayText,
     dailyNoteFolder: activeDailyNoteFolder,
     includeDone: showCompletedTasks
   });
-  $: openTaskCount = workspaceTasks.filter((task) => !task.checked).length;
-  $: doneTaskCount = workspaceTasks.length - openTaskCount;
-  // Both ways of slicing the list render through one shape: panes of piles.
+  $: taskSectionGroups = groupTasksIntoSections(matchingTasks, taskSections, {
+    dailyNoteFolder: activeDailyNoteFolder,
+    includeDone: showCompletedTasks
+  });
+  $: openTaskCount = matchingTasks.filter((task) => !task.checked).length;
+  $: doneTaskCount = matchingTasks.length - openTaskCount;
+  $: hiddenTaskCount = workspaceTasks.length - matchingTasks.length;
+  // The two list ways of slicing render through one shape: panes of piles.
   // Urgency has nothing to say about where a task came from, so its piles are
   // unlabelled and the rows show their own path.
   $: taskPanes =
@@ -411,6 +428,7 @@
   onMount(async () => {
     searchHistory = readSearchHistory();
     taskSections = readTaskSections();
+    readTaskBoard();
     createEditor('');
     narrowLayoutQuery = window.matchMedia(NARROW_LAYOUT_QUERY);
     syncNarrowLayout();
@@ -1304,7 +1322,34 @@
   // Every shortcut carries both Cmd/Ctrl and Shift. Plain Alt combinations are
   // unusable here because macOS turns Alt+letter into a dead key that would
   // type an accent into the editor instead.
+  // Typing a `/` into a field means a slash, never a shortcut.
+  function isTypingTarget(target) {
+    const tag = target?.tagName;
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      Boolean(target?.isContentEditable)
+    );
+  }
+
   function handleShortcut(event) {
+    // A bare `/` reaches the Tasks filter, which is safe only there: the board
+    // is the one full-frame view with nothing to type into.
+    if (
+      event.key === '/' &&
+      viewMode === 'tasks' &&
+      !paletteOpen &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !isTypingTarget(event.target)
+    ) {
+      event.preventDefault();
+      focusTaskFilter();
+      return;
+    }
+
     // Quick open is the one plain Cmd/Ctrl combination. It reads the
     // platform modifier rather than either one, because Ctrl+K on macOS is
     // already the editor's delete-to-end-of-line.
@@ -3145,6 +3190,53 @@
     run();
   }
 
+  // Which way of looking at the tasks you last chose, and which lanes you had
+  // folded away. Kept apart from the section definitions so resetting sections
+  // to defaults does not also reopen every lane.
+  function readTaskBoard() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(TASK_BOARD_KEY) || 'null');
+      if (TASK_GROUPINGS.includes(stored?.grouping)) {
+        taskGrouping = stored.grouping;
+      }
+      collapsedLanes = Array.isArray(stored?.collapsed)
+        ? stored.collapsed.filter((key) =>
+            LANES.some((lane) => lane.key === key)
+          )
+        : [];
+    } catch {
+      // A corrupt preference is not worth reporting; the defaults still apply.
+    }
+  }
+
+  function commitTaskBoard() {
+    try {
+      localStorage.setItem(
+        TASK_BOARD_KEY,
+        JSON.stringify({ grouping: taskGrouping, collapsed: collapsedLanes })
+      );
+    } catch {
+      // Ignore storage failures; the choice still holds for this session.
+    }
+  }
+
+  function setTaskGrouping(grouping) {
+    taskGrouping = grouping;
+    commitTaskBoard();
+  }
+
+  function toggleLane(key) {
+    collapsedLanes = collapsedLanes.includes(key)
+      ? collapsedLanes.filter((lane) => lane !== key)
+      : [...collapsedLanes, key];
+    commitTaskBoard();
+  }
+
+  function focusTaskFilter() {
+    taskFilterInput?.focus();
+    taskFilterInput?.select();
+  }
+
   function readTaskSections() {
     try {
       return sanitizeSections(
@@ -4451,8 +4543,24 @@
                 <span>
                   {openTaskCount} open{showCompletedTasks
                     ? `, ${doneTaskCount} done`
+                    : ''}{hiddenTaskCount
+                    ? ` · ${hiddenTaskCount} filtered out`
                     : ''}
                 </span>
+                <input
+                  class="tasks-filter"
+                  type="search"
+                  placeholder="Filter  /"
+                  aria-label="Filter tasks"
+                  bind:this={taskFilterInput}
+                  bind:value={taskFilter}
+                  on:keydown={(event) => {
+                    if (event.key !== 'Escape') return;
+                    event.preventDefault();
+                    if (taskFilter) taskFilter = '';
+                    else event.currentTarget.blur();
+                  }}
+                />
                 <div
                   class="tasks-grouping"
                   role="group"
@@ -4460,9 +4568,17 @@
                 >
                   <button
                     type="button"
+                    class:active={taskGrouping === 'board'}
+                    aria-pressed={taskGrouping === 'board'}
+                    on:click={() => setTaskGrouping('board')}
+                  >
+                    Board
+                  </button>
+                  <button
+                    type="button"
                     class:active={taskGrouping === 'sections'}
                     aria-pressed={taskGrouping === 'sections'}
-                    on:click={() => (taskGrouping = 'sections')}
+                    on:click={() => setTaskGrouping('sections')}
                   >
                     Sections
                   </button>
@@ -4470,7 +4586,7 @@
                     type="button"
                     class:active={taskGrouping === 'urgency'}
                     aria-pressed={taskGrouping === 'urgency'}
-                    on:click={() => (taskGrouping = 'urgency')}
+                    on:click={() => setTaskGrouping('urgency')}
                   >
                     Urgency
                   </button>
@@ -4483,7 +4599,7 @@
                   />
                   Completed
                 </label>
-                {#if taskGrouping === 'sections'}
+                {#if taskGrouping !== 'urgency'}
                   <button
                     type="button"
                     aria-expanded={editingSections}
@@ -4500,7 +4616,7 @@
             {#if tasksStatus}
               <p class="tasks-note">{tasksStatus}</p>
             {/if}
-            {#if editingSections && taskGrouping === 'sections'}
+            {#if editingSections && taskGrouping !== 'urgency'}
               <div class="task-sections-editor">
                 <p class="tasks-note">
                   A task joins the first section whose terms it matches. Terms
@@ -4553,6 +4669,22 @@
                         <option value={status}>{status}</option>
                       {/each}
                     </select>
+                    {#if !section.catchAll}
+                      <label
+                        class="task-section-shelf"
+                        title="Reading, not work: keep this section out of the board's urgency lanes"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={section.shelf}
+                          on:change={(event) =>
+                            updateTaskSection(index, {
+                              shelf: event.currentTarget.checked
+                            })}
+                        />
+                        Shelf
+                      </label>
+                    {/if}
                     <button
                       type="button"
                       title="Move up"
@@ -4582,7 +4714,101 @@
                 </div>
               </div>
             {/if}
-            {#if taskPanes.length}
+            {#if taskGrouping === 'board'}
+              <div class="task-board">
+                {#each taskBoard as lane (lane.key)}
+                  {@const folded = collapsedLanes.includes(lane.key)}
+                  <section
+                    class={`task-lane task-lane-${lane.key}`}
+                    class:task-lane-folded={folded}
+                  >
+                    <button
+                      type="button"
+                      class="task-lane-head"
+                      aria-expanded={!folded}
+                      title={lane.note}
+                      on:click={() => toggleLane(lane.key)}
+                    >
+                      <span class="task-lane-name">{lane.label}</span>
+                      <span class="task-lane-count">{lane.count}</span>
+                    </button>
+                    {#if !folded}
+                      {#if lane.cards.length}
+                        <ul class="task-lane-cards">
+                          {#each lane.cards as card (`${card.task.path}:${card.task.line}`)}
+                            <li>
+                              <!-- A div rather than a button: the text can
+                                 contain links, and an anchor inside a button is
+                                 invalid. -->
+                              <div
+                                class={`task-card task-card-${card.age || 'undated'}`}
+                                class:task-card-done={card.task.checked}
+                                title={`${card.task.path}:${card.task.line + 1}`}
+                                role="button"
+                                tabindex="0"
+                                on:click={(event) => openTask(card.task, event)}
+                                on:keydown={(event) =>
+                                  openTaskOnKey(card.task, event)}
+                              >
+                                <p class="task-card-eyebrow">
+                                  <span>{card.sectionLabel}</span>
+                                  {#if card.projectLabel}
+                                    <span class="task-card-project">
+                                      {card.projectLabel}
+                                    </span>
+                                  {/if}
+                                </p>
+                                <p class="task-card-text">
+                                  {#each taskLinkSegments(card.task.displayText || card.task.text) as segment}
+                                    {#if segment.type === 'link'}
+                                      <a
+                                        href={segment.href}
+                                        rel="noreferrer"
+                                        target="_blank">{segment.text}</a
+                                      >
+                                    {:else}
+                                      {segment.text}
+                                    {/if}
+                                  {/each}
+                                </p>
+                                <p class="task-card-meta">
+                                  {#if card.task.priority}
+                                    <span
+                                      class={`task-priority task-priority-${card.task.priority}`}
+                                    >
+                                      {priorityMark(card.task.priority)}
+                                    </span>
+                                  {/if}
+                                  {#if card.task.due}
+                                    <span
+                                      class={`task-due task-due-${taskUrgency(card.task.due, todayText)}`}
+                                    >
+                                      {`📅 ${formatDueLabel(card.task.due)}`}
+                                    </span>
+                                  {/if}
+                                  {#each card.task.tags || [] as tag}
+                                    <span class="task-tag">#{tag}</span>
+                                  {/each}
+                                  {#if card.ageDays !== null}
+                                    <span class="task-card-age">
+                                      {card.ageDays === 0
+                                        ? 'today'
+                                        : `${card.ageDays}d`}
+                                    </span>
+                                  {/if}
+                                </p>
+                              </div>
+                            </li>
+                          {/each}
+                        </ul>
+                      {:else}
+                        <p class="task-lane-empty">{lane.note}</p>
+                      {/if}
+                    {/if}
+                  </section>
+                {/each}
+              </div>
+            {:else if taskPanes.length}
               {#each taskPanes as pane (pane.id)}
                 <details
                   class={`task-group task-group-${pane.id}`}

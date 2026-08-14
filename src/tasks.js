@@ -95,6 +95,15 @@ export function parseTaskFields(text = '') {
     return ' ';
   });
 
+  // Shorthand counts as a priority even before the editor has rewritten it, so
+  // a note synced in from elsewhere — or one whose line has not been left yet —
+  // still sorts and badges correctly. The emoji wins if the line carries both.
+  rest = rest.replace(SHORTHAND_PRIORITY, (match, lead, level) => {
+    if (fields.priority) return match;
+    fields.priority = PRIORITY_BY_LEVEL[Number(level) - 1];
+    return lead;
+  });
+
   rest = rest.replace(ORIGIN_PATTERN, (match, target) => {
     fields.origin = target.trim();
     return ' ';
@@ -458,6 +467,21 @@ export function priorityMark(priority = '') {
   return (
     Object.keys(PRIORITIES).find((mark) => PRIORITIES[mark] === priority) || ''
   );
+}
+
+/**
+ * Whole days from one date to another, negative when `toText` is the earlier of
+ * the two, or null when either side is not a date. The board scores both how
+ * soon a task is due and how long it has been sitting, and both are this sum.
+ */
+export function daysBetween(fromText, toText) {
+  if (!isDateText(fromText) || !isDateText(toText)) return null;
+  return Math.round((utcDay(toText) - utcDay(fromText)) / 86400000);
+}
+
+function utcDay(dateText) {
+  const [year, month, day] = dateText.split('-').map(Number);
+  return Date.UTC(year, month - 1, day);
 }
 
 // UTC arithmetic, so a day never gains or loses an hour to daylight saving.

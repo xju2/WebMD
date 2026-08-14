@@ -233,14 +233,45 @@ that task and ready to tick. A `[text](url)` link in a task shows as just its
 text and opens in a new tab, without opening the note. Tasks inside fenced code
 blocks are ignored, so an example in a how-to never turns into work.
 
+There are three ways to look at the same list.
+
+**Board** is what the view opens on: four short columns, ranked rather than
+filed, for answering "what now" without reading everything.
+
+| Lane      | Holds                                                      |
+| --------- | ---------------------------------------------------------- |
+| **Now**   | Overdue, due today, or marked `:p1:`                       |
+| **Soon**  | Dated within the month, marked `:p2:`, or written recently |
+| **Later** | Real work, but nothing about it is pressing yet            |
+| **Shelf** | Reading and ideas — an unread paper is not late            |
+
+A task's place comes from three things a note already carries: its **due date**
+(the strongest signal — an overdue task reaches Now on its date alone), its
+**priority** mark, and **how long ago it was written**, taken from its daily
+note's filename or its `➕` created date. Age cuts both ways: something written
+this week is surfaced, and something written two months ago and never dated
+sinks, which is what keeps Now short. It also sets the card's ink, so old work
+fades rather than earning another badge. Each card shows the section that
+claimed it and, in a daily note, the `##` it sits under.
+
+**Shelf** holds the sections marked as reading rather than work — Ideas,
+Interesting papers and Interesting software, by default. Those skip the ranking
+entirely, because scoring a paper against a deadline it never had would only
+bury the actual backlog. Any section can be shelved or unshelved under **Edit
+sections**; the catch-all never can.
+
+**Filter** narrows the list before any of the three views slice it, matching a
+task's prose, tags, headings and path alike, so `gnl` finds "GNLarge" halfway
+through a word. `/` puts the cursor in it, and `Escape` clears it.
+
 **Sections** is a dashboard: a task is filed under the first section whose terms
 it matches, and whatever matches nothing lands in **Other tasks**. That keeps a
 reading list, a stack of ideas, and real work in one `- [ ]` habit without them
-crowding each other out. **Urgency** is the other view of the same list, grouped
-**Overdue / Today / This week / Later / No date**. Both sort by due date then
-priority, and both group a note's tasks under the note — except in a daily note,
-where they group under the `##` they sit beneath, so a project's work reads as
-one pile across the week rather than one per day.
+crowding each other out. **Urgency** is the third view, grouped **Overdue /
+Today / This week / Later / No date**. Both sort by due date then priority, and
+both group a note's tasks under the note — except in a daily note, where they
+group under the `##` they sit beneath, so a project's work reads as one pile
+across the week rather than one per day.
 
 A term matches three things, so notes can be organised whichever way reads best:
 
@@ -252,8 +283,9 @@ A term matches three things, so notes can be organised whichever way reads best:
 
 Singular and plural are the same term, and a leading `#` is optional, so `paper`
 finds `#papers` and `## Papers` alike. **Edit sections** renames a section,
-changes its terms, sets whether it shows open, done, or all tasks, and reorders
-or adds sections; the layout is remembered in the browser. **Completed** loads
+changes its terms, sets whether it shows open, done, or all tasks, marks it as
+**Shelf**, and reorders or adds sections; the layout, the chosen view, and any
+folded lanes are remembered in the browser. **Completed** loads
 finished tasks as well, and shows them struck through in place.
 
 ### Carried-over tasks

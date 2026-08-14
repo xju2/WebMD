@@ -1494,6 +1494,10 @@ button {
   position: absolute;
   inset: 0;
   z-index: 2;
+  /* The board lays itself out against this width rather than the window's: the
+     sidebar and the reference pane take room out of the pane without the
+     viewport ever changing. */
+  container: tasks / inline-size;
   overflow-y: auto;
   min-width: 0;
   min-height: 0;
@@ -1793,6 +1797,283 @@ button {
   font-size: 0.8rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The board. Four lanes of the same list, ranked rather than filed, for the
+   times when the sections view has grown into a basket you cannot read. It is
+   set as a page rather than drawn as a widget: no card borders, no shadows, no
+   drag handles — hairlines between the lanes, and typography doing the sorting
+   the eye needs. */
+.task-board {
+  display: grid;
+  /* Fixed at four rather than auto-fit: the lanes are a ranking, so wrapping
+     one of them onto a second row would break the reading order they carry. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  margin: 16px 16px 0;
+  border: 1px solid #dfe6ee;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.task-lane + .task-lane {
+  border-left: 1px solid #e9edf2;
+}
+
+/* Each lane's own scroll, so a long backlog never pushes the short, urgent
+   lane beside it off the bottom of the screen. */
+.task-lane-cards {
+  margin: 0;
+  padding: 0 0 8px;
+  max-height: calc(100vh - 220px);
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* Four columns need about 250px each to wrap a task legibly. Below that the
+   board folds to two by two — still a board, still in ranked order, reading
+   left to right and then down.
+   Measured against the pane rather than the window, because the sidebar and
+   the reference pane take their width out of the board without the viewport
+   changing at all. */
+@container tasks (max-width: 1020px) {
+  .task-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-lane:nth-child(n + 3) {
+    border-top: 1px solid #e9edf2;
+  }
+
+  .task-lane:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .task-lane-cards {
+    max-height: 42vh;
+  }
+}
+
+@container tasks (max-width: 520px) {
+  .task-board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .task-lane + .task-lane {
+    border-top: 1px solid #e9edf2;
+    border-left: 0;
+  }
+
+  .task-lane-cards {
+    max-height: none;
+  }
+}
+
+.task-lane-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px 10px;
+  border: 0;
+  border-bottom: 1px solid #e9edf2;
+  background: #ffffff;
+  color: #172033;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 680;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.task-lane-head:hover {
+  background: #f7f9fb;
+}
+
+.task-lane-count {
+  border-radius: 999px;
+  background: #e6e8ec;
+  color: #667085;
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  padding: 0 7px;
+}
+
+/* Only the first lane is coloured. "Now" earns red because it is the one
+   column that is allowed to interrupt you; giving each lane a colour would
+   just be four colours. */
+.task-lane-now .task-lane-head {
+  color: #a8261c;
+}
+
+.task-lane-now .task-lane-count {
+  background: #fde8e6;
+  color: #a8261c;
+}
+
+/* A folded lane keeps its header in the row so the counts still line up. */
+.task-lane-folded .task-lane-head {
+  border-bottom: 0;
+  color: #8a94a6;
+}
+
+.task-lane-empty {
+  margin: 0;
+  padding: 14px;
+  color: #8a94a6;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.task-lane-cards li + li {
+  border-top: 1px solid #eef1f5;
+}
+
+.task-card {
+  padding: 10px 14px 12px;
+  cursor: pointer;
+}
+
+.task-card:hover {
+  background: #f7f9fb;
+}
+
+.task-card:focus-visible {
+  outline: 2px solid #174b82;
+  outline-offset: -2px;
+}
+
+/* Which section claimed the task and, in a daily note, the `##` it sat under.
+   The sections view needs a heading row for this; a card can carry it. */
+.task-card-eyebrow {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 4px;
+  color: #8a94a6;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* Both halves shrink, so a narrow column loses the ends of two labels rather
+   than the whole of the second one. */
+.task-card-eyebrow span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card-project {
+  flex: 0 1 auto;
+}
+
+.task-card-project::before {
+  content: '·';
+  padding-right: 6px;
+}
+
+/* The one change worth the whole board: a task wraps and can be read, instead
+   of ending in an ellipsis three words in. Three lines is enough for any task
+   worth writing down and short enough to keep the column scannable. */
+.task-card-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  margin: 0;
+  overflow: hidden;
+  /* A bare URL in a task is one long word. Better to break it mid-string than
+     to let it push the whole column sideways. */
+  overflow-wrap: anywhere;
+  color: #172033;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+/* Age has no pill of its own — it is said by letting old work go pale. A task
+   from this week reads at full strength; one from last spring has faded to the
+   weight of a caption, which is about what it deserves. */
+.task-card-warm .task-card-text {
+  color: #3c4761;
+}
+
+.task-card-cool .task-card-text {
+  color: #667085;
+}
+
+.task-card-cold .task-card-text {
+  color: #8a94a6;
+}
+
+.task-card-done .task-card-text {
+  color: #8a94a6;
+  text-decoration: line-through;
+}
+
+.task-card-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: #b3bcc9;
+  text-underline-offset: 2px;
+}
+
+.task-card-text a:hover {
+  color: #1c5fa8;
+  text-decoration-color: currentColor;
+}
+
+.task-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+}
+
+.task-card-meta:empty {
+  display: none;
+}
+
+.task-card-age {
+  color: #a3acba;
+  font-size: 0.72rem;
+}
+
+.tasks-filter {
+  width: 150px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #cbd4df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #273246;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.tasks-filter:focus {
+  border-color: #174b82;
+  outline: none;
+}
+
+.task-section-shelf {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  color: #667085;
+  cursor: pointer;
+  font-size: 0.85rem;
 }
 
 .calendar-pane {
@@ -3242,6 +3523,12 @@ button {
 
   .reference-pane {
     display: none;
+  }
+
+  /* The board's own folding is a container query on .tasks-pane, so it needs
+     nothing here beyond room for the filter box in the toolbar. */
+  .tasks-filter {
+    width: 110px;
   }
 
   .app-shell.sidebar-hidden,

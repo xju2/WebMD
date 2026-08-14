@@ -393,3 +393,20 @@ test('expands shorthand under frontmatter and keeps the origin link last', () =>
     }
   ]);
 });
+
+test('reads typed priority shorthand as a priority before it is expanded', () => {
+  const [task] = collectTasks('- [ ] Ship the abstract :p1:');
+  assert.equal(task.priority, 'highest');
+  assert.equal(task.text, 'Ship the abstract');
+});
+
+test('an emoji priority wins over shorthand on the same line', () => {
+  const [task] = collectTasks('- [ ] Ship it 🔽 :p1:');
+  assert.equal(task.priority, 'low');
+});
+
+test('leaves shorthand that is not a bare priority in the text', () => {
+  const [task] = collectTasks('- [ ] Fix the :p1:. typo');
+  assert.equal(task.priority, '');
+  assert.equal(task.text, 'Fix the :p1:. typo');
+});

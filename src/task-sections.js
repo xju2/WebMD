@@ -13,41 +13,50 @@ import { sortTasks } from './tasks.js';
 
 export const SECTION_STATUSES = ['open', 'done', 'any'];
 
+// `shelf` marks a section as reading rather than work. Nothing is overdue on
+// the shelf — an unread paper is not late — so the board keeps those sections
+// out of its urgency lanes instead of ranking them against deadlines they were
+// never given.
 export const DEFAULT_SECTIONS = [
   {
     id: 'ideas',
     label: 'Ideas',
     include: ['idea'],
     exclude: [],
-    status: 'open'
+    status: 'open',
+    shelf: true
   },
   {
     id: 'papers',
     label: 'Interesting papers',
     include: ['paper'],
     exclude: [],
-    status: 'open'
+    status: 'open',
+    shelf: true
   },
   {
     id: 'software',
     label: 'Interesting software',
     include: ['software'],
     exclude: [],
-    status: 'open'
+    status: 'open',
+    shelf: true
   },
   {
     id: 'coding',
     label: 'Coding tasks',
     include: ['coding'],
     exclude: [],
-    status: 'open'
+    status: 'open',
+    shelf: false
   },
   {
     id: 'atlas',
     label: 'ATLAS-related',
     include: ['atlas'],
     exclude: [],
-    status: 'open'
+    status: 'open',
+    shelf: false
   },
   {
     id: 'other',
@@ -55,6 +64,7 @@ export const DEFAULT_SECTIONS = [
     include: [],
     exclude: [],
     status: 'open',
+    shelf: false,
     catchAll: true
   }
 ];
@@ -226,11 +236,17 @@ export function sanitizeSections(value) {
     ...list.filter((section, index) => index !== first),
     ...(first === -1 ? [] : [list[first]])
   ];
-  return ordered.map((section, index) => ({
-    ...section,
-    catchAll: first !== -1 && index === ordered.length - 1,
-    id: section.id || `section-${index + 1}`
-  }));
+  return ordered.map((section, index) => {
+    const catchAll = first !== -1 && index === ordered.length - 1;
+    return {
+      ...section,
+      catchAll,
+      // "Everything else" is where the actual backlog lands, so it can never be
+      // shelved away from the urgency lanes.
+      shelf: !catchAll && section.shelf,
+      id: section.id || `section-${index + 1}`
+    };
+  });
 }
 
 function sanitizeSection(section) {
@@ -244,8 +260,23 @@ function sanitizeSection(section) {
     include: toTermList(section.include),
     exclude: toTermList(section.exclude),
     status: SECTION_STATUSES.includes(section.status) ? section.status : 'open',
+    shelf: storedShelf(section),
     catchAll: Boolean(section.catchAll)
   };
+}
+
+// A config saved before the board existed has no `shelf` at all. Defaulting
+// those to false would drop the reader's papers and ideas into the work lanes
+// on upgrade, so an unset flag is answered by whichever default section the
+// stored one grew from.
+function storedShelf(section) {
+  if (typeof section.shelf === 'boolean') return section.shelf;
+  const label = normalizeTerm(section.label);
+  return DEFAULT_SECTIONS.some(
+    (preset) =>
+      preset.shelf &&
+      (preset.id === section.id || normalizeTerm(preset.label) === label)
+  );
 }
 
 function toTermList(value) {
