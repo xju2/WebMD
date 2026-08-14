@@ -39,6 +39,13 @@ const DONE_TAIL = new RegExp(`\\s*✅\\s*${DATE}`, 'u');
 const TASK_LINE = /^(\s*(?:>\s*)*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\]\s*)(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
 
+// Inline #tags, Obsidian style. The `#` has to open a word, so a URL fragment
+// (`example.com/page#top`) and a name like `C#` are left alone, and a tag needs
+// at least one letter, so `#123` stays an issue reference.
+const TAG_PATTERN = /(^|\s)#([\p{L}\p{N}_/-]*\p{L}[\p{L}\p{N}_/-]*)/gu;
+const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const MAX_HEADING_LEVEL = 6;
+
 /**
  * Splits a task's text into its plain prose and its metadata fields. Anything
  * unrecognised — including a malformed date or a second copy of a field — is
@@ -121,13 +128,46 @@ export function clearCompletion(body = '') {
 }
 
 /**
+ * Pulls inline `#tags` out of a task's prose, lowercased and deduped, and
+ * returns the prose without them. `collectTasks` keeps both: `text` stays
+ * exactly what the author wrote, so carrying a task into tomorrow's note never
+ * drops its tags, while `displayText` is what the Tasks view shows once the
+ * section heading already says `#paper`.
+ */
+export function extractTags(text = '') {
+  const tags = [];
+  const rest = String(text).replace(TAG_PATTERN, (match, lead, tag) => {
+    const value = tag.toLowerCase();
+    if (!tags.includes(value)) tags.push(value);
+    return lead;
+  });
+  return { text: rest.replace(/\s{2,}/g, ' ').trim(), tags };
+}
+
+/** A note's frontmatter `tags:`, lowercased, however it was written. */
+export function noteTagsOf(attributes = {}) {
+  const raw = attributes?.tags;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  return list
+    .map((tag) => String(tag).replace(/^#/, '').toLowerCase().trim())
+    .filter(Boolean);
+}
+
+/**
  * Every task in a note, with its 0-based source line. Fenced code blocks and
  * YAML frontmatter are skipped, so a `- [ ]` shown as an example is never
  * mistaken for real work.
+ *
+ * Each task also carries where it sits: its inline `tags`, the note's
+ * `noteTags`, and `headings`, an array indexed by heading level, so
+ * `headings[2]` is the `##` a task lives under — the project name, by
+ * convention, in a daily note.
  */
 export function collectTasks(content = '') {
-  const { body, bodyLine } = parseFrontmatter(content);
+  const { attributes, body, bodyLine } = parseFrontmatter(content);
+  const noteTags = noteTagsOf(attributes);
   const tasks = [];
+  const headings = new Array(MAX_HEADING_LEVEL + 1).fill('');
   let fence = '';
 
   body.split('\n').forEach((line, index) => {
@@ -139,13 +179,28 @@ export function collectTasks(content = '') {
     }
     if (fence) return;
 
+    const heading = HEADING.exec(line);
+    if (heading) {
+      const level = heading[1].length;
+      headings[level] = heading[2].trim();
+      // A new section closes every subsection it opened above.
+      headings.fill('', level + 1);
+      return;
+    }
+
     const match = TASK_LINE.exec(line);
     if (!match) return;
 
+    const fields = parseTaskFields(match[4]);
+    const { text: displayText, tags } = extractTags(fields.text);
     tasks.push({
       line: bodyLine + index,
       checked: match[2].toLowerCase() === 'x',
-      ...parseTaskFields(match[4])
+      ...fields,
+      displayText,
+      tags,
+      noteTags,
+      headings: [...headings]
     });
   });
 

@@ -84,12 +84,12 @@ Anything typed in the chat box refines the prompt you click.
 
 Built-in presets:
 
-| Group | Kind | Presets |
-| --- | --- | --- |
+| Group | Kind    | Presets                                                                                                                 |
+| ----- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Paper | Rewrite | Tighten (academic), Active voice, Methods-section voice, Calibrate claims, Compress to abstract, Plain-language summary |
-| Email | Rewrite | Polite reply, Concise reply, Soften a decline, Follow-up nudge |
-| Notes | Rewrite | Condense to bullets, Clean up dictation, Extract action items, Expand shorthand |
-| Ask | Chat | Summarize this note, Open questions, Skeptical review, Suggest next steps |
+| Email | Rewrite | Polite reply, Concise reply, Soften a decline, Follow-up nudge                                                          |
+| Notes | Rewrite | Condense to bullets, Clean up dictation, Extract action items, Expand shorthand                                         |
+| Ask   | Chat    | Summarize this note, Open questions, Skeptical review, Suggest next steps                                               |
 
 Add your own in `$WORKSPACE_ROOT/.webmd/prompts.json`. Reusing a built-in `id`
 replaces that preset, so you can retune one without redefining the rest:
@@ -137,6 +137,7 @@ section at the end of the note, reusing a trailing `## Related pages` or
 
 ```markdown
 ## Related
+
 - [[concepts/hybrid-search]] — the retrieval scheme this run replaced
 - [[2026-07-08]] — earlier pass over the same dataset
 ```
@@ -150,7 +151,7 @@ it cannot invent a path.
 ## Tasks
 
 Any `- [ ]` checkbox is a task. Ticking one in the preview writes today's date
-into the note, so a finished task records *when* it was finished:
+into the note, so a finished task records _when_ it was finished:
 
 ```markdown
 - [ ] Write the intro
@@ -160,12 +161,12 @@ into the note, so a finished task records *when* it was finished:
 Tasks can also carry a due date and a priority, in the Obsidian Tasks emoji
 convention, so notes stay portable and readable as plain text:
 
-| Field | Syntax | Effect |
-| --- | --- | --- |
-| Due | `📅 2026-08-20` | Preview badges it red when overdue, amber when due today |
-| Done | `✅ 2026-08-14` | Written and removed for you as the box is ticked |
-| Created | `➕ 2026-08-01` | Shown as typed; never written automatically |
-| Priority | `🔺` `⏫` `🔼` `🔽` `⏬` | Highest to lowest; sorts the Tasks view |
+| Field    | Syntax                   | Effect                                                   |
+| -------- | ------------------------ | -------------------------------------------------------- |
+| Due      | `📅 2026-08-20`          | Preview badges it red when overdue, amber when due today |
+| Done     | `✅ 2026-08-14`          | Written and removed for you as the box is ticked         |
+| Created  | `➕ 2026-08-01`          | Shown as typed; never written automatically              |
+| Priority | `🔺` `⏫` `🔼` `🔽` `⏬` | Highest to lowest; sorts the Tasks view                  |
 
 A note in preview shows how far along it is (`7/12 done`) above the text.
 Anything unrecognised — including recurring tasks (`🔁`), which WebMD does not
@@ -174,10 +175,32 @@ support — is left in the task's text untouched.
 ### Tasks view
 
 The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
-task in the workspace, grouped **Overdue / Today / This week / Later / No date**
-and sorted by due date then priority. Clicking a row opens its note with the
-cursor on that line. Tasks inside fenced code blocks are ignored, so an example
-in a how-to never turns into work.
+task in the workspace. Clicking a row opens its note with the cursor on that
+line. Tasks inside fenced code blocks are ignored, so an example in a how-to
+never turns into work.
+
+**Sections** is a dashboard: a task is filed under the first section whose terms
+it matches, and whatever matches nothing lands in **Other tasks**. That keeps a
+reading list, a stack of ideas, and real work in one `- [ ]` habit without them
+crowding each other out. **Urgency** is the other view of the same list, grouped
+**Overdue / Today / This week / Later / No date**. Both sort by due date then
+priority, and both group a note's tasks under the note — except in a daily note,
+where they group under the `##` they sit beneath, so a project's work reads as
+one pile across the week rather than one per day.
+
+A term matches three things, so notes can be organised whichever way reads best:
+
+| Source      | Example                           | Matches                                  |
+| ----------- | --------------------------------- | ---------------------------------------- |
+| Inline tag  | `- [ ] Read the GNN paper #paper` | `paper`                                  |
+| Frontmatter | `tags: [paper, reading]`          | every task in the note                   |
+| Heading     | `## Interesting papers`           | the whole heading, and each of its words |
+
+Singular and plural are the same term, and a leading `#` is optional, so `paper`
+finds `#papers` and `## Papers` alike. **Edit sections** renames a section,
+changes its terms, sets whether it shows open, done, or all tasks, and reorders
+or adds sections; the layout is remembered in the browser. **Completed** loads
+finished tasks as well, and shows them struck through in place.
 
 ### Carried-over tasks
 

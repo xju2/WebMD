@@ -55,9 +55,18 @@
     taskUrgency,
     toggleTaskLine
   } from './tasks.js';
+  import {
+    DEFAULT_SECTIONS,
+    SECTION_STATUSES,
+    formatTermList,
+    groupTasksIntoSections,
+    parseTermList,
+    sanitizeSections
+  } from './task-sections.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
+  const TASK_SECTIONS_KEY = 'webmd:task-sections';
   const SEARCH_HISTORY_LIMIT = 8;
   const RECENT_FILES_KEY = 'webmd:recent-files';
   const RECENT_FILES_LIMIT = 5;
@@ -187,6 +196,12 @@
   let todayText = dailyNoteDate(new Date());
   let workspaceTasks = [];
   let tasksStatus = '';
+  // The Tasks view is a dashboard of sections the reader defines. Grouping by
+  // urgency is kept as the other way to look at the same list.
+  let taskSections = sanitizeSections(null);
+  let taskGrouping = 'sections';
+  let showCompletedTasks = false;
+  let editingSections = false;
   let referenceOpen = false;
   let referencePath = '';
   let referenceContent = '';
@@ -335,6 +350,24 @@
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
   $: taskGroups = groupTasksByUrgency(workspaceTasks, todayText);
+  $: taskSectionGroups = groupTasksIntoSections(workspaceTasks, taskSections, {
+    dailyNoteFolder: activeDailyNoteFolder,
+    includeDone: showCompletedTasks
+  });
+  $: openTaskCount = workspaceTasks.filter((task) => !task.checked).length;
+  $: doneTaskCount = workspaceTasks.length - openTaskCount;
+  // Both ways of slicing the list render through one shape: panes of piles.
+  // Urgency has nothing to say about where a task came from, so its piles are
+  // unlabelled and the rows show their own path.
+  $: taskPanes =
+    taskGrouping === 'urgency'
+      ? taskGroups.map((group) => ({
+          id: group.key || 'none',
+          label: group.label,
+          count: group.tasks.length,
+          groups: [{ key: group.key || 'none', label: '', tasks: group.tasks }]
+        }))
+      : taskSectionGroups;
   // The views that take over the whole frame instead of showing the open file.
   $: workspacePaneOpen =
     viewMode === 'graph' || viewMode === 'calendar' || viewMode === 'tasks';
@@ -366,6 +399,7 @@
 
   onMount(async () => {
     searchHistory = readSearchHistory();
+    taskSections = readTaskSections();
     createEditor('');
     narrowLayoutQuery = window.matchMedia(NARROW_LAYOUT_QUERY);
     syncNarrowLayout();
@@ -1425,15 +1459,19 @@
 
   async function loadTasks(root) {
     tasksStatus = 'Loading tasks...';
+    // Completed tasks are fetched only when they are wanted, so the server's
+    // cap is not spent on work that is already finished.
+    const include = showCompletedTasks ? '&include=all' : '';
     try {
       const result = await requestJson(
-        `/api/workspace/tasks?root=${encodeURIComponent(root)}`
+        `/api/workspace/tasks?root=${encodeURIComponent(root)}${include}`
       );
       if (root !== selectedRoot) return;
       workspaceTasks = result.tasks;
+      const kind = showCompletedTasks ? 'tasks' : 'open tasks';
       tasksStatus =
         result.total > result.tasks.length
-          ? `Showing the first ${result.tasks.length} of ${result.total} open tasks.`
+          ? `Showing the first ${result.tasks.length} of ${result.total} ${kind}.`
           : '';
     } catch (err) {
       if (root !== selectedRoot) return;
@@ -3023,6 +3061,66 @@
     run();
   }
 
+  function readTaskSections() {
+    try {
+      return sanitizeSections(
+        JSON.parse(localStorage.getItem(TASK_SECTIONS_KEY) || 'null')
+      );
+    } catch {
+      return sanitizeSections(null);
+    }
+  }
+
+  // Every edit runs through sanitizeSections, so the stored shape stays valid
+  // however the editor is used — including keeping the catch-all last.
+  function commitTaskSections(sections) {
+    taskSections = sanitizeSections(sections);
+    try {
+      localStorage.setItem(TASK_SECTIONS_KEY, JSON.stringify(taskSections));
+    } catch {
+      // Ignore storage failures; the sections still apply for this session.
+    }
+  }
+
+  function updateTaskSection(index, changes) {
+    commitTaskSections(
+      taskSections.map((section, position) =>
+        position === index ? { ...section, ...changes } : section
+      )
+    );
+  }
+
+  function moveTaskSection(index, offset) {
+    const next = [...taskSections];
+    const target = index + offset;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    commitTaskSections(next);
+  }
+
+  function removeTaskSection(index) {
+    commitTaskSections(
+      taskSections.filter((_, position) => position !== index)
+    );
+  }
+
+  function addTaskSection() {
+    commitTaskSections([
+      ...taskSections.filter((section) => !section.catchAll),
+      { id: `section-${taskSections.length + 1}`, label: 'New section' },
+      ...taskSections.filter((section) => section.catchAll)
+    ]);
+  }
+
+  function resetTaskSections() {
+    commitTaskSections(DEFAULT_SECTIONS);
+  }
+
+  async function toggleCompletedTasks() {
+    showCompletedTasks = !showCompletedTasks;
+    await loadTasks(selectedRoot);
+  }
+
   function readSearchHistory() {
     try {
       const value = JSON.parse(
@@ -4236,7 +4334,50 @@
           <header class="tasks-toolbar">
             <h2>Tasks</h2>
             <div class="tasks-summary">
-              <span>{workspaceTasks.length} open</span>
+              <span>
+                {openTaskCount} open{showCompletedTasks
+                  ? `, ${doneTaskCount} done`
+                  : ''}
+              </span>
+              <div
+                class="tasks-grouping"
+                role="group"
+                aria-label="Group tasks by"
+              >
+                <button
+                  type="button"
+                  class:active={taskGrouping === 'sections'}
+                  aria-pressed={taskGrouping === 'sections'}
+                  on:click={() => (taskGrouping = 'sections')}
+                >
+                  Sections
+                </button>
+                <button
+                  type="button"
+                  class:active={taskGrouping === 'urgency'}
+                  aria-pressed={taskGrouping === 'urgency'}
+                  on:click={() => (taskGrouping = 'urgency')}
+                >
+                  Urgency
+                </button>
+              </div>
+              <label class="tasks-toggle">
+                <input
+                  type="checkbox"
+                  checked={showCompletedTasks}
+                  on:change={toggleCompletedTasks}
+                />
+                Completed
+              </label>
+              {#if taskGrouping === 'sections'}
+                <button
+                  type="button"
+                  aria-expanded={editingSections}
+                  on:click={() => (editingSections = !editingSections)}
+                >
+                  {editingSections ? 'Done' : 'Edit sections'}
+                </button>
+              {/if}
               <button
                 type="button"
                 on:click={() => loadTasks(selectedRoot)}
@@ -4248,40 +4389,142 @@
           {#if tasksStatus}
             <p class="tasks-note">{tasksStatus}</p>
           {/if}
-          {#if taskGroups.length}
-            {#each taskGroups as group}
-              <section class={`task-group task-group-${group.key || 'none'}`}>
-                <h3>{group.label} <span>{group.tasks.length}</span></h3>
-                <ul>
-                  {#each group.tasks as task}
-                    <li>
-                      <button
-                        class="task-row"
-                        title={`${task.path}:${task.line + 1}`}
-                        type="button"
-                        on:click={() => openTask(task)}
-                      >
-                        {#if task.priority}
-                          <span
-                            class={`task-priority task-priority-${task.priority}`}
+          {#if editingSections && taskGrouping === 'sections'}
+            <div class="task-sections-editor">
+              <p class="tasks-note">
+                A task joins the first section whose terms it matches. Terms
+                match its inline <code>#tags</code>, its note's frontmatter
+                <code>tags:</code>, and the headings it sits under.
+              </p>
+              {#each taskSections as section, index (section.id)}
+                <div class="task-section-edit">
+                  <input
+                    class="task-section-label"
+                    aria-label="Section name"
+                    value={section.label}
+                    on:change={(event) =>
+                      updateTaskSection(index, {
+                        label: event.currentTarget.value.trim() || section.label
+                      })}
+                  />
+                  {#if section.catchAll}
+                    <span class="task-section-hint">everything else</span>
+                  {:else}
+                    <input
+                      aria-label="Include terms"
+                      placeholder="include: paper, idea"
+                      value={formatTermList(section.include)}
+                      on:change={(event) =>
+                        updateTaskSection(index, {
+                          include: parseTermList(event.currentTarget.value)
+                        })}
+                    />
+                  {/if}
+                  <input
+                    aria-label="Exclude terms"
+                    placeholder="exclude:"
+                    value={formatTermList(section.exclude)}
+                    on:change={(event) =>
+                      updateTaskSection(index, {
+                        exclude: parseTermList(event.currentTarget.value)
+                      })}
+                  />
+                  <select
+                    aria-label="Which tasks"
+                    value={section.status}
+                    on:change={(event) =>
+                      updateTaskSection(index, {
+                        status: event.currentTarget.value
+                      })}
+                  >
+                    {#each SECTION_STATUSES as status}
+                      <option value={status}>{status}</option>
+                    {/each}
+                  </select>
+                  <button
+                    type="button"
+                    title="Move up"
+                    disabled={index === 0}
+                    on:click={() => moveTaskSection(index, -1)}>↑</button
+                  >
+                  <button
+                    type="button"
+                    title="Move down"
+                    disabled={index === taskSections.length - 1}
+                    on:click={() => moveTaskSection(index, 1)}>↓</button
+                  >
+                  <button
+                    type="button"
+                    title="Remove section"
+                    on:click={() => removeTaskSection(index)}>✕</button
+                  >
+                </div>
+              {/each}
+              <div class="task-sections-actions">
+                <button type="button" on:click={addTaskSection}>
+                  Add section
+                </button>
+                <button type="button" on:click={resetTaskSections}>
+                  Reset to defaults
+                </button>
+              </div>
+            </div>
+          {/if}
+          {#if taskPanes.length}
+            {#each taskPanes as pane (pane.id)}
+              <details
+                class={`task-group task-group-${pane.id}`}
+                open={pane.count > 0}
+              >
+                <summary>{pane.label} <span>{pane.count}</span></summary>
+                {#each pane.groups as group (group.key)}
+                  {#if group.label}
+                    <h4 class="task-source" title={group.label}>
+                      {group.label}
+                    </h4>
+                  {/if}
+                  <ul>
+                    {#each group.tasks as task}
+                      <li>
+                        <button
+                          class="task-row"
+                          class:task-row-done={task.checked}
+                          title={`${task.path}:${task.line + 1}`}
+                          type="button"
+                          on:click={() => openTask(task)}
+                        >
+                          {#if task.priority}
+                            <span
+                              class={`task-priority task-priority-${task.priority}`}
+                            >
+                              {priorityMark(task.priority)}
+                            </span>
+                          {/if}
+                          <span class="task-row-text"
+                            >{task.displayText || task.text}</span
                           >
-                            {priorityMark(task.priority)}
-                          </span>
-                        {/if}
-                        <span class="task-row-text">{task.text}</span>
-                        {#if task.due}
-                          <span
-                            class={`task-due task-due-${group.key}`}
-                          >
-                            {`📅 ${formatDueLabel(task.due)}`}
-                          </span>
-                        {/if}
-                        <span class="task-row-path">{task.path}</span>
-                      </button>
-                    </li>
-                  {/each}
-                </ul>
-              </section>
+                          {#each task.tags || [] as tag}
+                            <span class="task-tag">#{tag}</span>
+                          {/each}
+                          {#if task.due}
+                            <span
+                              class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
+                            >
+                              {`📅 ${formatDueLabel(task.due)}`}
+                            </span>
+                          {/if}
+                          {#if group.kind !== 'file'}
+                            <span class="task-row-path">{task.path}</span>
+                          {/if}
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                {/each}
+                {#if !pane.count}
+                  <p class="tasks-note">Nothing here yet.</p>
+                {/if}
+              </details>
             {/each}
           {:else if !tasksStatus}
             <p class="preview-empty">

@@ -4,6 +4,7 @@ import {
   carriedTaskLines,
   clearCompletion,
   collectTasks,
+  extractTags,
   formatTaskFields,
   groupTasksByUrgency,
   parseTaskFields,
@@ -128,6 +129,79 @@ test('ignores tasks inside fenced code blocks', () => {
     collectTasks(content).map((task) => task.text),
     ['Real', 'Also real']
   );
+});
+
+test('pulls inline tags off a task, lowercased and deduped', () => {
+  assert.deepEqual(extractTags('Read the GNN paper #Paper #paper #ml/graphs'), {
+    text: 'Read the GNN paper',
+    tags: ['paper', 'ml/graphs']
+  });
+});
+
+test('leaves a hash that is not a tag alone', () => {
+  assert.deepEqual(
+    extractTags('Skim example.com/page#results, then rate C# #software'),
+    { text: 'Skim example.com/page#results, then rate C#', tags: ['software'] }
+  );
+});
+
+test('does not read an issue reference as a tag', () => {
+  assert.deepEqual(extractTags('Close #123 #bug'), {
+    text: 'Close #123',
+    tags: ['bug']
+  });
+});
+
+test('keeps the written text and offers a tag-free version for display', () => {
+  const [task] = collectTasks(
+    '- [ ] Read the transformer paper #paper 📅 2026-08-20'
+  );
+  assert.equal(task.text, 'Read the transformer paper #paper');
+  assert.equal(task.displayText, 'Read the transformer paper');
+  assert.deepEqual(task.tags, ['paper']);
+  assert.equal(task.due, '2026-08-20');
+});
+
+test('carries a task over with its tags intact', () => {
+  assert.deepEqual(carriedTaskLines('- [ ] Read it #Paper', '2026-08-13'), [
+    '- [ ] Read it #Paper ↩ [[2026-08-13]]'
+  ]);
+});
+
+test('records the headings a task sits under, by level', () => {
+  const content = [
+    '# Daily',
+    '## Tracking detector',
+    '### Meetings',
+    '- [ ] Prepare slides',
+    '## Reading',
+    '- [ ] Skim the paper'
+  ].join('\n');
+  const [slides, paper] = collectTasks(content);
+  assert.deepEqual(slides.headings.slice(1, 4), [
+    'Daily',
+    'Tracking detector',
+    'Meetings'
+  ]);
+  // The second `##` closes the `###` it opened above.
+  assert.deepEqual(paper.headings.slice(1, 4), ['Daily', 'Reading', '']);
+});
+
+test('ignores a heading inside a fenced code block', () => {
+  const content = ['## Real', '```', '## Example', '```', '- [ ] Work'].join(
+    '\n'
+  );
+  assert.equal(collectTasks(content)[0].headings[2], 'Real');
+});
+
+test('gives every task in a note its frontmatter tags', () => {
+  const content = [
+    '---',
+    'tags: [Paper, reading]',
+    '---',
+    '- [ ] Skim it'
+  ].join('\n');
+  assert.deepEqual(collectTasks(content)[0].noteTags, ['paper', 'reading']);
 });
 
 test('grades a due date against today', () => {
