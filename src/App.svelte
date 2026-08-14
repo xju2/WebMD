@@ -4311,7 +4311,7 @@
                 <code>due:+2w</code>
                 <code>created:</code>
                 <code>done:</code>
-                <code>p1</code>…<code>p5</code>
+                <code>:p1:</code>…<code>:p5:</code>
                 becomes the emoji when you leave the line
               </dd>
             </div>

@@ -315,7 +315,10 @@ const FRIDAY = '2026-08-14';
 
 test('expands typed shorthand into the emoji convention', () => {
   assert.equal(
-    expandTaskShorthand('- [ ] Submit the abstract due:2026-08-20 p2', FRIDAY),
+    expandTaskShorthand(
+      '- [ ] Submit the abstract due:2026-08-20 :p2:',
+      FRIDAY
+    ),
     '- [ ] Submit the abstract ⏫ 📅 2026-08-20'
   );
 });
@@ -348,8 +351,16 @@ test('resolves relative and weekday shorthand dates', () => {
 });
 
 test('leaves unrecognised shorthand in the task text', () => {
-  const line = '- [ ] Ask about due:someday p9';
+  const line = '- [ ] Ask about due:someday :p9:';
   assert.equal(expandTaskShorthand(line, FRIDAY), line);
+});
+
+test('leaves a bare priority word alone in the task text', () => {
+  const line = '- [ ] Fix the p2 bug due:today';
+  assert.equal(
+    expandTaskShorthand(line, FRIDAY),
+    '- [ ] Fix the p2 bug 📅 2026-08-14'
+  );
 });
 
 test('ignores shorthand outside tasks and inside code fences', () => {
@@ -373,7 +384,7 @@ test('expands shorthand under frontmatter and keeps the origin link last', () =>
     'tags: [work]',
     '---',
     '',
-    '- [ ] Email Sarah due:mon p1 ↩ [[2026-08-11]]'
+    '- [ ] Email Sarah due:mon :p1: ↩ [[2026-08-11]]'
   ].join('\n');
   assert.deepEqual(taskShorthandEdits(content, FRIDAY), [
     {

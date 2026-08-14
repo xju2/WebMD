@@ -175,11 +175,11 @@ support — is left in the task's text untouched.
 ### Typing shorthand
 
 The emoji never have to be typed. On a task line, write `due:` and a date, or
-`p1`–`p5` for priority, and the editor rewrites it as soon as the caret leaves
-the line — so the file itself stays plain Obsidian syntax:
+`:p1:`–`:p5:` for priority, and the editor rewrites it as soon as the caret
+leaves the line — so the file itself stays plain Obsidian syntax:
 
 ```markdown
-- [ ] Submit the abstract due:friday p2
+- [ ] Submit the abstract due:friday :p2:
 ```
 
 becomes
@@ -191,7 +191,7 @@ becomes
 | Shorthand                               | Means                                        |
 | --------------------------------------- | -------------------------------------------- |
 | `due:` `created:` (or `added:`) `done:` | `📅` `➕` `✅`                               |
-| `p1` `p2` `p3` `p4` `p5`                | `🔺` `⏫` `🔼` `🔽` `⏬`                     |
+| `:p1:` `:p2:` `:p3:` `:p4:` `:p5:`      | `🔺` `⏫` `🔼` `🔽` `⏬`                     |
 | `2026-08-20`                            | That date                                    |
 | `today` `tomorrow` `yesterday`          | Also `tod` and `tmr`                         |
 | `monday` … `sunday`                     | The next one to come; `mon` … `sun` work too |
@@ -201,6 +201,8 @@ Shorthand replaces a field the line already has, so `due:tomorrow` on a task
 that is already dated just moves it. Anything that does not resolve to a real
 date — `due:someday`, or a typo — is left exactly as typed rather than guessed
 at, and shorthand in ordinary prose or inside a fenced code block is ignored.
+Priority carries its colons so that a task about the p2 bug keeps its own
+words.
 
 ### Tasks view
 

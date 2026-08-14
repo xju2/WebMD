@@ -48,8 +48,10 @@ const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const MAX_HEADING_LEVEL = 6;
 
 // Typing shorthand, so the emoji never have to be typed at all: `due:friday`
-// and `p2` on a task line become `📅 <date>` and `⏫` once the caret leaves the
-// line. Only the emoji are stored, so a note stays plain Obsidian syntax.
+// and `:p2:` on a task line become `📅 <date>` and `⏫` once the caret leaves
+// the line. Only the emoji are stored, so a note stays plain Obsidian syntax.
+// Priority is written `:p2:` rather than a bare `p2` so that a task about the
+// p2 bug keeps its own words.
 const SHORTHAND_FIELDS = {
   due: 'due',
   created: 'created',
@@ -57,7 +59,7 @@ const SHORTHAND_FIELDS = {
   done: 'done'
 };
 const SHORTHAND_DATE = /(^|\s)(due|created|added|done):(\S+)/giu;
-const SHORTHAND_PRIORITY = /(^|\s)p([1-5])(?=\s|$)/giu;
+const SHORTHAND_PRIORITY = /(^|\s):p([1-5]):(?=\s|$)/giu;
 const PRIORITY_BY_LEVEL = ['highest', 'high', 'medium', 'low', 'lowest'];
 const RELATIVE_DAYS = { yesterday: -1, today: 0, tod: 0, tomorrow: 1, tmr: 1 };
 const OFFSET_SHORTHAND = /^\+(\d+)([dw])$/;
