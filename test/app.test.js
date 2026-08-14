@@ -235,6 +235,93 @@ test('streams AI chat through the selected workspace document', async () => {
   }
 });
 
+test('suggests related notes as links that resolve back to real files', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'wiki'));
+  await fs.writeFile(
+    path.join(root, 'note.md'),
+    '# Today\nTriton dropped ONNX inference requests on the GPU.\n'
+  );
+  await fs.writeFile(
+    path.join(root, 'wiki', 'triton.md'),
+    '# Triton\nTriton batches ONNX inference requests across GPU instances.\n'
+  );
+  await fs.writeFile(path.join(root, 'wiki', 'bread.md'), '# Bread\nProof the dough.\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[1].content, /\/wiki\/triton\.md/);
+        assert.doesNotMatch(body.messages[1].content, /\/wiki\/bread\.md/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `{"message":{"content":"[{\\"path\\": \\"/wiki/triton.md\\", \\"reason\\": \\"same serving stack\\"}]"}}\n`
+                )
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/related`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).suggestions, [
+      {
+        path: '/wiki/triton.md',
+        title: 'Triton',
+        reason: 'same serving stack',
+        target: 'triton'
+      }
+    ]);
+  } finally {
+    server.close();
+  }
+});
+
+test('skips the AI call when no note shares wording with the open one', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), '# Today\nTriton inference.\n');
+  await fs.writeFile(path.join(root, 'bread.md'), '# Bread\nProof the dough.\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async () => assert.fail('should not call the AI provider')
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/related`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/note.md' })
+    });
+
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(result.suggestions, []);
+    assert.equal(result.candidateCount, 0);
+  } finally {
+    server.close();
+  }
+});
+
 test('returns AI edit replacement for the selected workspace text', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');

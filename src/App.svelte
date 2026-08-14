@@ -42,6 +42,7 @@
     uploadFilesForPastedImageSources,
     uploadPayloadForFile
   } from './uploads.js';
+  import { relatedInsertion } from './related-links.js';
   import { resolveWikiLinkPath } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
@@ -158,6 +159,10 @@
   let inlineEditLoading = false;
   let inlineEditPreview = null;
   let inlineEditAbort = null;
+  let relatedLoading = false;
+  let relatedStatus = '';
+  let relatedPanel = null;
+  let relatedAbort = null;
   let aiPresets = [];
   let aiPresetWarning = '';
   let activePresetGroup = '';
@@ -566,6 +571,7 @@
     const abort = inlineEditAbort;
     inlineEditLoading = true;
     inlineEditStatus = 'Drafting edit...';
+    dismissRelatedLinks();
     error = '';
     setViewMode('edit');
 
@@ -705,6 +711,125 @@
     editorView.focus();
     inlineEditPreview = null;
     inlineEditStatus = '';
+  }
+
+  /**
+   * Asks the server which existing notes the open note should link to. Nothing
+   * is written until the reader accepts, and only this note is ever touched.
+   */
+  async function requestRelatedNotes() {
+    if (relatedLoading || !selectedIsMarkdown) return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+    relatedAbort?.abort();
+    relatedAbort = new AbortController();
+    const abort = relatedAbort;
+    relatedLoading = true;
+    relatedStatus = 'Looking for related notes...';
+    relatedPanel = null;
+    // Both panels dock to the same corner of the editor.
+    clearInlineEdit();
+    error = '';
+
+    try {
+      let response;
+      try {
+        response = await fetch('/api/ai/related', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abort.signal,
+          body: JSON.stringify({ root, path, dailyNoteFolder })
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw new Error(
+          'Server unavailable. Check the SSH tunnel and backend.'
+        );
+      }
+      if (!response.ok) throw new Error(await responseErrorMessage(response));
+
+      const result = await response.json();
+      // The reader may have moved on while a slow model was thinking.
+      if (abort.signal.aborted || root !== selectedRoot || path !== selectedPath)
+        return;
+
+      const suggestions = (result.suggestions ?? []).filter(
+        (suggestion) => suggestion.target
+      );
+      relatedPanel = {
+        root,
+        path,
+        suggestions,
+        selected: new Set(suggestions.map((suggestion) => suggestion.path)),
+        warning: result.warning ?? ''
+      };
+      relatedStatus = suggestions.length
+        ? `Reviewed ${result.candidateCount} notes`
+        : 'No related notes found';
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      relatedStatus = 'Could not find related notes';
+      error = err.message;
+    } finally {
+      if (relatedAbort === abort) {
+        relatedAbort = null;
+        relatedLoading = false;
+      }
+    }
+  }
+
+  function toggleRelatedSuggestion(suggestion) {
+    if (!relatedPanel) return;
+    const selected = new Set(relatedPanel.selected);
+    if (selected.has(suggestion.path)) selected.delete(suggestion.path);
+    else selected.add(suggestion.path);
+    relatedPanel = { ...relatedPanel, selected };
+  }
+
+  function relatedBulletText(suggestion) {
+    return suggestion.reason
+      ? `[[${suggestion.target}]] — ${suggestion.reason}`
+      : `[[${suggestion.target}]]`;
+  }
+
+  /**
+   * Appends the checked links to the note's Related section through the editor,
+   * so the write rides the existing autosave and collab path and stays undoable.
+   */
+  function applyRelatedLinks() {
+    const panel = relatedPanel;
+    if (!panel || !editorView) return;
+    if (panel.root !== selectedRoot || panel.path !== selectedPath) {
+      error = 'The suggested links no longer match the open file.';
+      return;
+    }
+
+    const chosen = panel.suggestions.filter((suggestion) =>
+      panel.selected.has(suggestion.path)
+    );
+    const insertion = relatedInsertion(editorView.state.doc.toString(), chosen);
+    if (!insertion) {
+      relatedStatus = 'Those links are already in this note';
+      return;
+    }
+
+    setViewMode('edit');
+    editorView.dispatch({
+      changes: insertion,
+      selection: { anchor: insertion.from + insertion.insert.length },
+      effects: EditorView.scrollIntoView(insertion.from, { y: 'center' })
+    });
+    editorView.focus();
+    dismissRelatedLinks();
+  }
+
+  function dismissRelatedLinks() {
+    relatedAbort?.abort();
+    relatedAbort = null;
+    relatedLoading = false;
+    relatedPanel = null;
+    relatedStatus = '';
   }
 
   function toggleTask(taskIndex) {
@@ -3414,6 +3539,22 @@
         {/if}
       </div>
       <form class="ai-form" on:submit|preventDefault={sendChat}>
+        <div class="ai-connect">
+          <button
+            class="ai-connect-button"
+            disabled={relatedLoading || !selectedIsMarkdown}
+            title={selectedIsMarkdown
+              ? 'Suggest existing notes to link this note to'
+              : 'Open a Markdown note first'}
+            type="button"
+            on:click={requestRelatedNotes}
+          >
+            {relatedLoading ? 'Connecting...' : 'Connect notes'}
+          </button>
+          {#if relatedStatus}
+            <span class="ai-connect-status">{relatedStatus}</span>
+          {/if}
+        </div>
         {#if presetGroups.length}
           <div class="ai-preset">
             <span class="ai-preset-label" id="ai-preset-heading">Prompts</span>
@@ -4196,6 +4337,58 @@
             {#each inlineEditPreview.diffFiles as file}
               {@render diffFile(file)}
             {/each}
+          </div>
+        </section>
+      {/if}
+      {#if relatedPanel && relatedPanel.root === selectedRoot && relatedPanel.path === selectedPath}
+        <section class="inline-edit-panel" aria-label="Related notes">
+          <header class="inline-edit-header">
+            <strong>Related notes</strong>
+            <div class="inline-edit-actions">
+              <button type="button" on:click={dismissRelatedLinks}>
+                Dismiss
+              </button>
+              <button
+                class="primary"
+                disabled={!relatedPanel.selected.size}
+                type="button"
+                on:click={applyRelatedLinks}
+              >
+                Insert links
+              </button>
+            </div>
+          </header>
+          <div class="related-body">
+            {#if relatedPanel.warning}
+              <p class="ai-preset-warning">{relatedPanel.warning}</p>
+            {/if}
+            {#if relatedPanel.suggestions.length}
+              <ul class="related-list">
+                {#each relatedPanel.suggestions as suggestion}
+                  <li class="related-item">
+                    <label class="related-choice">
+                      <input
+                        checked={relatedPanel.selected.has(suggestion.path)}
+                        type="checkbox"
+                        on:change={() => toggleRelatedSuggestion(suggestion)}
+                      />
+                      <span class="related-bullet"
+                        >{relatedBulletText(suggestion)}</span
+                      >
+                    </label>
+                    <span class="related-path">{suggestion.path}</span>
+                  </li>
+                {/each}
+              </ul>
+              <p class="related-note">
+                Appended to a <code>## Related</code> section at the end of this
+                note. No other file is changed.
+              </p>
+            {:else}
+              <p class="empty-copy">
+                Nothing in this workspace looked related enough to link.
+              </p>
+            {/if}
           </div>
         </section>
       {/if}

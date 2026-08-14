@@ -69,6 +69,30 @@ export async function* streamAiEdit({
   yield { done: true, replacement: stripSingleFencedBlock(replacement) };
 }
 
+/**
+ * Runs a prompt to completion and returns the whole reply.
+ *
+ * For short structured answers there is nothing to show token by token, and a
+ * plain call can fail with a real HTTP status instead of an SSE `error` event
+ * the client has to unpack.
+ */
+export async function runAiCompletion({
+  messages,
+  env = process.env,
+  fetchImpl = fetch
+}) {
+  if (!Array.isArray(messages) || !messages.length) {
+    throw new WorkspaceError(400, 'Messages are required.');
+  }
+
+  const config = aiConfig(env);
+  let reply = '';
+  for await (const chunk of streamAiProvider(config, messages, fetchImpl)) {
+    reply += chunk;
+  }
+  return stripSingleFencedBlock(reply);
+}
+
 function aiConfig(env) {
   const provider = (
     env.AI_PROVIDER ||

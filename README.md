@@ -123,6 +123,30 @@ replacement Markdown — anything else it says ends up in your document. System
 prompts stay on the server and are never sent to the browser. Invalid entries
 are skipped with a warning in the AI panel rather than dropping the whole file.
 
+## Connect notes
+
+**Connect notes** in the AI panel links the open note to notes you already have.
+It ranks every Markdown file in the workspace by how much wording it shares with
+the open note, sends the strongest dozen to the model as a shortlist, and asks
+which ones a reader would want to follow.
+
+The suggestions arrive as a review panel — one checkbox per link, showing the
+exact bullet that will be written. Accepting appends them to a `## Related`
+section at the end of the note, reusing a trailing `## Related pages` or
+`## Related concepts` section when the note already has one:
+
+```markdown
+## Related
+- [[concepts/hybrid-search]] — the retrieval scheme this run replaced
+- [[2026-07-08]] — earlier pass over the same dataset
+```
+
+Links are one-directional and written only into the open note; no other file is
+touched. Each link is emitted in the shortest form that resolves back to the
+note it names, so it can never be a dead link. Notes the file already links to
+are never suggested again, and the model can only choose from the shortlist, so
+it cannot invent a path.
+
 ## Daily brief integration
 
 WebMD displays today's Codex-generated daily brief from:

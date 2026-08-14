@@ -2,10 +2,16 @@ import express from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { streamAiChat, streamAiEdit } from './ai.js';
+import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import { readDailyBrief } from './daily-brief.js';
+import {
+  buildRelatedMessages,
+  parseRelatedSuggestions,
+  rankRelatedCandidates
+} from './related.js';
+import { shortestWikiTarget } from '../src/related-links.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -194,6 +200,48 @@ export async function createApp({
         fetchImpl: aiFetch
       })
     );
+  }));
+
+  app.post('/api/ai/related', asyncHandler(async (req, res) => {
+    const workspace = workspaces.get(req.body.root);
+    const notePath = req.body.path;
+    if (typeof notePath !== 'string' || !notePath) {
+      throw new WorkspaceError(400, 'A note path is required.');
+    }
+
+    const note = await workspace.loadFile(notePath);
+    const files = await workspace.markdownFiles();
+    const candidates = rankRelatedCandidates(files, note);
+    if (!candidates.length) {
+      // Nothing to choose from, so there is no point spending a model call.
+      res.json({
+        suggestions: [],
+        candidateCount: 0,
+        warning: 'No other note in this workspace shares enough wording to compare.'
+      });
+      return;
+    }
+
+    const reply = await runAiCompletion({
+      messages: buildRelatedMessages(note, candidates),
+      env: aiEnv,
+      fetchImpl: aiFetch
+    });
+    const { suggestions, warning } = parseRelatedSuggestions(reply, candidates);
+    const paths = files.map((file) => file.path);
+
+    res.json({
+      // Each link is written in the shortest form that resolves back to the
+      // note it names, so an accepted suggestion can never be a dead link.
+      suggestions: suggestions.map((suggestion) => ({
+        ...suggestion,
+        target: shortestWikiTarget(suggestion.path, note.path, paths, {
+          dailyNoteFolder: req.body.dailyNoteFolder
+        })
+      })),
+      candidateCount: candidates.length,
+      warning
+    });
   }));
 
   if (existsSync(distDir)) {

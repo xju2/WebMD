@@ -44,47 +44,56 @@ export class WorkspaceError extends Error {
 
 export async function createWorkspace(workspaceRoot) {
   const root = await fs.realpath(workspaceRoot);
+  let filesIndex;
   let searchIndex;
   let graphIndex;
   const documents = new Map();
 
+  // One walk of the workspace feeds search, the link graph, and related-note
+  // ranking, so a save invalidates all three together.
+  const files = async () => (filesIndex ??= await readSearchFiles(root, root));
+  const invalidate = () => {
+    filesIndex = null;
+    searchIndex = null;
+    graphIndex = null;
+  };
+
   return {
     root,
-    graph: async () => (graphIndex ??= await buildWorkspaceGraph(root)),
+    graph: async () => (graphIndex ??= buildWorkspaceGraph(await files())),
+    markdownFiles: async () =>
+      (await files()).filter((file) => file.fileKind === 'markdown'),
     overview: () => readOverview(root),
     readTree: async () => {
-      searchIndex = null;
-      graphIndex = null;
+      invalidate();
       return readTree(root, root);
     },
     loadFile: (filePath) => loadFile(root, documents, filePath),
     loadMediaFile: (filePath) => loadMediaFile(root, filePath),
     createFolder: async (folderPath) => {
       const result = await createFolder(root, folderPath);
-      searchIndex = null;
+      invalidate();
       return result;
     },
     saveImageFile: async (file) => {
       const result = await saveMediaFile(root, file);
-      searchIndex = null;
+      invalidate();
       return result;
     },
     saveMediaFile: async (file) => {
       const result = await saveMediaFile(root, file);
-      searchIndex = null;
+      invalidate();
       return result;
     },
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
-      searchIndex = null;
-      graphIndex = null;
+      invalidate();
       return result;
     },
     deleteFile: async (filePath) => {
       const result = await deleteFile(root, documents, filePath);
-      searchIndex = null;
-      graphIndex = null;
+      invalidate();
       return result;
     },
     applyUpdates: async (filePath, version, updates) => {
@@ -95,22 +104,21 @@ export async function createWorkspace(workspaceRoot) {
         version,
         updates
       );
-      searchIndex = null;
-      graphIndex = null;
+      invalidate();
       return result;
     },
     subscribeEvents: (filePath, since, send) =>
       subscribeDocumentEvents(root, documents, filePath, since, send),
     searchFiles: async (query, options) => {
-      searchIndex ??= await buildSearchIndex(root);
+      searchIndex ??= buildSearchIndex(await files());
       return searchIndex.search(query, options);
     },
     resolvePath: (filePath, options) => resolvePath(root, filePath, options)
   };
 }
 
-async function buildWorkspaceGraph(root) {
-  const files = (await readSearchFiles(root, root))
+function buildWorkspaceGraph(corpus) {
+  const files = corpus
     .filter((file) => file.fileKind === 'markdown')
     .sort((a, b) => a.path.localeCompare(b.path));
   const paths = files.map((file) => file.path);
@@ -644,9 +652,7 @@ function parseVersion(value) {
   return version;
 }
 
-async function buildSearchIndex(root) {
-  const files = await readSearchFiles(root, root);
-
+function buildSearchIndex(files) {
   return {
     search(query, { limit = 50 } = {}) {
       const needle = normalizeSearchQuery(query);
