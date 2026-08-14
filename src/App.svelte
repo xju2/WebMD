@@ -78,7 +78,9 @@
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
   // 'tasks' and 'calendar' are workspace-wide views rather than ways of looking
-  // at the open note, so neither is remembered as a file's view mode.
+  // at the open note, so neither is remembered as a file's view mode. They are
+  // still navigation destinations, so back and forward can return to them.
+  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar']);
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
@@ -1114,7 +1116,7 @@
       showMediaFile(path);
       rememberRecentFile(path);
       status = '[Read-only]';
-      rememberNavigationEntry(previousEntry, path, {
+      rememberNavigationEntry(previousEntry, fileNavigationEntry(path), {
         historyMode,
         rememberNavigation
       });
@@ -1137,7 +1139,7 @@
       });
       rememberRecentFile(path);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
-      rememberNavigationEntry(previousEntry, path, {
+      rememberNavigationEntry(previousEntry, fileNavigationEntry(path), {
         historyMode,
         rememberNavigation
       });
@@ -1149,7 +1151,7 @@
       if (buffered) {
         showFile(root, path, buffered, '', 0, { collaborate: false });
         status = '[Offline - Retrying]';
-        rememberNavigationEntry(previousEntry, path, {
+        rememberNavigationEntry(previousEntry, fileNavigationEntry(path), {
           historyMode,
           rememberNavigation
         });
@@ -1191,7 +1193,7 @@
       showFile(root, path, file.content, file.content, file.version);
       rememberRecentFile(path);
       status = '[Saved]';
-      rememberNavigationEntry(previousEntry, path);
+      rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
       updateNavigationState(path);
       await applyWorkspaceViewMode(root, path);
     } catch (err) {
@@ -1218,7 +1220,7 @@
         showFile(root, path, nextContent, nextContent, 0);
         rememberRecentFile(path);
         status = '[Saved]';
-        rememberNavigationEntry(previousEntry, path);
+        rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
         updateNavigationState(path);
         await loadTree(root);
         await applyWorkspaceViewMode(root, path);
@@ -1227,7 +1229,7 @@
         showFile(root, path, nextContent, '', 0, { collaborate: false });
         error = saveErr.message;
         status = '[Offline - Retrying]';
-        rememberNavigationEntry(previousEntry, path);
+        rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
         updateNavigationState(path);
         queueRetry();
         await applyWorkspaceViewMode(root, path);
@@ -1501,8 +1503,9 @@
     }
   }
 
-  async function showCalendar() {
+  async function showCalendar({ remember = true } = {}) {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('calendar');
     viewMode = 'calendar';
     calendarMonth = new Date(
       new Date().getFullYear(),
@@ -1515,8 +1518,9 @@
     error = '';
   }
 
-  async function showTasks() {
+  async function showTasks({ remember = true } = {}) {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('tasks');
     viewMode = 'tasks';
     todayText = dailyNoteDate(new Date());
     selectedText = '';
@@ -2727,6 +2731,20 @@
     await openFile(path, { historyMode: 'none', rememberNavigation: false });
   }
 
+  /**
+   * The side buttons on a mouse drive the in-app history instead of the
+   * browser's, so one thumb click returns from a note to wherever it was
+   * opened from. Chrome only navigates on mouseup, so cancelling the mousedown
+   * is what keeps the page itself from going back as well.
+   */
+  function handleMouseNavigation(event) {
+    if (event.button !== 3 && event.button !== 4) return;
+    event.preventDefault();
+    if (event.type !== 'mouseup') return;
+    if (event.button === 3) navigateBack();
+    else navigateForward();
+  }
+
   async function navigateBack() {
     await navigateHistory('back');
   }
@@ -2750,27 +2768,49 @@
       navigationBackStack = [...navigationBackStack, from];
     }
 
-    await openFile(target.path, {
-      historyMode: 'replace',
-      rememberNavigation: false
+    // Tasks and Calendar are places too, so going back to one reopens the view
+    // rather than the note that happened to be selected underneath it.
+    if (target.view === 'tasks') await showTasks({ remember: false });
+    else if (target.view === 'calendar')
+      await showCalendar({ remember: false });
+    else
+      await openFile(target.path, {
+        historyMode: 'replace',
+        rememberNavigation: false
+      });
+  }
+
+  function rememberViewNavigation(view) {
+    rememberNavigationEntry(currentNavigationEntry(), {
+      root: selectedRoot,
+      path: '',
+      view
     });
   }
 
+  function fileNavigationEntry(path) {
+    return { root: selectedRoot, path, view: '' };
+  }
+
   function currentNavigationEntry() {
-    return selectedPath ? { root: selectedRoot, path: selectedPath } : null;
+    if (WORKSPACE_VIEWS.has(viewMode))
+      return { root: selectedRoot, path: '', view: viewMode };
+    return selectedPath
+      ? { root: selectedRoot, path: selectedPath, view: '' }
+      : null;
   }
 
   function rememberNavigationEntry(
     previousEntry,
-    targetPath,
+    targetEntry,
     { historyMode = 'push', rememberNavigation = true } = {}
   ) {
     if (!rememberNavigation || historyMode !== 'push' || !previousEntry) return;
 
-    const targetEntry = { root: selectedRoot, path: targetPath };
     if (
       previousEntry.root === targetEntry.root &&
-      previousEntry.path === targetEntry.path
+      previousEntry.path === targetEntry.path &&
+      previousEntry.view === targetEntry.view
     )
       return;
 
@@ -3669,7 +3709,12 @@
   </div>
 {/snippet}
 
-<svelte:window on:keydown={handleShortcut} />
+<svelte:window
+  on:keydown={handleShortcut}
+  on:mousedown={handleMouseNavigation}
+  on:mouseup={handleMouseNavigation}
+  on:auxclick={handleMouseNavigation}
+/>
 
 <main
   bind:this={appShell}
@@ -3716,7 +3761,7 @@
       disabled={!workspaceRoots.length}
       title="Daily notes calendar"
       type="button"
-      on:click={showCalendar}
+      on:click={() => showCalendar()}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M5 5.5h14v14H5z" />
@@ -3735,7 +3780,7 @@
       disabled={!workspaceRoots.length}
       title={`Tasks (${shortcutKey}+Shift+T)`}
       type="button"
-      on:click={showTasks}
+      on:click={() => showTasks()}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M4 7.5 6 9.5l3.5-4" />
