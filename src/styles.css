@@ -2440,6 +2440,7 @@ button {
 
 .preview-pane li.task {
   display: flex;
+  align-items: flex-start;
   gap: 8px;
   list-style: none;
 }
@@ -2452,26 +2453,19 @@ button {
 /* Done items recede rather than being struck out: the text stays legible for
    re-reading, and the ticked box already carries the signal. Only the item's
    own text dims, so open subtasks stay readable under a ticked parent. */
-.preview-pane li.task-done > span {
+.preview-pane li.task-done > .task-body > span:first-child {
   color: #667085;
 }
 
-/* Metadata pills trail the task text and wrap under it on a narrow pane rather
-   than pushing the sentence off the edge. */
-.preview-pane li.task {
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
-.preview-pane li.task input {
-  align-self: flex-start;
-}
-
-/* Long task text shrinks and wraps beside the box; without this it is wider
-   than the line, so flex-wrap drops it below the checkbox. */
-.preview-pane li.task > span:first-of-type {
-  flex: 0 1 auto;
+/* The sentence and its metadata pills are one inline body, so long text wraps
+   inside it beside the checkbox and the pills trail the last line. */
+.preview-pane li.task > .task-body {
+  flex: 1 1 auto;
   min-width: 0;
+}
+
+.preview-pane li.task > .task-body > * + * {
+  margin-left: 4px;
 }
 
 .task-due,

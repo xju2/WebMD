@@ -3609,41 +3609,45 @@
                 on:change={() => toggleTask(item.line)}
               />
             {/if}
-            <span>{@render inline(item.children)}</span>
-            {#if item.meta}
-              {@const urgency = taskUrgency(item.meta.due, todayText)}
-              {#if item.meta.priority}
-                <span
-                  class={`task-priority task-priority-${item.meta.priority}`}
-                  title={`${item.meta.priority} priority`}
-                >
-                  {priorityMark(item.meta.priority)}
-                </span>
+            <!-- Text and its pills share one inline body so a long task wraps
+                 beside the checkbox instead of below it. -->
+            <div class="task-body">
+              <span>{@render inline(item.children)}</span>
+              {#if item.meta}
+                {@const urgency = taskUrgency(item.meta.due, todayText)}
+                {#if item.meta.priority}
+                  <span
+                    class={`task-priority task-priority-${item.meta.priority}`}
+                    title={`${item.meta.priority} priority`}
+                  >
+                    {priorityMark(item.meta.priority)}
+                  </span>
+                {/if}
+                {#if item.meta.due}
+                  <span
+                    class={`task-due task-due-${urgency}`}
+                    title={`Due ${item.meta.due}`}
+                  >
+                    {`📅 ${formatDueLabel(item.meta.due)}`}
+                  </span>
+                {/if}
+                {#if item.meta.done}
+                  <span class="task-stamp" title={`Done ${item.meta.done}`}>
+                    {`✅ ${formatDueLabel(item.meta.done)}`}
+                  </span>
+                {/if}
+                {#if item.meta.origin}
+                  <a
+                    class="task-origin wiki-link"
+                    href={wikiLinkHref(item.meta.origin)}
+                    title={`Carried over from ${item.meta.origin}`}
+                    on:click={(event) => openWikiLink(event, item.meta.origin)}
+                  >
+                    {`↩ ${item.meta.origin}`}
+                  </a>
+                {/if}
               {/if}
-              {#if item.meta.due}
-                <span
-                  class={`task-due task-due-${urgency}`}
-                  title={`Due ${item.meta.due}`}
-                >
-                  {`📅 ${formatDueLabel(item.meta.due)}`}
-                </span>
-              {/if}
-              {#if item.meta.done}
-                <span class="task-stamp" title={`Done ${item.meta.done}`}>
-                  {`✅ ${formatDueLabel(item.meta.done)}`}
-                </span>
-              {/if}
-              {#if item.meta.origin}
-                <a
-                  class="task-origin wiki-link"
-                  href={wikiLinkHref(item.meta.origin)}
-                  title={`Carried over from ${item.meta.origin}`}
-                  on:click={(event) => openWikiLink(event, item.meta.origin)}
-                >
-                  {`↩ ${item.meta.origin}`}
-                </a>
-              {/if}
-            {/if}
+            </div>
           </li>
         {/each}
       </svelte:element>
