@@ -2467,6 +2467,13 @@ button {
   align-self: flex-start;
 }
 
+/* Long task text shrinks and wraps beside the box; without this it is wider
+   than the line, so flex-wrap drops it below the checkbox. */
+.preview-pane li.task > span:first-of-type {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .task-due,
 .task-stamp,
 .task-priority,
