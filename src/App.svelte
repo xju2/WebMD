@@ -3277,6 +3277,15 @@
     taskFilterInput?.select();
   }
 
+  // A tag chip narrows the view to that tag, or clears back to everything when
+  // it is already the filter, so the same chip undoes itself. The card and row
+  // around it open the note, which is not what a click on the chip meant.
+  function filterByTag(tag, event) {
+    event.stopPropagation();
+    const next = `#${tag}`;
+    taskFilter = taskFilter === next ? '' : next;
+  }
+
   function readTaskSections() {
     try {
       return sanitizeSections(
@@ -3463,6 +3472,8 @@
       {:else}
         {segment.text}
       {/if}
+    {:else if segment.type === 'tag'}
+      <span class="tag-chip">#{segment.text}</span>
     {:else if segment.type === 'strong'}
       <strong>{segment.text}</strong>
     {:else if segment.type === 'em'}
@@ -4836,7 +4847,17 @@
                                     </span>
                                   {/if}
                                   {#each card.task.tags || [] as tag}
-                                    <span class="task-tag">#{tag}</span>
+                                    <button
+                                      class="task-tag"
+                                      class:task-tag-active={taskFilter ===
+                                        `#${tag}`}
+                                      title={`Filter by #${tag}`}
+                                      type="button"
+                                      on:click={(event) =>
+                                        filterByTag(tag, event)}
+                                    >
+                                      #{tag}
+                                    </button>
                                   {/each}
                                   {#if card.ageDays !== null}
                                     <span class="task-card-age">
@@ -4905,7 +4926,15 @@
                               {/each}
                             </span>
                             {#each task.tags || [] as tag}
-                              <span class="task-tag">#{tag}</span>
+                              <button
+                                class="task-tag"
+                                class:task-tag-active={taskFilter === `#${tag}`}
+                                title={`Filter by #${tag}`}
+                                type="button"
+                                on:click={(event) => filterByTag(tag, event)}
+                              >
+                                #{tag}
+                              </button>
                             {/each}
                             {#if task.due}
                               <span

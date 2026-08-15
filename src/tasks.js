@@ -42,7 +42,10 @@ const FENCE = /^\s*(```|~~~)/;
 // Inline #tags, Obsidian style. The `#` has to open a word, so a URL fragment
 // (`example.com/page#top`) and a name like `C#` are left alone, and a tag needs
 // at least one letter, so `#123` stays an issue reference.
-const TAG_PATTERN = /(^|\s)#([\p{L}\p{N}_/-]*\p{L}[\p{L}\p{N}_/-]*)/gu;
+// Exported so the Markdown renderer can recognise the same tags without a
+// second copy of these rules.
+export const TAG_BODY = String.raw`[\p{L}\p{N}_/-]*\p{L}[\p{L}\p{N}_/-]*`;
+const TAG_PATTERN = new RegExp(String.raw`(^|\s)#(${TAG_BODY})`, 'gu');
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 const MAX_HEADING_LEVEL = 6;

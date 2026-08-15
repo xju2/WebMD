@@ -1,6 +1,6 @@
 import { parseUnifiedDiff } from './diff.js';
 import { parseFrontmatter } from './frontmatter.js';
-import { parseTaskFields } from './tasks.js';
+import { TAG_BODY, parseTaskFields } from './tasks.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
@@ -80,7 +80,10 @@ export function renderMarkdown(
     if (/^<details>\s*$/i.test(line.trim())) {
       const details = [];
       index += 1;
-      while (index < lines.length && !/^<\/details>\s*$/i.test(lines[index].trim())) {
+      while (
+        index < lines.length &&
+        !/^<\/details>\s*$/i.test(lines[index].trim())
+      ) {
         details.push(lines[index]);
         index += 1;
       }
@@ -161,13 +164,21 @@ function parseCodeBlock({ lang, title }, text) {
     : { type: 'code', lang, title, text };
 }
 
+// A bare URL is matched before the `#tag` alternative can see it, so a fragment
+// such as `example.com/page#top` stays part of its link, and a tag has to open a
+// word, which leaves `C#` alone. Built from a string rather than a literal so
+// the tag rules live in one place — `\x60` is the backtick a raw template
+// cannot hold.
+const INLINE_TOKEN = new RegExp(
+  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY})`,
+  'gu'
+);
+
 export function parseInline(text) {
-  const tokenPattern =
-    /(`[^`]+`|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+)/g;
   const segments = [];
   let lastIndex = 0;
 
-  for (const match of text.matchAll(tokenPattern)) {
+  for (const match of text.matchAll(INLINE_TOKEN)) {
     if (match.index > lastIndex) {
       segments.push({ type: 'text', text: text.slice(lastIndex, match.index) });
     }
@@ -204,6 +215,8 @@ function parseInlineToken(token) {
 
   if (/^https?:\/\//i.test(token))
     return { type: 'link', text: token, href: token };
+
+  if (token.startsWith('#')) return { type: 'tag', text: token.slice(1) };
 
   if (token.startsWith('**'))
     return { type: 'strong', text: token.slice(2, -2) };

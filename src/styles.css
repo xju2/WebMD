@@ -1707,13 +1707,29 @@ button {
   margin-top: 0;
 }
 
+/* Every tag looks the same on purpose: colour on a task row is already spoken
+   for by how urgent it is, and a row of differently coloured tags would compete
+   with the one signal worth reading first. */
 .task-tag {
   flex: 0 0 auto;
+  border: 0;
   border-radius: 4px;
   background: #eef2f7;
   color: #667085;
+  font: inherit;
   font-size: 0.75rem;
   padding: 1px 6px;
+  cursor: pointer;
+}
+
+.task-tag:hover {
+  background: #dfe6ef;
+  color: #475467;
+}
+
+.task-tag-active {
+  background: #d7e3f5;
+  color: #33538a;
 }
 
 .task-row-done .task-row-text {
@@ -2512,6 +2528,18 @@ button {
 
 .task-priority {
   padding: 0 2px;
+}
+
+/* An inline tag stays exactly where it was written, so a sentence like "fix the
+   #bug in the parser" still reads as a sentence. Sized in `em` so it fits the
+   line it sits on, whether that is a task, a paragraph, or a heading. */
+.tag-chip {
+  border-radius: 4px;
+  background: #eef2f7;
+  color: #667085;
+  font-size: 0.85em;
+  padding: 0 4px;
+  white-space: nowrap;
 }
 
 .preview-pane a.task-origin {

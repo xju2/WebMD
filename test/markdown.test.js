@@ -42,6 +42,45 @@ test('lifts task metadata out of the rendered text', () => {
   assert.equal(plain.meta, null);
 });
 
+test('marks inline tags without moving them out of the sentence', () => {
+  const blocks = renderMarkdown('- [ ] Fix the #bug in the parser ⏫');
+  const [task] = blocks[0].items;
+
+  assert.deepEqual(
+    task.children.map((segment) => [segment.type, segment.text]),
+    [
+      ['text', 'Fix the '],
+      ['tag', 'bug'],
+      ['text', ' in the parser']
+    ]
+  );
+  assert.equal(task.meta.priority, 'high');
+});
+
+test('marks inline tags in ordinary prose', () => {
+  assert.deepEqual(parseInline('Read this #paper soon')[1], {
+    type: 'tag',
+    text: 'paper'
+  });
+});
+
+test('leaves text that only looks like a tag alone', () => {
+  const cases = [
+    'Written in C# lately',
+    'See issue #123 today',
+    'Read https://example.com/page#top now',
+    'Type `#bug` to file one'
+  ];
+
+  cases.forEach((source) => {
+    assert.equal(
+      parseInline(source).some((segment) => segment.type === 'tag'),
+      false,
+      source
+    );
+  });
+});
+
 test('renders YAML frontmatter as a property block ahead of the body', () => {
   const source = `---
 type: Playbook
