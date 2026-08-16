@@ -2392,6 +2392,10 @@ button {
   background: #ffffff;
 }
 
+/* A query container, so a task row can drop its metadata rail when the pane is
+   narrow. The window can be wide while this pane is not — a split editor, a wide
+   sidebar — so pane width, not viewport width, is what the row has to answer to.
+   Inline-size only, so the pane still stretches to its parent's height. */
 .preview-pane {
   width: 100%;
   max-width: 82ch;
@@ -2401,6 +2405,7 @@ button {
   overflow-wrap: anywhere;
   padding: 26px 34px 80px;
   color: #172033;
+  container-type: inline-size;
   line-height: 1.65;
 }
 
@@ -2454,16 +2459,81 @@ button {
   margin: 0.25em 0;
 }
 
+/* Three columns: checkbox, the sentence, and a right-hand rail carrying the
+   priority and the due date. The rail exists so those two line up down the page
+   — trailing the text, they landed at a different x on every row and orphaned
+   onto their own line whenever the text wrapped. The negative margin hangs the
+   priority accent outside the text measure so the prose keeps its left edge. */
 .preview-pane li.task {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  border-left: 2px solid transparent;
+  border-radius: 6px;
+  column-gap: 10px;
   list-style: none;
+  margin-left: -12px;
+  padding: 2px 8px 2px 8px;
 }
 
-.preview-pane li.task input {
+/* Only the two levels that should change what you do next get an edge, so
+   urgency is legible at scrolling speed without reading a single word. */
+.preview-pane li.task[data-priority='highest'] {
+  border-left-color: #c0392b;
+}
+
+.preview-pane li.task[data-priority='high'] {
+  border-left-color: #d97706;
+}
+
+.preview-pane li.task:hover {
+  background: #f1f4f9;
+}
+
+/* A 15px box on the text's own line box: the checkbox is centred against the
+   first line whatever raises it — inline code, a KaTeX span — rather than
+   against a fixed em nudge that drifts when the line grows. */
+.preview-pane li.task > input[type='checkbox'] {
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid #c3ccd9;
+  border-radius: 4px;
+  background: #fbfcfd;
+  cursor: pointer;
   flex: 0 0 auto;
-  margin-top: 0.45em;
+  margin: 0.32em 0 0;
+  margin-top: calc((1lh - 15px) / 2);
+}
+
+.preview-pane li.task > input[type='checkbox']:hover:not(:disabled) {
+  border-color: #8fa4c2;
+}
+
+.preview-pane li.task > input[type='checkbox']:checked {
+  border-color: #33538a;
+  background: #33538a;
+}
+
+.preview-pane li.task > input[type='checkbox']:checked::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  margin: 0 auto;
+  transform: translateY(0.5px) rotate(45deg);
+}
+
+.preview-pane li.task > input[type='checkbox']:focus-visible {
+  outline: 2px solid #85a5cf;
+  outline-offset: 1px;
+}
+
+.preview-pane li.task > input[type='checkbox']:disabled {
+  cursor: default;
+  opacity: 0.75;
 }
 
 /* Done items recede rather than being struck out: the text stays legible for
@@ -2473,15 +2543,39 @@ button {
   color: #667085;
 }
 
-/* The sentence and its metadata pills are one inline body, so long text wraps
-   inside it beside the checkbox and the pills trail the last line. */
+.preview-pane li.task-done > .task-meta {
+  opacity: 0.55;
+}
+
+/* The sentence and the things that read as part of it — tags, the done stamp,
+   the origin link — share one inline body, so long text wraps beside the
+   checkbox rather than below it. */
 .preview-pane li.task > .task-body {
-  flex: 1 1 auto;
   min-width: 0;
 }
 
 .preview-pane li.task > .task-body > * + * {
   margin-left: 4px;
+}
+
+/* Two fixed tracks, filled or not, so priority and date each keep one edge down
+   the page — that alignment is the whole point of the rail. The date track
+   reserves room for the widest label ("Yesterday", "Tomorrow") and sets its
+   contents flush right, so a short "Wed" does not drag the priority glyph along
+   with it, while a coloured pill still hugs its own text. */
+.preview-pane li.task > .task-meta {
+  display: grid;
+  grid-template-columns: 12px minmax(60px, max-content);
+  align-items: baseline;
+  column-gap: 8px;
+  justify-items: end;
+  justify-self: end;
+  padding-top: 0.1em;
+}
+
+.preview-pane li.task > .task-meta > .task-priority {
+  width: 12px;
+  text-align: center;
 }
 
 .task-due,
@@ -2497,7 +2591,12 @@ button {
 }
 
 /* Only the dates a decision hangs on are coloured. Anything further out stays
-   grey so a long backlog does not read as a wall of alarm. */
+   grey so a long backlog does not read as a wall of alarm. Tabular figures keep
+   "in 4d" and "12d late" from shifting the rail as the numbers change. */
+.task-due {
+  font-variant-numeric: tabular-nums;
+}
+
 .task-due-overdue {
   background: #fde8e6;
   color: #a8261c;
@@ -2513,6 +2612,7 @@ button {
 .task-due-soon {
   background: #eef1f5;
   color: #3d4a5c;
+  font-weight: 600;
 }
 
 .task-due-later,
@@ -2521,25 +2621,82 @@ button {
   color: #667085;
 }
 
+/* In the rail a date needs no chip shape: its column already says what it is,
+   and seven stacked pills would out-shout the sentences beside them. In a row of
+   chips — a Tasks board card, where an age like "today" sits alongside — only
+   the chip distinguishes one field from the next, so there they keep the fill. */
+.preview-pane
+  li.task
+  > .task-meta
+  > .task-due:not(.task-due-overdue, .task-due-today) {
+  background: none;
+  padding: 0;
+}
+
 .task-stamp {
   background: #edf6ee;
   color: #3f7148;
 }
 
+/* Ranked by colour rather than by five unrelated pictures: red and amber are
+   the levels that should pull the eye, and the rest sit back. */
 .task-priority {
   padding: 0 2px;
+  font-size: 0.72em;
+  line-height: 1;
+}
+
+.task-priority-highest {
+  color: #c0392b;
+}
+
+.task-priority-high {
+  color: #d97706;
+}
+
+.task-priority-medium {
+  color: #8a94a6;
+}
+
+.task-priority-low,
+.task-priority-lowest {
+  color: #9fb0c9;
+}
+
+.task-priority-lowest {
+  opacity: 0.7;
 }
 
 /* An inline tag stays exactly where it was written, so a sentence like "fix the
-   #bug in the parser" still reads as a sentence. Sized in `em` so it fits the
-   line it sits on, whether that is a task, a paragraph, or a heading. */
+   #bug in the parser" still reads as a sentence. Outlined rather than filled, so
+   the only filled thing inline is `code`, which is content rather than
+   metadata. Sized in `em` so it fits the line it sits on, whether that is a
+   task, a paragraph, or a heading. */
 .tag-chip {
+  border: 1px solid #dfe5ee;
   border-radius: 4px;
-  background: #eef2f7;
-  color: #667085;
+  color: #7a869a;
   font-size: 0.85em;
   padding: 0 4px;
   white-space: nowrap;
+}
+
+/* KaTeX sets its own line-height, which otherwise stretches the line a task's
+   checkbox is measured against. */
+.math-inline .katex {
+  font-size: 1.02em;
+  line-height: inherit;
+}
+
+/* Below this the rail would squeeze the sentence into a column of two words, so
+   it folds under the text instead. Alignment is worth less than a readable
+   measure. */
+@container (max-width: 560px) {
+  .preview-pane li.task > .task-meta {
+    grid-column: 2;
+    justify-self: start;
+    padding-top: 0;
+  }
 }
 
 .preview-pane a.task-origin {

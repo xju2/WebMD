@@ -48,9 +48,10 @@
   import {
     carriedTaskLines,
     collectTasks,
+    formatDueChip,
     formatDueLabel,
     groupTasksByUrgency,
-    priorityMark,
+    priorityGlyph,
     taskLinkSegments,
     taskShorthandEdits,
     taskProgress,
@@ -3611,6 +3612,7 @@
             class:task={item.task}
             class:task-done={item.task && item.checked}
             data-line={item.line}
+            data-priority={item.meta?.priority || null}
           >
             {#if item.task}
               <input
@@ -3620,31 +3622,16 @@
                 on:change={() => toggleTask(item.line)}
               />
             {/if}
-            <!-- Text and its pills share one inline body so a long task wraps
-                 beside the checkbox instead of below it. -->
+            <!-- Column two is the sentence and everything that belongs to it:
+                 tags read as words, and the done stamp and origin link trail the
+                 text the way a footnote would. Long text wraps here beside the
+                 checkbox rather than below it. -->
             <div class="task-body">
               <span>{@render inline(item.children)}</span>
               {#if item.meta}
-                {@const urgency = taskUrgency(item.meta.due, todayText)}
-                {#if item.meta.priority}
-                  <span
-                    class={`task-priority task-priority-${item.meta.priority}`}
-                    title={`${item.meta.priority} priority`}
-                  >
-                    {priorityMark(item.meta.priority)}
-                  </span>
-                {/if}
-                {#if item.meta.due}
-                  <span
-                    class={`task-due task-due-${urgency}`}
-                    title={`Due ${item.meta.due}`}
-                  >
-                    {`📅 ${formatDueLabel(item.meta.due)}`}
-                  </span>
-                {/if}
                 {#if item.meta.done}
                   <span class="task-stamp" title={`Done ${item.meta.done}`}>
-                    {`✅ ${formatDueLabel(item.meta.done)}`}
+                    {`Done ${formatDueLabel(item.meta.done)}`}
                   </span>
                 {/if}
                 {#if item.meta.origin}
@@ -3654,11 +3641,40 @@
                     title={`Carried over from ${item.meta.origin}`}
                     on:click={(event) => openWikiLink(event, item.meta.origin)}
                   >
-                    {`↩ ${item.meta.origin}`}
+                    {`↩︎ ${item.meta.origin}`}
                   </a>
                 {/if}
               {/if}
             </div>
+            <!-- Column three is the rail. Priority and due date leave the
+                 sentence so they line up down the page: with the pills trailing
+                 the text they landed at a different x on every row, and orphaned
+                 onto a line of their own whenever the text wrapped. The priority
+                 slot is always emitted so the dates share one left edge. -->
+            {#if item.task}
+              <div class="task-meta">
+                <span
+                  aria-hidden={item.meta?.priority ? null : 'true'}
+                  aria-label={item.meta?.priority
+                    ? `${item.meta.priority} priority`
+                    : null}
+                  class={`task-priority task-priority-${item.meta?.priority || 'none'}`}
+                  title={item.meta?.priority
+                    ? `${item.meta.priority} priority`
+                    : null}
+                >
+                  {priorityGlyph(item.meta?.priority)}
+                </span>
+                {#if item.meta?.due}
+                  <span
+                    class={`task-due task-due-${taskUrgency(item.meta.due, todayText)}`}
+                    title={`Due ${item.meta.due}`}
+                  >
+                    {formatDueChip(item.meta.due, todayText)}
+                  </span>
+                {/if}
+              </div>
+            {/if}
           </li>
         {/each}
       </svelte:element>
@@ -4834,16 +4850,19 @@
                                 <p class="task-card-meta">
                                   {#if card.task.priority}
                                     <span
+                                      aria-label={`${card.task.priority} priority`}
                                       class={`task-priority task-priority-${card.task.priority}`}
+                                      title={`${card.task.priority} priority`}
                                     >
-                                      {priorityMark(card.task.priority)}
+                                      {priorityGlyph(card.task.priority)}
                                     </span>
                                   {/if}
                                   {#if card.task.due}
                                     <span
                                       class={`task-due task-due-${taskUrgency(card.task.due, todayText)}`}
+                                      title={`Due ${card.task.due}`}
                                     >
-                                      {`📅 ${formatDueLabel(card.task.due)}`}
+                                      {formatDueChip(card.task.due, todayText)}
                                     </span>
                                   {/if}
                                   {#each card.task.tags || [] as tag}
@@ -4907,9 +4926,11 @@
                           >
                             {#if task.priority}
                               <span
+                                aria-label={`${task.priority} priority`}
                                 class={`task-priority task-priority-${task.priority}`}
+                                title={`${task.priority} priority`}
                               >
-                                {priorityMark(task.priority)}
+                                {priorityGlyph(task.priority)}
                               </span>
                             {/if}
                             <span class="task-row-text">
@@ -4939,8 +4960,9 @@
                             {#if task.due}
                               <span
                                 class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
+                                title={`Due ${task.due}`}
                               >
-                                {`📅 ${formatDueLabel(task.due)}`}
+                                {formatDueChip(task.due, todayText)}
                               </span>
                             {/if}
                             {#if group.kind !== 'file'}

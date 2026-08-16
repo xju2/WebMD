@@ -466,10 +466,54 @@ export function formatDueLabel(dateText = '') {
   });
 }
 
+/**
+ * The due date as a reader thinks about it: "Today", "Sat", "3d late". A backlog
+ * where every task carries the same absolute date reads as noise, because the
+ * one number on every row is the one that does not discriminate. Beyond a month
+ * the relative form stops helping ("in 47d" means nothing), so it falls back to
+ * the absolute label. The caller keeps the ISO date in a `title`.
+ */
+export function formatDueChip(due = '', todayText = '') {
+  const days = daysBetween(todayText, due);
+  if (days === null) return formatDueLabel(due);
+  // Far enough past and the count stops meaning anything, and would widen the
+  // rail without bound; the red tint already says "late", so the date can just
+  // say when.
+  if (days < -30) return formatDueLabel(due);
+  if (days < -1) return `${-days}d late`;
+  if (days === -1) return 'Yesterday';
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  if (days < 7) {
+    const [year, month, day] = due.split('-').map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString([], {
+      weekday: 'short'
+    });
+  }
+  if (days < 30) return `in ${days}d`;
+  return formatDueLabel(due);
+}
+
+/** The emoji a task line stores for a priority — 🔺, ⏫ and friends. */
 export function priorityMark(priority = '') {
   return (
     Object.keys(PRIORITIES).find((mark) => PRIORITIES[mark] === priority) || ''
   );
+}
+
+// Geometric shapes rather than the stored emoji: these take a CSS colour, so
+// priority can be a quiet ranked signal instead of five unrelated pictures, and
+// they render the same on every platform.
+const PRIORITY_GLYPHS = {
+  highest: '▲',
+  high: '▲',
+  medium: '●',
+  low: '▼',
+  lowest: '▼'
+};
+
+export function priorityGlyph(priority = '') {
+  return PRIORITY_GLYPHS[priority] || '';
 }
 
 /**

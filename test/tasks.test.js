@@ -6,9 +6,11 @@ import {
   collectTasks,
   expandTaskShorthand,
   extractTags,
+  formatDueChip,
   formatTaskFields,
   groupTasksByUrgency,
   parseTaskFields,
+  priorityGlyph,
   resolveShorthandDate,
   sortTasks,
   stampCompletion,
@@ -409,4 +411,40 @@ test('leaves shorthand that is not a bare priority in the text', () => {
   const [task] = collectTasks('- [ ] Fix the :p1:. typo');
   assert.equal(task.priority, '');
   assert.equal(task.text, 'Fix the :p1:. typo');
+});
+
+test('reads a due date the way a reader thinks about it', () => {
+  const today = '2026-08-15';
+  assert.equal(formatDueChip('2026-08-15', today), 'Today');
+  assert.equal(formatDueChip('2026-08-16', today), 'Tomorrow');
+  assert.equal(formatDueChip('2026-08-14', today), 'Yesterday');
+  assert.equal(formatDueChip('2026-08-12', today), '3d late');
+  // Inside the week a weekday name places the date better than a count does.
+  assert.equal(formatDueChip('2026-08-17', today), 'Mon');
+  assert.equal(formatDueChip('2026-08-20', today), 'Thu');
+  assert.equal(formatDueChip('2026-08-21', today), 'Fri');
+  // Past it, a weekday is ambiguous — "Fri" could be either of two Fridays.
+  assert.equal(formatDueChip('2026-08-22', today), 'in 7d');
+});
+
+test('falls back to the absolute date where a relative one stops helping', () => {
+  const today = '2026-08-15';
+  // A month out, "in 47d" means nothing; the date itself does.
+  assert.equal(formatDueChip('2026-09-14', today), 'Sep 14');
+  // Same the other way, and an unbounded "412d late" would widen the rail.
+  assert.equal(formatDueChip('2026-07-16', today), '30d late');
+  assert.equal(formatDueChip('2026-07-15', today), 'Jul 15');
+  assert.equal(formatDueChip('2026-08-20', ''), 'Aug 20');
+  assert.equal(formatDueChip('', today), '');
+  assert.equal(formatDueChip('someday', today), '');
+});
+
+test('ranks priority with geometric glyphs rather than emoji', () => {
+  assert.equal(priorityGlyph('highest'), '▲');
+  assert.equal(priorityGlyph('high'), '▲');
+  assert.equal(priorityGlyph('medium'), '●');
+  assert.equal(priorityGlyph('low'), '▼');
+  assert.equal(priorityGlyph('lowest'), '▼');
+  assert.equal(priorityGlyph(''), '');
+  assert.equal(priorityGlyph(), '');
 });
