@@ -75,6 +75,45 @@ export function dailyNoteDate(date) {
   return `${year}-${month}-${day}`;
 }
 
+const TEMPLATE_NAMES = new Set([
+  'dailynotetemplate',
+  'dailytemplate',
+  'template'
+]);
+
+/**
+ * The template to use when none has been picked by hand: a conventionally named
+ * file — `dailynote_template.md`, `daily-template.md`, `template.md` and the
+ * like — sitting in the daily note folder, or failing that at the workspace
+ * root. Returns '' when the workspace has no such file.
+ */
+export function defaultDailyNoteTemplatePath(paths = [], folder = '/') {
+  const folders = folder === '/' ? ['/'] : [folder, '/'];
+  for (const candidate of folders) {
+    const match = paths.find(
+      (path) => templateFolder(path) === candidate && isTemplateName(path)
+    );
+    if (match) return match;
+  }
+  return '';
+}
+
+function templateFolder(path) {
+  const parts = String(path ?? '').split('/');
+  parts.pop();
+  return parts.join('/') || '/';
+}
+
+function isTemplateName(path) {
+  const name = String(path ?? '')
+    .split('/')
+    .pop()
+    .replace(/\.(md|markdown)$/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+  return TEMPLATE_NAMES.has(name);
+}
+
 export function dailyNoteContent(date, filePath, template = '') {
   const title = filePath.split('/').pop().replace(/\.md$/i, '');
   if (!template) return `# ${title}\n\n`;

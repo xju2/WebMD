@@ -13,6 +13,7 @@
     dailyNoteDate,
     dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
+    defaultDailyNoteTemplatePath,
     defaultReferencePath,
     previousDailyNotePath,
     shiftMonth,
@@ -235,7 +236,9 @@
   let sidebarView = 'files';
   let markdownViewsHidden = false;
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
-  let dailyNoteTemplatePath = '';
+  // null until the reader picks one by hand, which is what lets a conventionally
+  // named template in the workspace stand in. '' is the deliberate "None".
+  let dailyNoteTemplatePath = null;
   let dailyNoteFolderStored = false;
   let imageAssetFolder = '/assets';
   let imageAssetFolderDraft = '';
@@ -294,9 +297,16 @@
   $: dailyNoteFolderOptions = dailyNoteFolderMissing
     ? [dailyNoteFolder, ...dailyNoteFolders]
     : dailyNoteFolders;
+  $: activeDailyNoteTemplatePath =
+    dailyNoteTemplatePath === null
+      ? defaultDailyNoteTemplatePath(
+          markdownFiles.map((file) => file.path),
+          activeDailyNoteFolder
+        )
+      : dailyNoteTemplatePath;
   $: dailyNoteTemplateMissing =
-    dailyNoteTemplatePath &&
-    !markdownFiles.some((file) => file.path === dailyNoteTemplatePath);
+    activeDailyNoteTemplatePath &&
+    !markdownFiles.some((file) => file.path === activeDailyNoteTemplatePath);
   $: imageAssetFolderOptions = imageAssetFolders.includes(imageAssetFolder)
     ? imageAssetFolders
     : [imageAssetFolder, ...imageAssetFolders];
@@ -1491,12 +1501,13 @@
   }
 
   async function loadDailyNoteTemplate(root) {
-    if (!dailyNoteTemplatePath) return '';
+    const path = activeDailyNoteTemplatePath;
+    if (!path) return '';
 
     try {
       return (
         await requestJson(
-          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(dailyNoteTemplatePath)}`
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
         )
       ).content;
     } catch {
@@ -3044,12 +3055,14 @@
     }
   }
 
+  // null when nothing has been picked, so the workspace's own template can win.
   function readDailyNoteTemplatePath() {
     try {
-      const templatePath = localStorage.getItem(DAILY_NOTE_TEMPLATE_KEY) || '';
+      const templatePath = localStorage.getItem(DAILY_NOTE_TEMPLATE_KEY);
+      if (templatePath === null) return null;
       return templatePath ? normalizeMarkdownPath(templatePath) : '';
     } catch {
-      return '';
+      return null;
     }
   }
 
@@ -5033,14 +5046,14 @@
                   Template
                   <select
                     aria-label="Daily note template"
-                    value={dailyNoteTemplatePath}
+                    value={activeDailyNoteTemplatePath}
                     on:change={(event) =>
                       chooseDailyNoteTemplate(event.currentTarget.value)}
                   >
                     <option value="">None</option>
                     {#if dailyNoteTemplateMissing}
-                      <option value={dailyNoteTemplatePath} disabled>
-                        {dailyNoteTemplatePath} (missing)
+                      <option value={activeDailyNoteTemplatePath} disabled>
+                        {activeDailyNoteTemplatePath} (missing)
                       </option>
                     {/if}
                     {#each markdownFiles as file}

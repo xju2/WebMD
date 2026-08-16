@@ -288,6 +288,15 @@ changes its terms, sets whether it shows open, done, or all tasks, marks it as
 folded lanes are remembered in the browser. **Completed** loads
 finished tasks as well, and shows them struck through in place.
 
+### Daily note template
+
+A new daily note starts from the template picked in the Calendar header, which
+may use `{{date}}`, `{{title}}`, and `{{weekday}}`. With nothing picked, WebMD
+uses a conventionally named template — `dailynote_template.md`,
+`daily-template.md`, or `template.md` — from the daily-note folder, or failing
+that from the workspace root. Choosing **None** keeps the bare `# YYYY-MM-DD`
+heading.
+
 ### Carried-over tasks
 
 When a daily note is created, its predecessor's unfinished tasks are appended to
