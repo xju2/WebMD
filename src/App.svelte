@@ -1351,6 +1351,9 @@
     // Keyed by physical key because Shift rewrites event.key into < and >.
     const run = {
       Comma: () => openOlderDailyNote(),
+      // D for daily: jumps to today's note from anywhere, without the detour
+      // through the dashboard.
+      KeyD: () => workspaceRoots.length && openDailyNote(),
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
       KeyP: () => selectedPath && setViewMode('preview'),
@@ -3750,6 +3753,24 @@
       </svg>
     </button>
     <button
+      aria-label="Open today’s note"
+      class:active={selectedPath === todayNotePath() &&
+        viewMode !== 'tasks' &&
+        viewMode !== 'calendar'}
+      class="global-action today-launcher"
+      disabled={!workspaceRoots.length}
+      title={`Today’s note (${shortcutKey}+Shift+D)`}
+      type="button"
+      on:click={() => openDailyNote()}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M6.5 4.5h7l4 4v11h-11z" />
+        <path d="M13.5 4.5V9h4" />
+        <path d="M9.5 13h5" />
+        <path d="M9.5 16h3" />
+      </svg>
+    </button>
+    <button
       aria-label={sidebarVisible && sidebarView === 'files'
         ? 'Hide files'
         : 'Show files'}
@@ -4496,6 +4517,7 @@
             <div>
               <dt>Shortcuts</dt>
               <dd>
+                <code>{shortcutKey}+Shift+D</code> today’s note
                 <code>{shortcutKey}+Shift+E</code> edit
                 <code>{shortcutKey}+Shift+P</code> preview
                 <code>{shortcutKey}+Shift+\</code> reference note

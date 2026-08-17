@@ -288,6 +288,12 @@ changes its terms, sets whether it shows open, done, or all tasks, marks it as
 folded lanes are remembered in the browser. **Completed** loads
 finished tasks as well, and shows them struck through in place.
 
+### Opening today's note
+
+The note button in the global bar (or `Cmd/Ctrl+Shift+D`) opens today's note
+from wherever you are, creating it from the template if the day has none. The
+dashboard's **Open today's note** card does the same thing.
+
 ### Daily note template
 
 A new daily note starts from the template picked in the Calendar header, which
