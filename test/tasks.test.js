@@ -326,6 +326,26 @@ test('resolves relative and weekday shorthand dates', () => {
   assert.equal(resolveShorthandDate('someday', FRIDAY), '');
 });
 
+test('resolves a year-less month-day shorthand date', () => {
+  // FRIDAY is 2026-08-14.
+  assert.equal(resolveShorthandDate('10-01', FRIDAY), '2026-10-01');
+  assert.equal(resolveShorthandDate('8/14', FRIDAY), '2026-08-14');
+  assert.equal(resolveShorthandDate('9/3', FRIDAY), '2026-09-03');
+  // A day already past this year means the same day next year.
+  assert.equal(resolveShorthandDate('01-05', FRIDAY), '2027-01-05');
+  // A leap day looks ahead for a year that actually has one.
+  assert.equal(resolveShorthandDate('02-29', FRIDAY), '2028-02-29');
+  assert.equal(resolveShorthandDate('13-01', FRIDAY), '');
+  assert.equal(resolveShorthandDate('10-32', FRIDAY), '');
+});
+
+test('expands a year-less due date on a task line', () => {
+  assert.equal(
+    expandTaskShorthand('- [ ] Ship it due:10-01', FRIDAY),
+    '- [ ] Ship it 📅 2026-10-01'
+  );
+});
+
 test('leaves unrecognised shorthand in the task text', () => {
   const line = '- [ ] Ask about due:someday :p9:';
   assert.equal(expandTaskShorthand(line, FRIDAY), line);

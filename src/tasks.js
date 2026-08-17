@@ -68,6 +68,7 @@ const SHORTHAND_PRIORITY = /(^|\s):p([1-5]):(?=\s|$)/giu;
 const PRIORITY_BY_LEVEL = ['highest', 'high', 'medium', 'low', 'lowest'];
 const RELATIVE_DAYS = { yesterday: -1, today: 0, tod: 0, tomorrow: 1, tmr: 1 };
 const OFFSET_SHORTHAND = /^\+(\d+)([dw])$/;
+const MONTH_DAY_SHORTHAND = /^(\d{1,2})[-/](\d{1,2})$/;
 const WEEKDAYS = [
   'sunday',
   'monday',
@@ -214,6 +215,10 @@ function expandTaskBody(body, todayText) {
  * a plain date, `today`/`tomorrow`/`yesterday`, an offset such as `+3d` or
  * `+2w`, and a weekday name or its three-letter form, which reads as the next
  * one still to come — `friday` on a Friday is a week away, not today.
+ *
+ * A year-less `10-01` (or `10/1`) means the next time that day comes round,
+ * today included, so `due:01-05` typed in December lands in the new year
+ * rather than eleven months into the past.
  */
 export function resolveShorthandDate(value = '', todayText = '') {
   const text = String(value).trim().toLowerCase();
@@ -229,6 +234,20 @@ export function resolveShorthandDate(value = '', todayText = '') {
       todayText,
       Number(offset[1]) * (offset[2] === 'w' ? 7 : 1)
     );
+
+  const monthDay = MONTH_DAY_SHORTHAND.exec(text);
+  if (monthDay) {
+    const [, month, day] = monthDay;
+    const padded = `${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const thisYear = Number(todayText.slice(0, 4));
+    // A leap day gets a few tries, so `02-29` finds the next leap year instead
+    // of reading as a typo.
+    for (let year = thisYear; year <= thisYear + 4; year += 1) {
+      const candidate = `${year}-${padded}`;
+      if (isDateText(candidate) && candidate >= todayText) return candidate;
+    }
+    return '';
+  }
 
   const weekday = WEEKDAYS.findIndex(
     (name) => name === text || (text.length === 3 && name.startsWith(text))

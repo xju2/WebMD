@@ -214,6 +214,7 @@ becomes
 | `due:` `created:` (or `added:`) `done:` | `📅` `➕` `✅`                               |
 | `:p1:` `:p2:` `:p3:` `:p4:` `:p5:`      | `🔺` `⏫` `🔼` `🔽` `⏬`                     |
 | `2026-08-20`                            | That date                                    |
+| `10-01` `10/1`                          | The next time that day comes round           |
 | `today` `tomorrow` `yesterday`          | Also `tod` and `tmr`                         |
 | `monday` … `sunday`                     | The next one to come; `mon` … `sun` work too |
 | `+3d` `+2w`                             | Days or weeks from today                     |
