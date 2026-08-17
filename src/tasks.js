@@ -6,8 +6,10 @@ import { parseFrontmatter } from './frontmatter.js';
 //   - [ ] Submit the abstract 📅 2026-08-20 ⏫
 //   - [x] Draft outline ➕ 2026-08-01 📅 2026-08-10 ✅ 2026-08-14
 //
-// `↩ [[origin]]` is WebMD's own addition, recording the note a carried-over
-// task came from. Recurring tasks (🔁) are not supported.
+// `↩ [[origin]]` is WebMD's own addition, recording the note a task came from.
+// Nothing writes it any more — daily notes no longer copy yesterday's backlog
+// forward — but notes written before that still carry it, so it is still parsed
+// and shown. Recurring tasks (🔁) are not supported.
 
 const DATE = String.raw`\d{4}-\d{2}-\d{2}`;
 const DATE_FIELDS = { '➕': 'created', '📅': 'due', '✅': 'done' };
@@ -430,25 +432,6 @@ export function groupTasksByUrgency(tasks = [], todayText = '') {
     label,
     tasks: sorted.filter((task) => taskUrgency(task.due, todayText) === key)
   })).filter((group) => group.tasks.length);
-}
-
-/**
- * The `- [ ] …` lines to carry into a new note: every unfinished task in
- * `content`, tagged with where it came from. A task that already carries an
- * origin keeps it, so a backlog dragged across a week still points at the note
- * that first raised it rather than at yesterday.
- */
-export function carriedTaskLines(content = '', originTarget = '') {
-  return collectTasks(content)
-    .filter((task) => !task.checked && task.text)
-    .map(
-      (task) =>
-        `- [ ] ${formatTaskFields(task.text, {
-          ...task,
-          done: '',
-          origin: task.origin || originTarget
-        })}`
-    );
 }
 
 export function taskProgress(tasks = []) {

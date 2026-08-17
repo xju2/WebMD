@@ -15,7 +15,6 @@
     dailyNotePath as buildDailyNotePath,
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
-    previousDailyNotePath,
     shiftMonth,
     stepDailyNote
   } from './calendar.js';
@@ -45,9 +44,8 @@
     uploadFilesForPastedImageSources,
     uploadPayloadForFile
   } from './uploads.js';
-  import { relatedInsertion, shortestWikiTarget } from './related-links.js';
+  import { relatedInsertion } from './related-links.js';
   import {
-    carriedTaskLines,
     collectTasks,
     formatDueChip,
     formatDueLabel,
@@ -1215,11 +1213,10 @@
         return;
       }
 
-      const nextContent = await withCarriedTasks(
-        buildDailyNoteContent(date, path, await loadDailyNoteTemplate(root)),
-        root,
+      const nextContent = buildDailyNoteContent(
+        date,
         path,
-        date
+        await loadDailyNoteTemplate(root)
       );
       try {
         await requestJson('/api/workspace/save', {
@@ -1245,36 +1242,6 @@
         queueRetry();
         await applyWorkspaceViewMode(root, path);
       }
-    }
-  }
-
-  /**
-   * Appends the previous daily note's unfinished tasks to a daily note that is
-   * about to be created.
-   *
-   * Runs only on creation, so a note can never be carried into twice — and
-   * since yesterday's note carried its own backlog forward the same way, a task
-   * keeps travelling until it is ticked, however long the gap between notes.
-   * Carryover is a convenience: any failure leaves the template content alone
-   * rather than blocking the new note.
-   */
-  async function withCarriedTasks(templateContent, root, path, date) {
-    const previousPath = previousDailyNotePath(dailyNoteEntries, date);
-    if (!previousPath) return templateContent;
-
-    try {
-      const previous = await requestJson(
-        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(previousPath)}`
-      );
-      const origin = shortestWikiTarget(previousPath, path, workspaceFiles, {
-        dailyNoteFolder: activeDailyNoteFolder
-      });
-      const lines = carriedTaskLines(previous.content, origin);
-      if (!lines.length) return templateContent;
-
-      return `${templateContent.replace(/\s+$/, '')}\n\n## Carried over\n\n${lines.join('\n')}\n`;
-    } catch {
-      return templateContent;
     }
   }
 

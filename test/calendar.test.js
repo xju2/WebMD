@@ -7,7 +7,6 @@ import {
   dailyNoteDateFromPath,
   defaultDailyNoteTemplatePath,
   defaultReferencePath,
-  previousDailyNotePath,
   shiftMonth,
   stepDailyNote
 } from '../src/calendar.js';
@@ -128,29 +127,4 @@ test('picks the reference note beside the open file', () => {
     defaultReferencePath(paths, '/raw/dailynotes/2026-08-10.md'),
     ''
   );
-});
-
-test('finds the daily note to carry tasks forward from', () => {
-  const entries = [
-    { path: '/raw/dailynotes/2026-08-03.md', date: new Date(2026, 7, 3) },
-    { path: '/raw/dailynotes/2026-08-11.md', date: new Date(2026, 7, 11) }
-  ];
-
-  // A gap of any length is crossed in one step.
-  assert.equal(
-    previousDailyNotePath(entries, new Date(2026, 7, 14)),
-    '/raw/dailynotes/2026-08-11.md'
-  );
-  assert.equal(
-    previousDailyNotePath(entries, new Date(2026, 7, 10)),
-    '/raw/dailynotes/2026-08-03.md'
-  );
-  // A note never carries into itself, so its own date skips to the one before.
-  assert.equal(
-    previousDailyNotePath(entries, new Date(2026, 7, 11)),
-    '/raw/dailynotes/2026-08-03.md'
-  );
-  // Nothing precedes the oldest note.
-  assert.equal(previousDailyNotePath(entries, new Date(2026, 7, 3)), '');
-  assert.equal(previousDailyNotePath([], new Date(2026, 7, 14)), '');
 });

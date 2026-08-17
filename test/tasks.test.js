@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  carriedTaskLines,
   clearCompletion,
   collectTasks,
   expandTaskShorthand,
@@ -168,12 +167,6 @@ test('keeps the written text and offers a tag-free version for display', () => {
   assert.equal(task.due, '2026-08-20');
 });
 
-test('carries a task over with its tags intact', () => {
-  assert.deepEqual(carriedTaskLines('- [ ] Read it #Paper', '2026-08-13'), [
-    '- [ ] Read it #Paper ↩ [[2026-08-13]]'
-  ]);
-});
-
 test('splits a markdown link out of a task, keeping only its text', () => {
   assert.deepEqual(
     taskLinkSegments(
@@ -283,25 +276,6 @@ test('groups tasks by urgency and drops empty groups', () => {
       ['today', 1],
       ['', 1]
     ]
-  );
-});
-
-test('carries unfinished tasks forward and tags where they came from', () => {
-  const content = [
-    '- [ ] Email Sarah 📅 2026-08-12 ⏫',
-    '- [x] Finished ✅ 2026-08-13',
-    '- [ ] Fix the build ↩ [[2026-08-09]]'
-  ].join('\n');
-  assert.deepEqual(carriedTaskLines(content, '2026-08-13'), [
-    '- [ ] Email Sarah ⏫ 📅 2026-08-12 ↩ [[2026-08-13]]',
-    '- [ ] Fix the build ↩ [[2026-08-09]]'
-  ]);
-});
-
-test('drops the completion stamp from a carried task', () => {
-  assert.deepEqual(
-    carriedTaskLines('- [ ] Reopened ✅ 2026-08-10', '2026-08-13'),
-    ['- [ ] Reopened ↩ [[2026-08-13]]']
   );
 });
 

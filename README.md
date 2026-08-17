@@ -297,23 +297,18 @@ uses a conventionally named template — `dailynote_template.md`,
 that from the workspace root. Choosing **None** keeps the bare `# YYYY-MM-DD`
 heading.
 
-### Carried-over tasks
+### Unfinished tasks
 
-When a daily note is created, its predecessor's unfinished tasks are appended to
-it under `## Carried over`, each tagged with where it came from:
+A new daily note is the template and nothing else — yesterday's unfinished tasks
+are not copied into it. An open task stays in the note that raised it, and the
+Tasks view is where you see the whole backlog: it reads every note in the
+workspace, so a task written weeks ago is one row there rather than a line
+duplicated into every day since. Clicking a row opens that note in preview at
+the task's line, where the box can be ticked once and for all.
 
-```markdown
-## Carried over
-
-- [ ] Email Sarah 📅 2026-08-12 ↩ [[2026-08-11]]
-- [ ] Fix the build ↩ [[2026-08-09]]
-```
-
-This happens only at creation, so a note is never carried into twice. Because
-each day's note carries its own backlog forward the same way, a task keeps
-travelling until it is ticked, however long the gap between notes — and the `↩`
-backlink keeps pointing at the note that first raised it rather than at
-yesterday.
+Notes written before this carry `↩ [[origin]]` links from the old carry-over
+behaviour. Nothing writes them any more, but they are still parsed and shown as
+backlinks, so those notes keep reading the way they did.
 
 ## Daily brief integration
 

@@ -37,19 +37,6 @@ export function defaultReferencePath(paths, currentPath) {
   return target === null ? '' : paths[target];
 }
 
-// The most recent daily note strictly older than `date`, or '' when there is
-// none. `entries` is the oldest-to-newest list the calendar already derives, so
-// a gap of any length is crossed in one step.
-export function previousDailyNotePath(entries = [], date = new Date()) {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry?.date && dailyNoteDate(entry.date) < dailyNoteDate(date)) {
-      return entry.path;
-    }
-  }
-  return '';
-}
-
 export function dailyNoteDateFromPath(path) {
   const name = String(path ?? '')
     .split('/')
