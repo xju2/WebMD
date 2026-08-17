@@ -26,6 +26,7 @@
   import {
     arxivCitation,
     arxivPasteId,
+    mathPasteText,
     quotedBlockPaste,
     sourceColumnForWord
   } from './editor.js';
@@ -1651,9 +1652,9 @@
         const text = event.clipboardData?.getData('text/plain') || '';
         const beforeCursor = textBeforeCursor(view.state);
         const arxivId = arxivPasteId(text, { beforeCursor });
-        const insert =
-          (arxivId && arxivCitation({ id: arxivId })) ??
-          quotedPasteText(view.state, text, beforeCursor);
+        const insert = arxivId
+          ? arxivCitation({ id: arxivId })
+          : mathPaste(view.state, text, beforeCursor);
         if (insert === null) return false;
 
         event.preventDefault();
@@ -1721,6 +1722,12 @@
     const selection = state.selection.main;
     const line = state.doc.lineAt(selection.from);
     return line.text.slice(0, selection.from - line.from);
+  }
+
+  /** Unicode powers become inline math, on top of any quote prefixes added. */
+  function mathPaste(state, text, beforeCursor) {
+    const quoted = quotedPasteText(state, text, beforeCursor);
+    return mathPasteText(quoted ?? text, { beforeCursor }) ?? quoted;
   }
 
   function quotedPasteText(state, text, beforeCursor) {

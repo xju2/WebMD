@@ -4,6 +4,7 @@ import {
   arxivCitation,
   arxivLinkPaste,
   arxivPasteId,
+  mathPasteText,
   quotedBlockPaste,
   sourceColumnForWord
 } from '../src/editor.js';
@@ -171,6 +172,25 @@ test('leaves normal multiline paste alone', () => {
     }),
     null
   );
+});
+
+test('turns pasted Unicode powers into inline math', () => {
+  assert.equal(mathPasteText('32³'), '$32^3$');
+  assert.equal(mathPasteText('a 10⁻³ chance'), 'a $10^{-3}$ chance');
+  assert.equal(mathPasteText('10²³ atoms'), '$10^{23}$ atoms');
+  assert.equal(mathPasteText('x₁ and x₂'), '$x_1$ and $x_2$');
+  assert.equal(mathPasteText('aₙ⁻¹'), '$a_n^{-1}$');
+});
+
+test('leaves footnote markers and plain text alone', () => {
+  assert.equal(mathPasteText('as claimed¹'), null);
+  assert.equal(mathPasteText('nothing to convert'), null);
+  assert.equal(mathPasteText(''), null);
+});
+
+test('skips math conversion inside an open math span', () => {
+  assert.equal(mathPasteText('32³', { beforeCursor: 'is $' }), null);
+  assert.equal(mathPasteText('32³', { beforeCursor: '$a$ = ' }), '$32^3$');
 });
 
 test('locates a double-clicked word on its source line', () => {

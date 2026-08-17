@@ -56,6 +56,64 @@ export function sourceColumnForWord(line = '', word = '') {
   return from === -1 ? null : { from, to: from + needle.length };
 }
 
+const SUPERSCRIPTS = {
+  '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6',
+  '⁷': '7', '⁸': '8', '⁹': '9', '⁺': '+', '⁻': '-', '⁼': '=', '⁽': '(',
+  '⁾': ')', 'ⁿ': 'n', 'ⁱ': 'i'
+};
+
+const SUBSCRIPTS = {
+  '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6',
+  '₇': '7', '₈': '8', '₉': '9', '₊': '+', '₋': '-', '₌': '=', '₍': '(',
+  '₎': ')', 'ₐ': 'a', 'ₑ': 'e', 'ₒ': 'o', 'ₓ': 'x', 'ₕ': 'h', 'ₖ': 'k',
+  'ₗ': 'l', 'ₘ': 'm', 'ₙ': 'n', 'ₚ': 'p', 'ₛ': 's', 'ₜ': 't'
+};
+
+/**
+ * A number or single symbol carrying Unicode super/subscripts, as web pages
+ * write powers: `32³`, `10⁻³`, `x₁`. The base must not continue a longer word,
+ * so footnote markers ("claim¹") keep their text.
+ */
+const SCRIPTED_TOKEN = new RegExp(
+  `(?<![\\p{L}\\p{N}])(\\d+(?:\\.\\d+)?|\\p{L})([${Object.keys(SUBSCRIPTS).join('')}]*)([${Object.keys(SUPERSCRIPTS).join('')}]*)`,
+  'gu'
+);
+
+/** Rewrites pasted Unicode powers as inline math, or null when there are none. */
+export function mathPasteText(text, { beforeCursor = '' } = {}) {
+  if (typeof text !== 'string' || !text) return null;
+  // Inside an unclosed `$…$` the text is already math; nesting would break it.
+  if (countDollars(beforeCursor) % 2 === 1) return null;
+
+  let changed = false;
+  const converted = text.replace(
+    SCRIPTED_TOKEN,
+    (match, base, subscript, superscript) => {
+      if (!subscript && !superscript) return match;
+
+      changed = true;
+      const sub = script(subscript, SUBSCRIPTS, '_');
+      const sup = script(superscript, SUPERSCRIPTS, '^');
+      return `$${base}${sub}${sup}$`;
+    }
+  );
+
+  return changed ? converted : null;
+}
+
+function script(characters, map, operator) {
+  if (!characters) return '';
+
+  const value = [...characters].map((character) => map[character]).join('');
+  return value.length === 1
+    ? `${operator}${value}`
+    : `${operator}{${value}}`;
+}
+
+function countDollars(text) {
+  return (text.match(/\$/g) || []).length;
+}
+
 export function quotedBlockPaste(text, { beforeCursor = '', previousLine = '' } = {}) {
   if (!text.includes('\n')) return null;
 
