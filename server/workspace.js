@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
+import { shortestWikiTarget } from '../src/related-links.js';
 import { collectTasks } from '../src/tasks.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
@@ -92,6 +93,19 @@ export async function createWorkspace(workspaceRoot) {
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
+      invalidate();
+      return result;
+    },
+    renameFile: async (fromPath, toPath) => {
+      // Rides the cached corpus so the wiki links pointing at the old name can
+      // be found without a second walk of the workspace.
+      const result = await renameFile(
+        root,
+        documents,
+        await files(),
+        fromPath,
+        toPath
+      );
       invalidate();
       return result;
     },
@@ -510,6 +524,100 @@ async function saveFile(root, filePath, content) {
   }
 
   return { success: true, timestamp: new Date().toISOString() };
+}
+
+async function renameFile(root, documents, corpus, fromPath, toPath) {
+  const from = normalizeWorkspacePath(fromPath);
+  const to = normalizeWorkspacePath(toPath);
+  assertMarkdown(from);
+  assertMarkdown(to);
+  if (from === to) return { success: true, path: from, updatedLinks: [] };
+
+  const source = await resolvePath(root, from);
+  if (!(await fs.stat(source)).isFile()) {
+    throw new WorkspaceError(400, 'Path points to a directory.');
+  }
+  const target = await resolvePath(root, to, { forWrite: true });
+
+  // Planned before the move, while the old name is still what those links
+  // resolve to.
+  const rewrites = planLinkRewrites(corpus, from, to);
+
+  const move = async () => {
+    try {
+      // link() + unlink() rather than rename(), which would silently overwrite
+      // a note that already sits at the new name.
+      await fs.link(source, target);
+    } catch (error) {
+      if (error.code === 'EEXIST') {
+        throw new WorkspaceError(409, `A note already exists at ${to}.`);
+      }
+      throw error;
+    }
+    await fs.unlink(source);
+
+    const document = documents.get(from);
+    if (document) {
+      documents.delete(from);
+      document.path = to;
+      documents.set(to, document);
+    }
+  };
+
+  const document = documents.get(from);
+  await (document ? enqueueDocumentWrite(document, move) : move());
+
+  for (const rewrite of rewrites) {
+    await saveFile(root, rewrite.path, rewrite.content);
+    // The in-memory copy is now behind the file, so the next open re-reads it
+    // rather than serving the pre-rewrite links.
+    documents.delete(rewrite.path);
+  }
+
+  return { success: true, path: to, updatedLinks: rewrites.map((r) => r.path) };
+}
+
+/**
+ * Every `[[wiki link]]` that resolves to the renamed note, pointed at its new
+ * name. Aliases, heading anchors, and embeds are kept as written. The renamed
+ * note itself is skipped: it is the note being edited, and rewriting it under
+ * the editor would fight with the open buffer.
+ */
+function planLinkRewrites(corpus, from, to) {
+  const files = corpus.filter((file) => file.fileKind === 'markdown');
+  const paths = files.map((file) => file.path);
+  // Link text is chosen against the workspace as it will be, so a bare name is
+  // only used when it still resolves to the note under its new name.
+  const renamedPaths = paths.map((item) => (item === from ? to : item));
+  const rewrites = [];
+
+  for (const file of files) {
+    if (file.path === from) continue;
+
+    const nextTarget = shortestWikiTarget(to, file.path, renamedPaths);
+    let changed = false;
+    const content = String(file.content || '').replace(
+      /(!?)\[\[([^\][\n]+)\]\]/g,
+      (match, embed, value) => {
+        const pipeIndex = value.indexOf('|');
+        const alias = pipeIndex === -1 ? '' : value.slice(pipeIndex);
+        const [target, ...anchor] = (
+          pipeIndex === -1 ? value : value.slice(0, pipeIndex)
+        ).split('#');
+        if (!target.trim()) return match;
+        if (resolveWikiLinkPath(target.trim(), file.path, paths) !== from) {
+          return match;
+        }
+
+        changed = true;
+        return `${embed}[[${[nextTarget, ...anchor].join('#')}${alias}]]`;
+      }
+    );
+
+    if (changed) rewrites.push({ path: file.path, content });
+  }
+
+  return rewrites;
 }
 
 async function deleteFile(root, documents, filePath) {

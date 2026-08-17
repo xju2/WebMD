@@ -35,6 +35,11 @@
   import { renderMarkdown } from './markdown.js';
   import { renderMermaid } from './mermaid.js';
   import {
+    isDateNamedPath,
+    noteTitle,
+    renamePathForTitle
+  } from './note-title.js';
+  import {
     clampPaletteIndex,
     paletteResultLabel,
     recentPaletteResults,
@@ -152,6 +157,9 @@
   let selectedFileKind = 'markdown';
   let content = '';
   let lastSaved = '';
+  // The title the open note's file name already matches, so only a title the
+  // user actually edits renames the file.
+  let syncedTitle = '';
   let status = '[Saved]';
   let error = '';
   let selectedText = '';
@@ -1612,6 +1620,7 @@
     selectedFileKind = 'markdown';
     content = nextContent;
     lastSaved = savedContent;
+    syncedTitle = noteTitle(nextContent);
     fileCache.set(rootPathKey(root, path), nextContent);
     expandToPath(path);
     setEditorContent(nextContent);
@@ -1623,6 +1632,7 @@
     stopCollaboration();
     content = '';
     lastSaved = '';
+    syncedTitle = '';
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -1926,6 +1936,7 @@
       selectedFileKind = 'markdown';
       content = '';
       lastSaved = '';
+      syncedTitle = '';
       selectedText = '';
       selectedRange = null;
       viewMode = 'edit';
@@ -2157,6 +2168,7 @@
         fileCache.set(rootPathKey(root, path), nextContent);
         status = '[Saved]';
       }
+      await syncFileNameToTitle(root, path, nextContent);
       await loadTree(root);
     } catch (err) {
       sessionStorage.setItem(storageKey(root, path), nextContent);
@@ -2207,6 +2219,7 @@
         lastSaved = content;
         fileCache.set(rootPathKey(root, path), content);
         status = '[Saved]';
+        await syncFileNameToTitle(root, path, content);
         await loadTree(root);
       }
     })().catch((err) => {
@@ -2222,6 +2235,73 @@
       if (err.status !== 409) queueRetry();
     });
     return sendPromise;
+  }
+
+  /**
+   * Keeps the file name on the note's title, the way Obsidian does: retitle the
+   * note and the file follows, with the [[wiki links]] that pointed at the old
+   * name rewritten by the server.
+   */
+  async function syncFileNameToTitle(root, path, savedContent) {
+    if (root !== selectedRoot || path !== selectedPath) return;
+
+    const title = noteTitle(savedContent);
+    if (!title || title === syncedTitle) return;
+
+    // Recorded before the request, so a rename that cannot happen — a name
+    // already taken, say — is not retried on every following keystroke.
+    syncedTitle = title;
+    if (isDateNamedPath(path)) return;
+
+    const nextPath = renamePathForTitle(path, title);
+    if (!nextPath) return;
+
+    try {
+      const result = await requestJson('/api/workspace/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, from: path, to: nextPath })
+      });
+      adoptRenamedPath(root, path, result.path);
+    } catch (err) {
+      // A 404 means another client renamed the note first; its event stream
+      // brings this one back in line, so there is nothing to report.
+      if (err.status !== 404 && root === selectedRoot && path === selectedPath)
+        error = err.message;
+    }
+  }
+
+  /** Moves the open note's client-side state onto its new path. */
+  function adoptRenamedPath(root, from, to) {
+    const buffered = sessionStorage.getItem(storageKey(root, from));
+    sessionStorage.removeItem(storageKey(root, from));
+    if (buffered !== null)
+      sessionStorage.setItem(storageKey(root, to), buffered);
+
+    const cached = fileCache.get(rootPathKey(root, from));
+    fileCache.delete(rootPathKey(root, from));
+    if (cached !== undefined) fileCache.set(rootPathKey(root, to), cached);
+
+    navigationBackStack = navigationBackStack.map((item) =>
+      item.root === root && item.path === from ? { ...item, path: to } : item
+    );
+    navigationForwardStack = navigationForwardStack.map((item) =>
+      item.root === root && item.path === from ? { ...item, path: to } : item
+    );
+    searchResults = searchResults.map((item) =>
+      item.path === from ? { ...item, path: to } : item
+    );
+    if (referencePath === from) referencePath = to;
+    recentPaths = recentPaths.map((item) => (item === from ? to : item));
+    persistRecentFiles(root);
+    if (root !== selectedRoot || selectedPath !== from) return;
+
+    selectedPath = to;
+    expandToPath(to);
+    updateNavigationState(to, 'replace');
+    // The server moved the document with its version intact, so the editing
+    // session carries on under the new path instead of restarting.
+    if (collaborationEnabled) openDocumentEvents(root, to, documentVersion);
   }
 
   async function syncWorkspace() {
@@ -2584,9 +2664,13 @@
       0,
       RECENT_FILES_LIMIT
     );
+    persistRecentFiles(selectedRoot);
+  }
+
+  function persistRecentFiles(root) {
     try {
       localStorage.setItem(
-        recentFilesStorageKey(selectedRoot),
+        recentFilesStorageKey(root),
         JSON.stringify(recentPaths)
       );
     } catch {

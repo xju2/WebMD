@@ -480,3 +480,87 @@ test('replays and pushes document update events', async () => {
   );
   replay.unsubscribe();
 });
+
+test('renames a note and repoints the wiki links that named it', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'wiki'));
+  await fs.writeFile(path.join(root, 'wiki', 'Untitled.md'), '# Draft\n');
+  await fs.writeFile(
+    path.join(root, 'index.md'),
+    'See [[Untitled]], ![[Untitled]], [[Untitled#Notes|the draft]], [[Other]].\n'
+  );
+
+  const workspace = await createWorkspace(root);
+  const result = await workspace.renameFile(
+    '/wiki/Untitled.md',
+    '/wiki/Field Notes.md'
+  );
+
+  assert.deepEqual(result, {
+    success: true,
+    path: '/wiki/Field Notes.md',
+    updatedLinks: ['/index.md']
+  });
+  assert.equal(
+    await fs.readFile(path.join(root, 'wiki', 'Field Notes.md'), 'utf8'),
+    '# Draft\n'
+  );
+  assert.equal(
+    await fs.readFile(path.join(root, 'index.md'), 'utf8'),
+    'See [[Field Notes]], ![[Field Notes]], ' +
+      '[[Field Notes#Notes|the draft]], [[Other]].\n'
+  );
+  await assert.rejects(
+    () => workspace.loadFile('/wiki/Untitled.md'),
+    (error) => error.status === 404
+  );
+});
+
+test('links to a renamed note keep their folder when the name collides', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'wiki'));
+  await fs.writeFile(path.join(root, 'wiki', 'Draft.md'), '# Draft\n');
+  await fs.writeFile(path.join(root, 'Notes.md'), '# Notes\n');
+  await fs.writeFile(path.join(root, 'index.md'), 'See [[Draft]].\n');
+
+  const workspace = await createWorkspace(root);
+  await workspace.renameFile('/wiki/Draft.md', '/wiki/Notes.md');
+
+  assert.equal(
+    await fs.readFile(path.join(root, 'index.md'), 'utf8'),
+    'See [[wiki/Notes]].\n'
+  );
+});
+
+test('refuses to rename a note over an existing one', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'one.md'), 'one\n');
+  await fs.writeFile(path.join(root, 'two.md'), 'two\n');
+
+  const workspace = await createWorkspace(root);
+  await assert.rejects(
+    () => workspace.renameFile('/one.md', '/two.md'),
+    (error) => error.status === 409
+  );
+  assert.equal(await fs.readFile(path.join(root, 'two.md'), 'utf8'), 'two\n');
+});
+
+test('a renamed note keeps its collaborative document', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'old');
+
+  const workspace = await createWorkspace(root);
+  await workspace.applyUpdates('/note.md', 0, [
+    updateFor('old', { from: 0, to: 3, insert: 'new' })
+  ]);
+  await workspace.renameFile('/note.md', '/renamed.md');
+
+  const subscription = await workspace.subscribeEvents(
+    '/renamed.md',
+    0,
+    () => {}
+  );
+  assert.equal(subscription.version, 1);
+  subscription.unsubscribe();
+  assert.equal((await workspace.loadFile('/renamed.md')).content, 'new');
+});

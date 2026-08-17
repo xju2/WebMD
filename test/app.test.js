@@ -678,3 +678,35 @@ test('lists open tasks across the workspace', async () => {
     server.close();
   }
 });
+
+test('renames a note through the workspace API', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'Untitled.md'), '# Field Notes\n');
+  await fs.writeFile(path.join(root, 'index.md'), 'See [[Untitled]].\n');
+  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+
+  try {
+    const response = await fetch(`${url}/api/workspace/rename`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: '/Untitled.md', to: '/Field Notes.md' })
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      success: true,
+      path: '/Field Notes.md',
+      updatedLinks: ['/index.md']
+    });
+    assert.equal(
+      await fs.readFile(path.join(root, 'Field Notes.md'), 'utf8'),
+      '# Field Notes\n'
+    );
+    assert.equal(
+      await fs.readFile(path.join(root, 'index.md'), 'utf8'),
+      'See [[Field Notes]].\n'
+    );
+  } finally {
+    server.close();
+  }
+});

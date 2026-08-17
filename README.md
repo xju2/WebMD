@@ -144,6 +144,23 @@ replacement Markdown — anything else it says ends up in your document. System
 prompts stay on the server and are never sent to the browser. Invalid entries
 are skipped with a warning in the AI panel rather than dropping the whole file.
 
+## Titles name the file
+
+A note's file name follows its title, the way Obsidian's does. Retitle a note —
+the frontmatter `title:` field when it has one, otherwise the first heading —
+and the next save renames the file to match: `# Reading list` in
+`/wiki/Untitled.md` moves the note to `/wiki/Reading list.md`.
+
+Every `[[wiki link]]` in the workspace that pointed at the old name is rewritten
+to the new one, keeping its alias, heading anchor, and `!` embed marker, so
+renaming never leaves a dead link behind. Characters a file name cannot carry
+(`/`, `:`, `?`, and friends) are dropped from the name; the title in the note
+keeps them.
+
+Two notes are left alone: a daily note, which is addressed by its date rather
+than its heading, and a note whose new name is already taken — that rename is
+reported as an error instead of overwriting the other note.
+
 ## Connect notes
 
 **Connect notes** in the AI panel links the open note to notes you already have.

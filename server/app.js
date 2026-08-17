@@ -118,6 +118,12 @@ export async function createApp({
     res.json(await workspaces.get(req.body.root).saveMediaFile(req.body));
   }));
 
+  app.post('/api/workspace/rename', asyncHandler(async (req, res) => {
+    res.json(
+      await workspaces.get(req.body.root).renameFile(req.body.from, req.body.to)
+    );
+  }));
+
   app.delete('/api/workspace/files', asyncHandler(async (req, res) => {
     res.json(await workspaces.get(req.body.root).deleteFile(req.body.path));
   }));
