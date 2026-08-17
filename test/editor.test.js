@@ -18,6 +18,14 @@ test('labels an already-abstract arXiv link', () => {
   assert.equal(arxivLinkPaste('https://arxiv.org/abs/2608.00146'), ABS_LINK);
 });
 
+test('turns a pasted arXiv html link into an abstract link', () => {
+  assert.equal(arxivLinkPaste('https://arxiv.org/html/2608.00146'), ABS_LINK);
+  assert.equal(
+    arxivLinkPaste('https://arxiv.org/html/2608.00146v2'),
+    '[arXiv:2608.00146v2](https://arxiv.org/abs/2608.00146v2)'
+  );
+});
+
 test('keeps the version suffix of a pasted arXiv link', () => {
   assert.equal(
     arxivLinkPaste('https://arxiv.org/pdf/2608.00146v2'),
