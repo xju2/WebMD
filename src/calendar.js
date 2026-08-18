@@ -14,6 +14,22 @@ export function calendarDays(month) {
   });
 }
 
+/**
+ * How much work lands on each day: open tasks counted by due date, keyed
+ * 'YYYY-MM-DD'. The Tasks view buckets anything past next week into one "Later"
+ * pile, so the month grid is the only place the shape of a busy Thursday shows.
+ * Ticked tasks and tasks with no due date are nobody's workload.
+ */
+export function countTasksByDueDate(tasks = []) {
+  const counts = new Map();
+  for (const task of tasks) {
+    // `due` is validated where it is parsed, so its presence is enough here.
+    if (!task?.due || task.checked) continue;
+    counts.set(task.due, (counts.get(task.due) ?? 0) + 1);
+  }
+  return counts;
+}
+
 export function shiftMonth(month, amount) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1);
 }
