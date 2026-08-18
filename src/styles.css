@@ -1352,6 +1352,17 @@ button {
   text-align: right;
 }
 
+.home-quote {
+  margin: -12px 0 24px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid #cfd9e5;
+  color: #4b5b70;
+  font-size: 0.96rem;
+  font-style: italic;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
 .home-status {
   margin-top: -16px;
   margin-bottom: 16px;

@@ -347,6 +347,11 @@ Today's quote is written to that history, so reopening or recreating today's
 note reuses it instead of spending another model call. If no model is reachable
 the placeholder is simply left empty — the note is still created.
 
+The Home dashboard shows the same quote under its heading, and asks for one on
+the first visit of the day whether or not your template uses `{{quote}}`.
+Whichever surface asks first pays for the call and the other reads it back, so
+the dashboard and the note never disagree about today's quote.
+
 ### Unfinished tasks
 
 A new daily note is the template and nothing else — yesterday's unfinished tasks

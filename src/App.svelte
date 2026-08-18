@@ -183,6 +183,8 @@
     changes: []
   };
   let overviewStatus = 'Loading workspace...';
+  let dailyQuote = '';
+  let dailyQuoteKey = '';
   let graphData = { nodes: [], edges: [], unresolved: 0 };
   let graphView = { nodes: [], edges: [] };
   let graphScope = 'wiki';
@@ -1004,6 +1006,7 @@
       const path = navigationPathFromLocation();
       if (path) await openFile(path, { historyMode: 'replace' });
       else if (viewMode === 'graph') await loadGraph();
+      if (!path) loadDailyQuote(selectedRoot);
       await restoreReferencePane(selectedRoot);
     } catch (err) {
       error = err.message;
@@ -1112,9 +1115,12 @@
     navigationForwardStack = [];
     setEditorContent('');
     loadAiPresets(root);
+    dailyQuote = '';
+    dailyQuoteKey = '';
     await loadTree();
     reconcileDailyNoteFolder();
     await loadOverview();
+    loadDailyQuote(root);
     if (viewMode === 'graph') await loadGraph();
     await restoreReferencePane(root);
   }
@@ -1523,6 +1529,33 @@
       return reply.quote || '';
     } catch {
       return '';
+    }
+  }
+
+  /**
+   * The dashboard's quote of the day. It shares the server's per-day history
+   * with `{{quote}}`, so whichever surface asks first pays for the call and the
+   * other reads it back — the note and the dashboard can never disagree about
+   * what today's quote is.
+   */
+  async function loadDailyQuote(root = selectedRoot) {
+    const date = dailyNoteDate(new Date());
+    const key = `${root}\u0000${date}`;
+    if (dailyQuoteKey === key) return;
+
+    try {
+      const reply = await requestJson('/api/ai/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, date })
+      });
+      if (root !== selectedRoot) return;
+      dailyQuote = reply.quote || '';
+      dailyQuoteKey = key;
+    } catch {
+      // No model configured is the common case here, and the dashboard reads
+      // fine without a quote, so this stays silent.
+      dailyQuote = '';
     }
   }
 
@@ -2677,6 +2710,7 @@
     );
     status = '[Saved]';
     await loadOverview();
+    loadDailyQuote();
   }
 
   function toggleSidebar(view) {
@@ -4687,6 +4721,10 @@
                 <span>files</span>
               </div>
             </header>
+
+            {#if dailyQuote}
+              <blockquote class="home-quote">{dailyQuote}</blockquote>
+            {/if}
 
             {#if overviewStatus}
               <p class="home-status">{overviewStatus}</p>
