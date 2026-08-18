@@ -323,13 +323,22 @@ heading.
 
 ### Quote of the day
 
-`{{quote}}` asks the configured model for one attributable quote about life,
-programming, or finance, written into the note as a single line so a `>
+`{{quote}}` asks the configured model for one attributable quote on the day's
+theme, written into the note as a single line so a `>
 {{quote}}` template stays one blockquote. Three things keep it from repeating
 itself:
 
 * The theme rotates with the date, so consecutive days cannot land on the same
-  subject, and the same day always asks for the same one.
+  subject, and the same day always asks for the same one. Set your own rotation
+  with `QUOTE_THEMES` in the environment or `~/.webmd.conf`:
+
+  ```conf
+  QUOTE_THEMES=life,programming,finance
+  ```
+
+  Any comma-separated list works — `stoicism,music,physics` rotates over three
+  days, a single theme asks for that one every day. Unset, it rotates over
+  life, programming, and finance.
 * Every quote already used is stored in `.webmd/quotes.json` and sent back to
   the model as an exclusion list, along with the authors of the last twenty.
 * A reply that repeats one anyway is caught and asked again once.

@@ -14,6 +14,7 @@ import {
   parseQuote,
   quoteDayKey,
   quoteTheme,
+  quoteThemes,
   readQuoteHistory,
   writeQuoteHistory
 } from './quote.js';
@@ -284,7 +285,7 @@ export async function createApp({
       return;
     }
 
-    const theme = quoteTheme(date);
+    const theme = quoteTheme(date, quoteThemes(aiEnv));
     let quote = null;
     for (const avoidRepeat of [false, true]) {
       const reply = await runAiCompletion({

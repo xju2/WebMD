@@ -11,6 +11,22 @@ export const QUOTE_HISTORY_PATH = '/.webmd/quotes.json';
 // retried.
 export const QUOTE_THEMES = ['life', 'programming', 'finance'];
 
+/**
+ * `QUOTE_THEMES` in the environment (or `~/.webmd.conf`) replaces the default
+ * rotation with a comma-separated list of your own. Duplicates are dropped so
+ * one theme cannot crowd out the rest of the cycle, and an empty or unusable
+ * setting falls back rather than leaving the placeholder with nothing to ask
+ * for.
+ */
+export function quoteThemes(env = process.env) {
+  const configured = String(env?.QUOTE_THEMES ?? '')
+    .split(',')
+    .map((theme) => theme.trim())
+    .filter(Boolean);
+  const unique = [...new Set(configured)];
+  return unique.length ? unique : QUOTE_THEMES;
+}
+
 // Enough history that a year of daily notes never silently recycles, small
 // enough that the exclusion list stays a sane fraction of the prompt.
 const MAX_HISTORY = 120;

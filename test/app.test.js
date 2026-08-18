@@ -718,11 +718,16 @@ test('writes a quote of the day once, then serves it from history', async () => 
   const { server, url } = await listen(
     await createApp({
       workspaceRoots: [root],
-      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiEnv: {
+        AI_PROVIDER: 'ollama',
+        AI_MODEL: 'llama-test',
+        QUOTE_THEMES: 'stoicism'
+      },
       aiFetch: async (_url, options) => {
         calls += 1;
         const body = JSON.parse(options.body);
         assert.match(body.messages[1].content, /2026-08-18/);
+        assert.match(body.messages[1].content, /quote about stoicism/);
         return new Response(
           new ReadableStream({
             start(controller) {

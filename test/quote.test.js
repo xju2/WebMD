@@ -8,6 +8,7 @@ import {
   parseQuote,
   quoteDayKey,
   quoteTheme,
+  quoteThemes,
   QUOTE_THEMES
 } from '../server/quote.js';
 
@@ -90,4 +91,28 @@ test('catches a repeat however it is punctuated, and replaces a day in history',
   });
   assert.equal(next.length, 1);
   assert.equal(next[0].text, 'Value is what you get.');
+});
+
+test('takes the theme rotation from the environment', () => {
+  assert.deepEqual(quoteThemes({ QUOTE_THEMES: 'stoicism, music ,physics' }), [
+    'stoicism',
+    'music',
+    'physics'
+  ]);
+  // A repeated theme would skew the rotation towards it, so it is dropped.
+  assert.deepEqual(quoteThemes({ QUOTE_THEMES: 'life,life' }), ['life']);
+  assert.deepEqual(quoteThemes({ QUOTE_THEMES: ' , ' }), QUOTE_THEMES);
+  assert.deepEqual(quoteThemes({}), QUOTE_THEMES);
+  assert.deepEqual(quoteThemes(), QUOTE_THEMES);
+
+  const themes = quoteThemes({ QUOTE_THEMES: 'stoicism,music' });
+  assert.equal(
+    quoteTheme(new Date(2026, 7, 18), themes) ===
+      quoteTheme(new Date(2026, 7, 19), themes),
+    false
+  );
+  assert.equal(
+    quoteTheme(new Date(2026, 7, 18), themes),
+    quoteTheme(new Date(2026, 7, 20), themes)
+  );
 });
