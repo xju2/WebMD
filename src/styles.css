@@ -1353,7 +1353,9 @@ button {
 }
 
 .home-quote {
-  margin: -12px 0 24px;
+  /* Keeps the auto side margins that centre every other child of the home
+     view; a `0` here would pull the quote out of that column. */
+  margin: -12px auto 24px;
   padding: 2px 0 2px 14px;
   border-left: 2px solid #cfd9e5;
   color: #4b5b70;
