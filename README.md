@@ -315,11 +315,28 @@ dashboard's **Open today's note** card does the same thing.
 ### Daily note template
 
 A new daily note starts from the template picked in the Calendar header, which
-may use `{{date}}`, `{{title}}`, and `{{weekday}}`. With nothing picked, WebMD
+may use `{{date}}`, `{{title}}`, `{{weekday}}`, and `{{quote}}`. With nothing picked, WebMD
 uses a conventionally named template — `dailynote_template.md`,
 `daily-template.md`, or `template.md` — from the daily-note folder, or failing
 that from the workspace root. Choosing **None** keeps the bare `# YYYY-MM-DD`
 heading.
+
+### Quote of the day
+
+`{{quote}}` asks the configured model for one attributable quote about life,
+programming, or finance, written into the note as a single line so a `>
+{{quote}}` template stays one blockquote. Three things keep it from repeating
+itself:
+
+* The theme rotates with the date, so consecutive days cannot land on the same
+  subject, and the same day always asks for the same one.
+* Every quote already used is stored in `.webmd/quotes.json` and sent back to
+  the model as an exclusion list, along with the authors of the last twenty.
+* A reply that repeats one anyway is caught and asked again once.
+
+Today's quote is written to that history, so reopening or recreating today's
+note reuses it instead of spending another model call. If no model is reachable
+the placeholder is simply left empty — the note is still created.
 
 ### Unfinished tasks
 

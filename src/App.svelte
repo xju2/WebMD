@@ -17,7 +17,8 @@
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
     shiftMonth,
-    stepDailyNote
+    stepDailyNote,
+    templateNeedsQuote
   } from './calendar.js';
   import {
     rebaseRemoteUpdate,
@@ -1230,10 +1231,12 @@
         return;
       }
 
+      const template = await loadDailyNoteTemplate(root);
       const nextContent = buildDailyNoteContent(
         date,
         path,
-        await loadDailyNoteTemplate(root)
+        template,
+        await loadDailyNoteQuote(root, template, date)
       );
       try {
         await requestJson('/api/workspace/save', {
@@ -1497,6 +1500,27 @@
           `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
         )
       ).content;
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Asks the model for the day's quote, once, when a template actually uses
+   * `{{quote}}`. A missing or unreachable model must never block the note from
+   * being created, so a failure just leaves the placeholder empty.
+   */
+  async function loadDailyNoteQuote(root, template, date) {
+    if (!templateNeedsQuote(template)) return '';
+
+    status = '[Writing quote...]';
+    try {
+      const reply = await requestJson('/api/ai/quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, date: dailyNoteDate(date) })
+      });
+      return reply.quote || '';
     } catch {
       return '';
     }

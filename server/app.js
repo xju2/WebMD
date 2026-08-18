@@ -7,6 +7,17 @@ import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import { readDailyBrief } from './daily-brief.js';
 import {
+  appendQuoteHistory,
+  buildQuoteMessages,
+  formatQuote,
+  isRepeatQuote,
+  parseQuote,
+  quoteDayKey,
+  quoteTheme,
+  readQuoteHistory,
+  writeQuoteHistory
+} from './quote.js';
+import {
   buildRelatedMessages,
   parseRelatedSuggestions,
   rankRelatedCandidates
@@ -259,6 +270,40 @@ export async function createApp({
     });
   }));
 
+  app.post('/api/ai/quote', asyncHandler(async (req, res) => {
+    const workspace = workspaces.get(req.body.root);
+    const date = quoteDate(req.body.date);
+    const day = quoteDayKey(date);
+    const history = await readQuoteHistory(workspace);
+
+    // A note recreated later the same day keeps the quote it opened with, and
+    // costs no second model call.
+    const existing = history.find((entry) => entry.date === day);
+    if (existing) {
+      res.json({ quote: formatQuote(existing), cached: true });
+      return;
+    }
+
+    const theme = quoteTheme(date);
+    let quote = null;
+    for (const avoidRepeat of [false, true]) {
+      const reply = await runAiCompletion({
+        messages: buildQuoteMessages({ date, theme, history, avoidRepeat }),
+        env: aiEnv,
+        fetchImpl: aiFetch
+      });
+      quote = parseQuote(reply);
+      if (quote && !isRepeatQuote(quote, history)) break;
+    }
+    if (!quote) throw new WorkspaceError(502, 'The model did not return a quote.');
+
+    await writeQuoteHistory(
+      workspace,
+      appendQuoteHistory(history, { date: day, ...quote })
+    );
+    res.json({ quote: formatQuote(quote), theme });
+  }));
+
   if (existsSync(distDir)) {
     app.use(express.static(distDir));
     app.use((req, res, next) => {
@@ -273,6 +318,15 @@ export async function createApp({
   });
 
   return app;
+}
+
+// The client sends the daily note's own date as YYYY-MM-DD, which must be read
+// as a local calendar day rather than as UTC midnight.
+function quoteDate(value) {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''));
+  if (!parts) return new Date();
+  const date = new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+  return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
 function asyncHandler(handler) {

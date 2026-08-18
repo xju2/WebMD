@@ -9,7 +9,8 @@ import {
   defaultDailyNoteTemplatePath,
   defaultReferencePath,
   shiftMonth,
-  stepDailyNote
+  stepDailyNote,
+  templateNeedsQuote
 } from '../src/calendar.js';
 
 test('builds a Monday-first six-week calendar', () => {
@@ -76,6 +77,28 @@ test('builds daily note content from a template', () => {
     ),
     '# 2026-08-06\n\nThursday 2026-08-06\n'
   );
+});
+
+test('fills in the quote of the day, and empties the placeholder without one', () => {
+  const template = '# {{title}}\n\n> {{quote}}\n';
+
+  assert.equal(
+    dailyNoteContent(
+      new Date(2026, 7, 6),
+      '/raw/dailynotes/2026-08-06.md',
+      template,
+      '\u201cTalk is cheap.\u201d \u2014 Linus Torvalds'
+    ),
+    '# 2026-08-06\n\n> \u201cTalk is cheap.\u201d \u2014 Linus Torvalds\n'
+  );
+  assert.equal(
+    dailyNoteContent(new Date(2026, 7, 6), '/raw/dailynotes/2026-08-06.md', template),
+    '# 2026-08-06\n\n> \n'
+  );
+
+  assert.equal(templateNeedsQuote(template), true);
+  assert.equal(templateNeedsQuote('# {{title}}\n'), false);
+  assert.equal(templateNeedsQuote(), false);
 });
 
 test('finds a conventionally named template without one being chosen', () => {

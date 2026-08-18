@@ -117,11 +117,17 @@ function isTemplateName(path) {
   return TEMPLATE_NAMES.has(name);
 }
 
-export function dailyNoteContent(date, filePath, template = '') {
+/** True when the template asks for the AI-written quote of the day. */
+export function templateNeedsQuote(template = '') {
+  return String(template ?? '').includes('{{quote}}');
+}
+
+export function dailyNoteContent(date, filePath, template = '', quote = '') {
   const title = filePath.split('/').pop().replace(/\.md$/i, '');
   if (!template) return `# ${title}\n\n`;
 
   return template
+    .replaceAll('{{quote}}', quote)
     .replaceAll('{{date}}', dailyNoteDate(date))
     .replaceAll('{{title}}', title)
     .replaceAll(

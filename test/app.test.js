@@ -710,3 +710,69 @@ test('renames a note through the workspace API', async () => {
     server.close();
   }
 });
+
+test('writes a quote of the day once, then serves it from history', async () => {
+  const root = await tempRoot();
+  let calls = 0;
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        calls += 1;
+        const body = JSON.parse(options.body);
+        assert.match(body.messages[1].content, /2026-08-18/);
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `${JSON.stringify({
+                    message: {
+                      content:
+                        '{"quote": "Talk is cheap. Show me the code.", "author": "Linus Torvalds"}'
+                    }
+                  })}\n`
+                )
+              );
+              controller.close();
+            }
+          })
+        );
+      }
+    })
+  );
+
+  const ask = () =>
+    fetch(`${url}/api/ai/quote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: '2026-08-18' })
+    }).then((response) => response.json());
+
+  try {
+    assert.equal(
+      (await ask()).quote,
+      '\u201cTalk is cheap. Show me the code.\u201d \u2014 Linus Torvalds'
+    );
+
+    // The same day reuses the stored quote instead of paying for another call.
+    const again = await ask();
+    assert.equal(again.cached, true);
+    assert.equal(calls, 1);
+
+    const history = JSON.parse(
+      await fs.readFile(path.join(root, '.webmd', 'quotes.json'), 'utf8')
+    );
+    assert.deepEqual(history.quotes, [
+      {
+        date: '2026-08-18',
+        text: 'Talk is cheap. Show me the code.',
+        author: 'Linus Torvalds'
+      }
+    ]);
+  } finally {
+    server.close();
+  }
+});
