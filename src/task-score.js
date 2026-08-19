@@ -140,8 +140,9 @@ export function filterTasks(tasks = [], filter = '') {
   const assignee = ASSIGNEE_FILTER.exec(String(filter).trim().toLowerCase());
   if (assignee) {
     const name = assignee[1].trim();
-    return tasks.filter(
-      (task) => task.assignee && (!name || task.assignee.includes(name))
+    // A task shared between people answers to each of their names.
+    return tasks.filter((task) =>
+      (task.assignees || []).some((who) => !name || who.includes(name))
     );
   }
 
@@ -152,7 +153,7 @@ export function filterTasks(tasks = [], filter = '') {
     [
       task.displayText || task.text || '',
       task.path || '',
-      task.assignee || '',
+      ...(task.assignees || []),
       ...taskTerms(task)
     ]
       .join(' ')

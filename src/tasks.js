@@ -40,7 +40,19 @@ const ORIGIN_PATTERN = /↩\s*\[\[([^\]\n]+)\]\]/u;
 // digits, and the joiners in `mary-anne` or `j.smith`. It has to open a word,
 // so `somewho:x` is left alone, and the name has to start with a letter or
 // digit, so a bare `who:` is not an assignment to nobody.
-const ASSIGNEE_PATTERN = /(^|\s)who:([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu;
+//
+// A task can name several people, and the way anyone writes that is with a word
+// in between: `who:julien and who:jack`. So the pattern matches the whole run,
+// swallowing the `and`, `&`, `+` or comma joining one name to the next — the
+// connector belongs to the list, not to the sentence, and leaving it behind
+// would strand an "and" in the middle of the task's prose.
+const ASSIGNEE_NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N}._-]*`;
+const ASSIGNEE_JOIN = String.raw`\s*(?:,|&|\+|and)?\s+`;
+const ASSIGNEE_PATTERN = new RegExp(
+  `(^|\\s)who:${ASSIGNEE_NAME}(?:${ASSIGNEE_JOIN}who:${ASSIGNEE_NAME})*`,
+  'giu'
+);
+const ASSIGNEE_NAME_PATTERN = new RegExp(`who:(${ASSIGNEE_NAME})`, 'giu');
 const ORIGIN_TAIL = /(\s*↩\s*\[\[[^\]\n]+\]\])\s*$/u;
 const DONE_PATTERN = new RegExp(`✅\\s*${DATE}`, 'u');
 const DONE_TAIL = new RegExp(`\\s*✅\\s*${DATE}`, 'u');
@@ -100,7 +112,7 @@ export function parseTaskFields(text = '') {
     done: '',
     priority: '',
     origin: '',
-    assignee: ''
+    assignees: []
   };
   let rest = String(text);
 
@@ -126,12 +138,13 @@ export function parseTaskFields(text = '') {
     return lead;
   });
 
-  // Lowercased like a tag, so `who:Julien` and `who:julien` are one person as
-  // far as filtering is concerned. A second `who:` is left in the text rather
-  // than silently overwriting the first.
-  rest = rest.replace(ASSIGNEE_PATTERN, (match, lead, name) => {
-    if (fields.assignee) return match;
-    fields.assignee = name.toLowerCase();
+  // Lowercased and deduped like tags, so `who:Julien` and `who:julien` are one
+  // person as far as filtering is concerned, and kept in the order written.
+  rest = rest.replace(ASSIGNEE_PATTERN, (match, lead) => {
+    for (const [, name] of match.matchAll(ASSIGNEE_NAME_PATTERN)) {
+      const value = name.toLowerCase();
+      if (!fields.assignees.includes(value)) fields.assignees.push(value);
+    }
     return lead;
   });
 
@@ -150,7 +163,7 @@ export function formatTaskFields(text = '', fields = {}) {
   );
   return [
     String(text).trim(),
-    fields.assignee && `who:${fields.assignee}`,
+    ...(fields.assignees || []).map((name) => `who:${name}`),
     priority,
     fields.created && `➕ ${fields.created}`,
     fields.due && `📅 ${fields.due}`,

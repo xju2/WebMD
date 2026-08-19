@@ -188,22 +188,28 @@ test('filters on prose, tags, headings, and path alike', () => {
   assert.equal(filterTasks(tasks, '  ').length, 4);
 });
 
-test('who: filters on the assignee, and who: alone on having one', () => {
+test('who: filters on the assignees, and who: alone on having any', () => {
   const tasks = [
-    task({ text: 'Update the metrics', assignee: 'julien' }),
+    task({ text: 'Update the metrics', assignees: ['julien'] }),
     task({ text: 'Ask Julien about the metrics' }),
-    task({ text: 'Write the summary', assignee: 'sam' })
+    task({ text: 'Write the summary', assignees: ['sam'] }),
+    task({ text: 'Implement the feature', assignees: ['julien', 'jack'] })
   ];
+  // A shared task answers to either name.
   assert.deepEqual(
     filterTasks(tasks, 'who:julien').map((entry) => entry.text),
-    ['Update the metrics']
+    ['Update the metrics', 'Implement the feature']
+  );
+  assert.deepEqual(
+    filterTasks(tasks, 'who:jack').map((entry) => entry.text),
+    ['Implement the feature']
   );
   assert.deepEqual(
     filterTasks(tasks, 'who:').map((entry) => entry.text),
-    ['Update the metrics', 'Write the summary']
+    ['Update the metrics', 'Write the summary', 'Implement the feature']
   );
   // Plain text still finds the assignee, and the task that merely says the name.
-  assert.equal(filterTasks(tasks, 'julien').length, 2);
+  assert.equal(filterTasks(tasks, 'julien').length, 3);
 });
 
 test('every lane is returned, empty ones included, in a fixed order', () => {

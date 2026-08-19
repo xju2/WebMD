@@ -31,7 +31,7 @@ test('splits task metadata off the task text', () => {
     done: '2026-08-14',
     priority: 'high',
     origin: '',
-    assignee: ''
+    assignees: []
   });
 });
 
@@ -39,36 +39,70 @@ test('reads who: as the assignee and takes it out of the text', () => {
   const fields = parseTaskFields(
     'who:Julien will update the scaling metrics 📅 2026-08-20'
   );
-  assert.equal(fields.assignee, 'julien');
+  assert.deepEqual(fields.assignees, ['julien']);
   assert.equal(fields.due, '2026-08-20');
   assert.equal(fields.text, 'will update the scaling metrics');
 });
 
 test('only a who: that opens a word, with a name, is an assignee', () => {
-  assert.equal(parseTaskFields('Ask who: about it').assignee, '');
-  assert.equal(parseTaskFields('See docs/who:-notes').assignee, '');
-  assert.equal(parseTaskFields('Ping who:mary-anne').assignee, 'mary-anne');
+  assert.deepEqual(parseTaskFields('Ask who: about it').assignees, []);
+  assert.deepEqual(parseTaskFields('See docs/who:-notes').assignees, []);
+  assert.deepEqual(parseTaskFields('Ping who:mary-anne').assignees, [
+    'mary-anne'
+  ]);
 });
 
-test('keeps a second who: in the text rather than overwriting the first', () => {
-  const fields = parseTaskFields('Review who:julien and who:sam');
-  assert.equal(fields.assignee, 'julien');
-  assert.equal(fields.text, 'Review and who:sam');
+test('a task can be assigned to several people at once', () => {
+  const fields = parseTaskFields(
+    'who:julien and who:jack will implement this feature'
+  );
+  assert.deepEqual(fields.assignees, ['julien', 'jack']);
+  // The `and` joins the names, so it goes with them rather than being stranded
+  // at the front of the sentence.
+  assert.equal(fields.text, 'will implement this feature');
 });
 
-test('round-trips an assignee alongside the emoji fields', () => {
-  const line = 'Update the metrics who:julien 📅 2026-08-20 ⏫';
-  const fields = parseTaskFields(line);
-  assert.equal(
-    formatTaskFields(fields.text, fields),
-    'Update the metrics who:julien ⏫ 📅 2026-08-20'
+test('names can be joined by a comma, an ampersand, a plus, or a space', () => {
+  assert.deepEqual(
+    parseTaskFields('Ship it who:julien, who:jack & who:sam + who:mary')
+      .assignees,
+    ['julien', 'jack', 'sam', 'mary']
+  );
+  assert.deepEqual(parseTaskFields('Ship it who:julien who:jack').assignees, [
+    'julien',
+    'jack'
+  ]);
+});
+
+test('the same person named twice is listed once', () => {
+  assert.deepEqual(
+    parseTaskFields('Review who:Julien and who:julien').assignees,
+    ['julien']
   );
 });
 
-test('expanding date shorthand keeps the assignee on the line', () => {
+test('a run of names only swallows the word that joins them', () => {
+  const fields = parseTaskFields('Review who:julien and then ask who:sam');
+  assert.deepEqual(fields.assignees, ['julien', 'sam']);
+  assert.equal(fields.text, 'Review and then ask');
+});
+
+test('round-trips assignees alongside the emoji fields', () => {
+  const line = 'Update the metrics who:julien and who:jack 📅 2026-08-20 ⏫';
+  const fields = parseTaskFields(line);
   assert.equal(
-    expandTaskShorthand('- [ ] who:julien Ship it due:tomorrow', '2026-08-19'),
-    '- [ ] Ship it who:julien 📅 2026-08-20'
+    formatTaskFields(fields.text, fields),
+    'Update the metrics who:julien who:jack ⏫ 📅 2026-08-20'
+  );
+});
+
+test('expanding date shorthand keeps the assignees on the line', () => {
+  assert.equal(
+    expandTaskShorthand(
+      '- [ ] who:julien and who:jack Ship it due:tomorrow',
+      '2026-08-19'
+    ),
+    '- [ ] Ship it who:julien who:jack 📅 2026-08-20'
   );
 });
 

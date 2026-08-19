@@ -3784,14 +3784,9 @@
         <div class="task-body">
           <span>{@render inline(item.children)}</span>
           {#if item.meta}
-            {#if item.meta.assignee}
-              <span
-                class="task-who"
-                title={`Assigned to ${item.meta.assignee}`}
-              >
-                {item.meta.assignee}
-              </span>
-            {/if}
+            {#each item.meta.assignees || [] as who}
+              <span class="task-who" title={`Assigned to ${who}`}>{who}</span>
+            {/each}
             {#if item.meta.done}
               <span class="task-stamp" title={`Done ${item.meta.done}`}>
                 {`Done ${formatDueLabel(item.meta.done)}`}
@@ -4643,7 +4638,7 @@
             <div>
               <dt>Task assignee</dt>
               <dd>
-                <code>- [ ] who:julien Update the metrics</code>
+                <code>- [ ] who:julien and who:jack ship it</code>
                 stays as written; filter the Tasks view with
                 <code>who:julien</code>
               </dd>
@@ -5034,22 +5029,19 @@
                                       {formatDueChip(card.task.due, todayText)}
                                     </span>
                                   {/if}
-                                  {#if card.task.assignee}
+                                  {#each card.task.assignees || [] as who}
                                     <button
                                       class="task-who"
                                       class:task-who-active={taskFilter ===
-                                        `who:${card.task.assignee}`}
-                                      title={`Filter by who:${card.task.assignee}`}
+                                        `who:${who}`}
+                                      title={`Filter by who:${who}`}
                                       type="button"
                                       on:click={(event) =>
-                                        filterByAssignee(
-                                          card.task.assignee,
-                                          event
-                                        )}
+                                        filterByAssignee(who, event)}
                                     >
-                                      {card.task.assignee}
+                                      {who}
                                     </button>
-                                  {/if}
+                                  {/each}
                                   {#each card.task.tags || [] as tag}
                                     <button
                                       class="task-tag"
@@ -5131,19 +5123,19 @@
                                 {/if}
                               {/each}
                             </span>
-                            {#if task.assignee}
+                            {#each task.assignees || [] as who}
                               <button
                                 class="task-who"
                                 class:task-who-active={taskFilter ===
-                                  `who:${task.assignee}`}
-                                title={`Filter by who:${task.assignee}`}
+                                  `who:${who}`}
+                                title={`Filter by who:${who}`}
                                 type="button"
                                 on:click={(event) =>
-                                  filterByAssignee(task.assignee, event)}
+                                  filterByAssignee(who, event)}
                               >
-                                {task.assignee}
+                                {who}
                               </button>
-                            {/if}
+                            {/each}
                             {#each task.tags || [] as tag}
                               <button
                                 class="task-tag"
