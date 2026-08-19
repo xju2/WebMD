@@ -1,5 +1,5 @@
 const ARXIV_URL =
-  /^https?:\/\/(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(v\d+)?(?:\.pdf)?\/?$/i;
+  /^(?:https?:\/\/)?(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(v\d+)?(?:\.pdf)?\/?$/i;
 
 export function arxivPasteId(text, { beforeCursor = '' } = {}) {
   if (/[(<]$/.test(beforeCursor)) return null;
