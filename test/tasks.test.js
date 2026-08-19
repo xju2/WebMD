@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   clearCompletion,
   collectTasks,
+  displayAssignee,
   expandTaskShorthand,
   extractTags,
   formatDueChip,
@@ -76,6 +77,22 @@ test('however the names are written, everyone named is picked up', () => {
   ]);
 });
 
+test('punctuation after a name belongs to the sentence, not the name', () => {
+  const fields = parseTaskFields(
+    'Support who:julien. For example, who:Julien updates the metrics'
+  );
+  // Both mentions are the same person: the full stop is not part of the name.
+  assert.deepEqual(fields.assignees, ['julien']);
+  assert.deepEqual(
+    parseTaskFields('Ask who:mary-anne, then who:jack!').assignees,
+    ['mary-anne', 'jack']
+  );
+  assert.deepEqual(parseTaskFields('Ping who:sam- and who:jo_').assignees, [
+    'sam',
+    'jo'
+  ]);
+});
+
 test('the same person named twice is listed once', () => {
   assert.deepEqual(
     parseTaskFields('Review who:Julien and who:julien').assignees,
@@ -92,17 +109,33 @@ test('round-trips assignees alongside the emoji fields', () => {
   );
 });
 
-test('sets each who: name as its own segment, capitals kept', () => {
+test('sets each who: name as its own segment, read as a name', () => {
+  assert.deepEqual(taskTextSegments('Assign it to who:Julien.'), [
+    { type: 'text', text: 'Assign it to ' },
+    { type: 'assignee', text: 'Julien', name: 'julien' },
+    { type: 'text', text: '.' }
+  ]);
+  // However fast it was typed, the chip reads as a name.
   assert.deepEqual(
-    taskTextSegments('who:Julien and who:jack will ship [it](https://x.dev)'),
+    taskTextSegments(
+      'who:julien and who:mary-anne will ship [it](https://x.dev)'
+    ),
     [
       { type: 'assignee', text: 'Julien', name: 'julien' },
       { type: 'text', text: ' and ' },
-      { type: 'assignee', text: 'jack', name: 'jack' },
+      { type: 'assignee', text: 'Mary-Anne', name: 'mary-anne' },
       { type: 'text', text: ' will ship ' },
       { type: 'link', text: 'it', href: 'https://x.dev' }
     ]
   );
+});
+
+test('a name is raised for reading without flattening what was written', () => {
+  assert.equal(displayAssignee('julien'), 'Julien');
+  assert.equal(displayAssignee('mary-anne'), 'Mary-Anne');
+  assert.equal(displayAssignee('McCarthy'), 'McCarthy');
+  assert.equal(displayAssignee('j.smith'), 'J.Smith');
+  assert.equal(displayAssignee(''), '');
 });
 
 test('a who: inside a link is part of the link, not an assignment', () => {

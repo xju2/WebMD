@@ -75,7 +75,7 @@ test('marks who: names in place, keeping the sentence readable', () => {
     [
       ['assignee', 'Julien'],
       ['text', ' and '],
-      ['assignee', 'jack'],
+      ['assignee', 'Jack'],
       ['text', ' will implement this']
     ]
   );

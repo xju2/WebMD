@@ -47,7 +47,12 @@ const ORIGIN_PATTERN = /↩\s*\[\[([^\]\n]+)\]\]/u;
 // written. So this records who a task belongs to without touching the line, and
 // the renderers below set the name as a chip in place.
 // Exported so the Markdown renderer can recognise the same names.
-export const ASSIGNEE_BODY = String.raw`[\p{L}\p{N}][\p{L}\p{N}._-]*`;
+//
+// A name runs from a letter or digit to a letter or digit, so the joiners in
+// `mary-anne` and `j.smith` only count between them: the stop in "assign it to
+// who:julien." is the sentence's, not part of anyone's name, and eating it
+// would file that task under a second person.
+export const ASSIGNEE_BODY = String.raw`[\p{L}\p{N}](?:[\p{L}\p{N}._-]*[\p{L}\p{N}])?`;
 const ASSIGNEE_PATTERN = new RegExp(
   String.raw`(?<=^|\s)who:(${ASSIGNEE_BODY})`,
   'giu'
@@ -368,12 +373,12 @@ export function taskTextSegments(text = '') {
     push(source.slice(last, match.index));
     last = match.index + match[0].length;
 
-    // The name keeps the capitals it was written with — `who:Julien` reads as
-    // "Julien" — while `name` is the lowercased form everything filters on.
+    // `text` is the name as it should be read and `name` is the lowercased form
+    // everything filters on, so how fast it was typed changes neither.
     if (match[3] !== undefined) {
       segments.push({
         type: 'assignee',
-        text: match[3],
+        text: displayAssignee(match[3]),
         name: match[3].toLowerCase()
       });
       continue;
@@ -388,6 +393,19 @@ export function taskTextSegments(text = '') {
 
   push(source.slice(last));
   return segments;
+}
+
+/**
+ * A name as it should be read: `who:julien` is Julien, because a name is a
+ * proper noun however fast it was typed. Each part of a compound name is
+ * raised, so `mary-anne` reads as Mary-Anne, and capitals the author already
+ * wrote are left alone, so `McCarthy` is not flattened to Mccarthy.
+ */
+export function displayAssignee(name = '') {
+  return String(name).replace(
+    /(^|[.\-_])(\p{L})/gu,
+    (match, lead, letter) => lead + letter.toUpperCase()
+  );
 }
 
 /** Everyone a task names, lowercased and deduped, in the order written. */
