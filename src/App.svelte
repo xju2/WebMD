@@ -36,6 +36,7 @@
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
   import { renderMermaid } from './mermaid.js';
+  import { noteDateEdits, stampNoteDates } from './note-dates.js';
   import {
     isDateNamedPath,
     noteTitle,
@@ -160,6 +161,9 @@
   // The title the open note's file name already matches, so only a title the
   // user actually edits renames the file.
   let syncedTitle = '';
+  // The open file's age on disk, used as `creation-date` for a note written
+  // before the stamp existed. Empty means "new note", which dates to today.
+  let selectedFileCreated = '';
   let status = '[Saved]';
   let error = '';
   let selectedText = '';
@@ -1143,6 +1147,7 @@
     const fileKind = fileKindForPath(path);
     selectedPath = path;
     selectedFileKind = fileKind;
+    selectedFileCreated = '';
     if (fileKind === 'markdown')
       setViewMode(readWorkspaceViewMode(root), { remember: false });
     diffFiles = [];
@@ -1170,6 +1175,7 @@
         `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
       );
       if (root !== selectedRoot || selectedPath !== path) return;
+      selectedFileCreated = file.created || '';
       const buffered = sessionStorage.getItem(storageKey(root, path));
       const nextContent = buffered ?? file.content;
 
@@ -1290,7 +1296,10 @@
     if (selectedPath && hasUnsavedChanges()) await saveNow();
 
     const root = selectedRoot;
-    const content = `# ${basename(path).replace(/\.(md|markdown)$/i, '')}\n\n`;
+    const heading = `# ${basename(path).replace(/\.(md|markdown)$/i, '')}\n\n`;
+    const content = isDateNamedPath(path)
+      ? heading
+      : stampNoteDates(heading, dailyNoteDate(new Date()));
     status = '[Syncing...]';
     error = '';
 
@@ -2209,6 +2218,30 @@
     if (changes.length) editorView.dispatch({ changes });
   }
 
+  /**
+   * Stamps the open note's `creation-date` and `last-modified-date` before it
+   * is written out, so every note carries how old its information is. Daily
+   * notes are exempt: their file name is already the date. The edit only lands
+   * once a day, when the stamp no longer says today.
+   */
+  function stampNoteDatesInEditor() {
+    if (!editorView || !selectedPath || !selectedIsMarkdown) return;
+    if (isDateNamedPath(selectedPath)) return;
+
+    const changes = noteDateEdits(
+      editorView.state.doc.toString(),
+      dailyNoteDate(new Date()),
+      localDate(selectedFileCreated)
+    );
+    if (changes.length) editorView.dispatch({ changes });
+  }
+
+  /** An ISO timestamp from the server as a local `YYYY-MM-DD`. */
+  function localDate(timestamp) {
+    const date = timestamp ? new Date(timestamp) : null;
+    return date && !Number.isNaN(date.getTime()) ? dailyNoteDate(date) : '';
+  }
+
   async function saveNow() {
     if (!selectedPath || !selectedIsMarkdown) return;
     // Before the timer is cleared, so the expansion's own edit is saved with
@@ -2229,6 +2262,7 @@
 
   async function saveWholeFile() {
     if (!selectedPath || !selectedIsMarkdown || content === lastSaved) return;
+    stampNoteDatesInEditor();
 
     const root = selectedRoot;
     const path = selectedPath;
@@ -2271,6 +2305,11 @@
       !pendingUpdates.length
     )
       return;
+
+    // Queues its own update, and re-arms the save timer this flush just
+    // cleared.
+    stampNoteDatesInEditor();
+    clearTimeout(saveTimer);
 
     const root = selectedRoot;
     const path = selectedPath;

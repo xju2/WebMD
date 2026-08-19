@@ -378,6 +378,27 @@ raw/dailybrief/YYYY-MM-DD.md
 For example, on 2026-07-17 it reads `raw/dailybrief/2026-07-17.md`.
 `raw/dailybrief/latest.md` is still supported as a fallback.
 
+## Note dates
+
+Saving a note stamps its frontmatter with `creation-date` and
+`last-modified-date`, so you can tell at a glance how old the information in a
+note is:
+
+```markdown
+---
+creation-date: 2024-03-02
+last-modified-date: 2026-08-19
+---
+```
+
+Both are written automatically, with no frontmatter block needed up front — one
+is added when the note has none. `creation-date` is written once and never
+rewritten; a note that predates this feature is dated by the age of its file
+rather than by the day you happened to reopen it. `last-modified-date` moves at
+most once a day, so a note only changes when its contents actually do.
+
+Daily notes are exempt: their file name is already the date.
+
 ## YAML frontmatter
 
 WebMD understands the Open Knowledge Format fields `type`, `title`,

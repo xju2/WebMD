@@ -429,11 +429,13 @@ test('applies versioned document updates and writes a snapshot', async () => {
   await fs.writeFile(path.join(root, 'note.md'), 'old\n');
 
   const workspace = await createWorkspace(root);
-  assert.deepEqual(await workspace.loadFile('/note.md'), {
-    path: '/note.md',
-    content: 'old\n',
-    version: 0
-  });
+  const loaded = await workspace.loadFile('/note.md');
+  assert.deepEqual(
+    { path: loaded.path, content: loaded.content, version: loaded.version },
+    { path: '/note.md', content: 'old\n', version: 0 }
+  );
+  // The file's age, so a note without a `creation-date` can be dated honestly.
+  assert.match(loaded.created, /^\d{4}-\d{2}-\d{2}T/);
 
   const result = await workspace.applyUpdates('/note.md', 0, [
     updateFor('old\n', { from: 0, to: 3, insert: 'new' })

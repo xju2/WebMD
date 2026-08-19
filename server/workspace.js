@@ -343,16 +343,32 @@ async function loadFile(root, documents, filePath) {
     return {
       path: normalized,
       content: document.content,
-      version: document.version
+      version: document.version,
+      created: document.created
     };
   }
 
   const absolute = await resolvePath(root, normalized);
+  const stat = await fs.stat(absolute);
   return {
     path: normalized,
     content: await fs.readFile(absolute, 'utf8'),
-    version: 0
+    version: 0,
+    // How old the file itself is, so a note written before the frontmatter
+    // stamp existed is dated by its age rather than by the day it is reopened.
+    created: fileCreated(stat)
   };
+}
+
+/**
+ * A file's age as an ISO timestamp. Some filesystems report no birth time, and
+ * a copied file can report one later than its own contents, so the earlier of
+ * birth and modification time is the safer answer.
+ */
+function fileCreated(stat) {
+  return new Date(
+    Math.min(stat.birthtimeMs || stat.mtimeMs, stat.mtimeMs)
+  ).toISOString();
 }
 
 async function loadMediaFile(root, filePath) {
@@ -737,10 +753,12 @@ async function getDocument(root, documents, filePath) {
   if (document) return document;
 
   const absolute = await resolvePath(root, normalized);
+  const stat = await fs.stat(absolute);
   document = {
     path: normalized,
     content: await fs.readFile(absolute, 'utf8'),
     version: 0,
+    created: fileCreated(stat),
     events: [],
     listeners: new Set(),
     pendingWrite: Promise.resolve()
