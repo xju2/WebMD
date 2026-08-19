@@ -13,7 +13,7 @@ import {
   resolveShorthandDate,
   sortTasks,
   stampCompletion,
-  taskLinkSegments,
+  taskTextSegments,
   taskProgress,
   taskShorthandEdits,
   taskUrgency,
@@ -35,13 +35,14 @@ test('splits task metadata off the task text', () => {
   });
 });
 
-test('reads who: as the assignee and takes it out of the text', () => {
+test('reads who: as the assignee and leaves the name in the text', () => {
   const fields = parseTaskFields(
     'who:Julien will update the scaling metrics 📅 2026-08-20'
   );
   assert.deepEqual(fields.assignees, ['julien']);
   assert.equal(fields.due, '2026-08-20');
-  assert.equal(fields.text, 'will update the scaling metrics');
+  // The name is the sentence's subject, so it stays where it was written.
+  assert.equal(fields.text, 'who:Julien will update the scaling metrics');
 });
 
 test('only a who: that opens a word, with a name, is an assignee', () => {
@@ -57,12 +58,13 @@ test('a task can be assigned to several people at once', () => {
     'who:julien and who:jack will implement this feature'
   );
   assert.deepEqual(fields.assignees, ['julien', 'jack']);
-  // The `and` joins the names, so it goes with them rather than being stranded
-  // at the front of the sentence.
-  assert.equal(fields.text, 'will implement this feature');
+  assert.equal(
+    fields.text,
+    'who:julien and who:jack will implement this feature'
+  );
 });
 
-test('names can be joined by a comma, an ampersand, a plus, or a space', () => {
+test('however the names are written, everyone named is picked up', () => {
   assert.deepEqual(
     parseTaskFields('Ship it who:julien, who:jack & who:sam + who:mary')
       .assignees,
@@ -81,28 +83,42 @@ test('the same person named twice is listed once', () => {
   );
 });
 
-test('a run of names only swallows the word that joins them', () => {
-  const fields = parseTaskFields('Review who:julien and then ask who:sam');
-  assert.deepEqual(fields.assignees, ['julien', 'sam']);
-  assert.equal(fields.text, 'Review and then ask');
-});
-
 test('round-trips assignees alongside the emoji fields', () => {
-  const line = 'Update the metrics who:julien and who:jack 📅 2026-08-20 ⏫';
+  const line = 'who:Julien and who:jack update the metrics 📅 2026-08-20 ⏫';
   const fields = parseTaskFields(line);
   assert.equal(
     formatTaskFields(fields.text, fields),
-    'Update the metrics who:julien who:jack ⏫ 📅 2026-08-20'
+    'who:Julien and who:jack update the metrics ⏫ 📅 2026-08-20'
   );
 });
 
-test('expanding date shorthand keeps the assignees on the line', () => {
+test('sets each who: name as its own segment, capitals kept', () => {
+  assert.deepEqual(
+    taskTextSegments('who:Julien and who:jack will ship [it](https://x.dev)'),
+    [
+      { type: 'assignee', text: 'Julien', name: 'julien' },
+      { type: 'text', text: ' and ' },
+      { type: 'assignee', text: 'jack', name: 'jack' },
+      { type: 'text', text: ' will ship ' },
+      { type: 'link', text: 'it', href: 'https://x.dev' }
+    ]
+  );
+});
+
+test('a who: inside a link is part of the link, not an assignment', () => {
+  assert.deepEqual(taskTextSegments('Read [who:me](https://x.dev/who:top)'), [
+    { type: 'text', text: 'Read ' },
+    { type: 'link', text: 'who:me', href: 'https://x.dev/who:top' }
+  ]);
+});
+
+test('expanding date shorthand leaves the assignees where they are', () => {
   assert.equal(
     expandTaskShorthand(
-      '- [ ] who:julien and who:jack Ship it due:tomorrow',
+      '- [ ] who:julien and who:jack ship it due:tomorrow',
       '2026-08-19'
     ),
-    '- [ ] Ship it who:julien who:jack 📅 2026-08-20'
+    '- [ ] who:julien and who:jack ship it 📅 2026-08-20'
   );
 });
 
@@ -241,7 +257,7 @@ test('keeps the written text and offers a tag-free version for display', () => {
 
 test('splits a markdown link out of a task, keeping only its text', () => {
   assert.deepEqual(
-    taskLinkSegments(
+    taskTextSegments(
       'Read [the paper](https://arxiv.org/abs/1706.03762) again'
     ),
     [
@@ -257,20 +273,20 @@ test('splits a markdown link out of a task, keeping only its text', () => {
 });
 
 test('leaves a task with no link as a single run of text', () => {
-  assert.deepEqual(taskLinkSegments('Email Sarah'), [
+  assert.deepEqual(taskTextSegments('Email Sarah'), [
     { type: 'text', text: 'Email Sarah' }
   ]);
-  assert.deepEqual(taskLinkSegments(''), []);
+  assert.deepEqual(taskTextSegments(''), []);
 });
 
 test('leaves a link the browser should not follow as plain text', () => {
-  assert.deepEqual(taskLinkSegments('Try [this](javascript:alert(1)) out'), [
+  assert.deepEqual(taskTextSegments('Try [this](javascript:alert(1)) out'), [
     { type: 'text', text: 'Try [this](javascript:alert(1)) out' }
   ]);
 });
 
 test('keeps bracket text that is not a link exactly as written', () => {
-  assert.deepEqual(taskLinkSegments('Check [draft] and [[Note]] today'), [
+  assert.deepEqual(taskTextSegments('Check [draft] and [[Note]] today'), [
     { type: 'text', text: 'Check [draft] and [[Note]] today' }
   ]);
 });

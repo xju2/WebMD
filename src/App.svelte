@@ -61,7 +61,7 @@
     formatDueLabel,
     groupTasksByUrgency,
     priorityGlyph,
-    taskLinkSegments,
+    taskTextSegments,
     taskShorthandEdits,
     taskProgress,
     taskUrgency,
@@ -3622,6 +3622,10 @@
       {/if}
     {:else if segment.type === 'tag'}
       <span class="tag-chip">#{segment.text}</span>
+    {:else if segment.type === 'assignee'}
+      <span class="task-who" title={`Assigned to ${segment.text}`}
+        >{segment.text}</span
+      >
     {:else if segment.type === 'strong'}
       <strong>{segment.text}</strong>
     {:else if segment.type === 'em'}
@@ -3784,9 +3788,6 @@
         <div class="task-body">
           <span>{@render inline(item.children)}</span>
           {#if item.meta}
-            {#each item.meta.assignees || [] as who}
-              <span class="task-who" title={`Assigned to ${who}`}>{who}</span>
-            {/each}
             {#if item.meta.done}
               <span class="task-stamp" title={`Done ${item.meta.done}`}>
                 {`Done ${formatDueLabel(item.meta.done)}`}
@@ -4638,8 +4639,8 @@
             <div>
               <dt>Task assignee</dt>
               <dd>
-                <code>- [ ] who:julien and who:jack ship it</code>
-                stays as written; filter the Tasks view with
+                <code>- [ ] who:julien and who:jack will ship it</code>
+                the names stay in the sentence; filter the Tasks view with
                 <code>who:julien</code>
               </dd>
             </div>
@@ -4999,13 +5000,25 @@
                                   {/if}
                                 </p>
                                 <p class="task-card-text">
-                                  {#each taskLinkSegments(card.task.displayText || card.task.text) as segment}
+                                  {#each taskTextSegments(card.task.displayText || card.task.text) as segment}
                                     {#if segment.type === 'link'}
                                       <a
                                         href={segment.href}
                                         rel="noreferrer"
                                         target="_blank">{segment.text}</a
                                       >
+                                    {:else if segment.type === 'assignee'}
+                                      <button
+                                        class="task-who"
+                                        class:task-who-active={taskFilter ===
+                                          `who:${segment.name}`}
+                                        title={`Filter by who:${segment.name}`}
+                                        type="button"
+                                        on:click={(event) =>
+                                          filterByAssignee(segment.name, event)}
+                                      >
+                                        {segment.text}
+                                      </button>
                                     {:else}
                                       {segment.text}
                                     {/if}
@@ -5029,19 +5042,6 @@
                                       {formatDueChip(card.task.due, todayText)}
                                     </span>
                                   {/if}
-                                  {#each card.task.assignees || [] as who}
-                                    <button
-                                      class="task-who"
-                                      class:task-who-active={taskFilter ===
-                                        `who:${who}`}
-                                      title={`Filter by who:${who}`}
-                                      type="button"
-                                      on:click={(event) =>
-                                        filterByAssignee(who, event)}
-                                    >
-                                      {who}
-                                    </button>
-                                  {/each}
                                   {#each card.task.tags || [] as tag}
                                     <button
                                       class="task-tag"
@@ -5111,31 +5111,30 @@
                               </span>
                             {/if}
                             <span class="task-row-text">
-                              {#each taskLinkSegments(task.displayText || task.text) as segment}
+                              {#each taskTextSegments(task.displayText || task.text) as segment}
                                 {#if segment.type === 'link'}
                                   <a
                                     href={segment.href}
                                     rel="noreferrer"
                                     target="_blank">{segment.text}</a
                                   >
+                                {:else if segment.type === 'assignee'}
+                                  <button
+                                    class="task-who"
+                                    class:task-who-active={taskFilter ===
+                                      `who:${segment.name}`}
+                                    title={`Filter by who:${segment.name}`}
+                                    type="button"
+                                    on:click={(event) =>
+                                      filterByAssignee(segment.name, event)}
+                                  >
+                                    {segment.text}
+                                  </button>
                                 {:else}
                                   {segment.text}
                                 {/if}
                               {/each}
                             </span>
-                            {#each task.assignees || [] as who}
-                              <button
-                                class="task-who"
-                                class:task-who-active={taskFilter ===
-                                  `who:${who}`}
-                                title={`Filter by who:${who}`}
-                                type="button"
-                                on:click={(event) =>
-                                  filterByAssignee(who, event)}
-                              >
-                                {who}
-                              </button>
-                            {/each}
                             {#each task.tags || [] as tag}
                               <button
                                 class="task-tag"

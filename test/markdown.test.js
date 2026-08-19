@@ -64,6 +64,41 @@ test('marks inline tags in ordinary prose', () => {
   });
 });
 
+test('marks who: names in place, keeping the sentence readable', () => {
+  const blocks = renderMarkdown(
+    '- [ ] who:Julien and who:jack will implement this 📅 2026-08-20'
+  );
+  const [task] = blocks[0].items;
+
+  assert.deepEqual(
+    task.children.map((segment) => [segment.type, segment.text]),
+    [
+      ['assignee', 'Julien'],
+      ['text', ' and '],
+      ['assignee', 'jack'],
+      ['text', ' will implement this']
+    ]
+  );
+  assert.deepEqual(task.meta.assignees, ['julien', 'jack']);
+  assert.equal(task.meta.due, '2026-08-20');
+});
+
+test('leaves text that only looks like an assignment alone', () => {
+  const cases = [
+    'Ask who: about it',
+    'Read https://example.com/page/who:top now',
+    'Type `who:me` to claim one'
+  ];
+
+  cases.forEach((source) => {
+    assert.equal(
+      parseInline(source).some((segment) => segment.type === 'assignee'),
+      false,
+      source
+    );
+  });
+});
+
 test('leaves text that only looks like a tag alone', () => {
   const cases = [
     'Written in C# lately',

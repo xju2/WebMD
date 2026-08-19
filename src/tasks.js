@@ -41,18 +41,17 @@ const ORIGIN_PATTERN = /↩\s*\[\[([^\]\n]+)\]\]/u;
 // so `somewho:x` is left alone, and the name has to start with a letter or
 // digit, so a bare `who:` is not an assignment to nobody.
 //
-// A task can name several people, and the way anyone writes that is with a word
-// in between: `who:julien and who:jack`. So the pattern matches the whole run,
-// swallowing the `and`, `&`, `+` or comma joining one name to the next — the
-// connector belongs to the list, not to the sentence, and leaving it behind
-// would strand an "and" in the middle of the task's prose.
-const ASSIGNEE_NAME = String.raw`[\p{L}\p{N}][\p{L}\p{N}._-]*`;
-const ASSIGNEE_JOIN = String.raw`\s*(?:,|&|\+|and)?\s+`;
+// Unlike every other field, an assignee is not lifted out of the text: a name
+// is usually the sentence's subject, and "who:julien and who:jack will
+// implement this" only reads as English with the names left where they were
+// written. So this records who a task belongs to without touching the line, and
+// the renderers below set the name as a chip in place.
+// Exported so the Markdown renderer can recognise the same names.
+export const ASSIGNEE_BODY = String.raw`[\p{L}\p{N}][\p{L}\p{N}._-]*`;
 const ASSIGNEE_PATTERN = new RegExp(
-  `(^|\\s)who:${ASSIGNEE_NAME}(?:${ASSIGNEE_JOIN}who:${ASSIGNEE_NAME})*`,
+  String.raw`(?<=^|\s)who:(${ASSIGNEE_BODY})`,
   'giu'
 );
-const ASSIGNEE_NAME_PATTERN = new RegExp(`who:(${ASSIGNEE_NAME})`, 'giu');
 const ORIGIN_TAIL = /(\s*↩\s*\[\[[^\]\n]+\]\])\s*$/u;
 const DONE_PATTERN = new RegExp(`✅\\s*${DATE}`, 'u');
 const DONE_TAIL = new RegExp(`\\s*✅\\s*${DATE}`, 'u');
@@ -70,7 +69,13 @@ const FENCE = /^\s*(```|~~~)/;
 export const TAG_BODY = String.raw`[\p{L}\p{N}_/-]*\p{L}[\p{L}\p{N}_/-]*`;
 const TAG_PATTERN = new RegExp(String.raw`(^|\s)#(${TAG_BODY})`, 'gu');
 const HEADING = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
-const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+const MARKDOWN_LINK = String.raw`\[([^\]\n]+)\]\(([^)\s]+)\)`;
+// One scanner for both kinds of token a task row sets specially, so a `who:`
+// sitting inside a link's text or URL is never mistaken for an assignment.
+const TASK_SEGMENT = new RegExp(
+  String.raw`${MARKDOWN_LINK}|(?<=^|\s)who:(${ASSIGNEE_BODY})`,
+  'gu'
+);
 const MAX_HEADING_LEVEL = 6;
 
 // Typing shorthand, so the emoji never have to be typed at all: `due:friday`
@@ -138,15 +143,7 @@ export function parseTaskFields(text = '') {
     return lead;
   });
 
-  // Lowercased and deduped like tags, so `who:Julien` and `who:julien` are one
-  // person as far as filtering is concerned, and kept in the order written.
-  rest = rest.replace(ASSIGNEE_PATTERN, (match, lead) => {
-    for (const [, name] of match.matchAll(ASSIGNEE_NAME_PATTERN)) {
-      const value = name.toLowerCase();
-      if (!fields.assignees.includes(value)) fields.assignees.push(value);
-    }
-    return lead;
-  });
+  fields.assignees = collectAssignees(rest);
 
   rest = rest.replace(ORIGIN_PATTERN, (match, target) => {
     fields.origin = target.trim();
@@ -163,7 +160,6 @@ export function formatTaskFields(text = '', fields = {}) {
   );
   return [
     String(text).trim(),
-    ...(fields.assignees || []).map((name) => `who:${name}`),
     priority,
     fields.created && `➕ ${fields.created}`,
     fields.due && `📅 ${fields.due}`,
@@ -350,12 +346,13 @@ export function extractTags(text = '') {
 }
 
 /**
- * A task's text split into plain runs and Markdown links, so the Tasks view can
- * show `[the paper](https://arxiv.org/…)` as just "the paper" without losing
- * the ability to open it. Only links are recognised — every other character is
- * left exactly as written, because a task row is not a Markdown preview.
+ * A task's text split into plain runs, Markdown links, and `who:` names, so the
+ * Tasks view can show `[the paper](https://arxiv.org/…)` as just "the paper"
+ * without losing the ability to open it, and can set a name as a chip where it
+ * stands. Nothing else is recognised — every other character is left exactly as
+ * written, because a task row is not a Markdown preview.
  */
-export function taskLinkSegments(text = '') {
+export function taskTextSegments(text = '') {
   const source = String(text);
   const segments = [];
   let last = 0;
@@ -367,18 +364,40 @@ export function taskLinkSegments(text = '') {
     else segments.push({ type: 'text', text: value });
   };
 
-  for (const match of source.matchAll(MARKDOWN_LINK)) {
+  for (const match of source.matchAll(TASK_SEGMENT)) {
     push(source.slice(last, match.index));
+    last = match.index + match[0].length;
+
+    // The name keeps the capitals it was written with — `who:Julien` reads as
+    // "Julien" — while `name` is the lowercased form everything filters on.
+    if (match[3] !== undefined) {
+      segments.push({
+        type: 'assignee',
+        text: match[3],
+        name: match[3].toLowerCase()
+      });
+      continue;
+    }
+
     const href = safeTaskHref(match[2]);
     // A link the browser should not follow stays on the row as plain text
     // rather than quietly vanishing.
     if (href) segments.push({ type: 'link', text: match[1], href });
     else push(match[0]);
-    last = match.index + match[0].length;
   }
 
   push(source.slice(last));
   return segments;
+}
+
+/** Everyone a task names, lowercased and deduped, in the order written. */
+export function collectAssignees(text = '') {
+  const names = [];
+  for (const [, name] of String(text).matchAll(ASSIGNEE_PATTERN)) {
+    const value = name.toLowerCase();
+    if (!names.includes(value)) names.push(value);
+  }
+  return names;
 }
 
 // Mirrors safeHref in markdown.js. Kept local because markdown.js already

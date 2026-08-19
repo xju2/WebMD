@@ -1671,24 +1671,27 @@ button {
   color: #33538a;
 }
 
-/* An assignee is a different kind of fact from a tag — it names a person, not a
-   category — so it gets its own quiet colour rather than another grey chip to
-   read past. */
+/* An assignee stays in the sentence it was written in, so it is set as a word
+   with a tint behind it rather than as a chip standing off to one side: it has
+   to read as the subject of the task, not as a badge parked next to it. A quiet
+   colour of its own separates a person from a #tag's grey. */
 .task-who {
-  flex: 0 0 auto;
+  display: inline;
   border: 0;
-  border-radius: 999px;
+  border-radius: 4px;
   background: #eaf1ec;
-  color: #46695a;
+  color: #3f6354;
   font: inherit;
-  font-size: 0.75rem;
-  padding: 1px 7px;
+  font-size: 0.95em;
+  font-weight: 600;
+  padding: 0 4px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .task-who:hover {
   background: #dbe7de;
-  color: #35564a;
+  color: #2f5346;
 }
 
 .task-who-active {
@@ -1700,9 +1703,6 @@ button {
    that invites a click. */
 .preview-pane .task-who {
   cursor: default;
-  font-size: 0.78em;
-  line-height: 1.6;
-  white-space: nowrap;
 }
 
 .task-row-done .task-row-text {

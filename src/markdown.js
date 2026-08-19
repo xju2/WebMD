@@ -1,6 +1,6 @@
 import { parseUnifiedDiff } from './diff.js';
 import { parseFrontmatter } from './frontmatter.js';
-import { TAG_BODY, parseTaskFields } from './tasks.js';
+import { ASSIGNEE_BODY, TAG_BODY, parseTaskFields } from './tasks.js';
 import { parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
@@ -161,7 +161,7 @@ function parseCodeBlock({ lang, title }, text) {
 // the tag rules live in one place — `\x60` is the backtick a raw template
 // cannot hold.
 const INLINE_TOKEN = new RegExp(
-  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY})`,
+  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY}|(?<=^|\s)who:${ASSIGNEE_BODY})`,
   'gu'
 );
 
@@ -208,6 +208,13 @@ function parseInlineToken(token) {
     return { type: 'link', text: token, href: token };
 
   if (token.startsWith('#')) return { type: 'tag', text: token.slice(1) };
+
+  // The name keeps the capitals it was written with; `name` is what filtering
+  // matches on.
+  if (/^who:/i.test(token)) {
+    const name = token.slice(4);
+    return { type: 'assignee', text: name, name: name.toLowerCase() };
+  }
 
   if (token.startsWith('**'))
     return { type: 'strong', text: token.slice(2, -2) };
