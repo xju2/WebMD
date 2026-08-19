@@ -41,7 +41,10 @@ test('reads from the selected workspace root', async () => {
     (await workspaces.get('1').readTree()).map((node) => node.name),
     ['second.md']
   );
-  assert.equal((await workspaces.get('1').loadFile('/second.md')).content, 'second');
+  assert.equal(
+    (await workspaces.get('1').loadFile('/second.md')).content,
+    'second'
+  );
   assert.throws(() => workspaces.get('9'), /Unknown workspace root/);
 });
 
@@ -50,7 +53,44 @@ test('searches through the selected workspace root', async () => {
   await fs.writeFile(path.join(root, 'note.md'), 'Needle found\n');
   const workspaces = await createWorkspaceRegistry([root]);
 
-  assert.equal((await workspaces.get().searchFiles('needle'))[0].path, '/note.md');
+  assert.equal(
+    (await workspaces.get().searchFiles('needle'))[0].path,
+    '/note.md'
+  );
+});
+
+test('serves the configured image asset folder as a setting', async () => {
+  const root = await tempRoot();
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      env: { IMAGE_ASSET_FOLDER: 'files/img/' }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/settings`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { imageAssetFolder: '/files/img' });
+  } finally {
+    server.close();
+  }
+});
+
+test('falls back to /assets when no image asset folder is configured', async () => {
+  const root = await tempRoot();
+
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root], env: {} })
+  );
+
+  try {
+    const settings = await (await fetch(`${url}/api/settings`)).json();
+    assert.equal(settings.imageAssetFolder, '/assets');
+  } finally {
+    server.close();
+  }
 });
 
 test('returns a workspace overview', async () => {
@@ -60,7 +100,9 @@ test('returns a workspace overview', async () => {
   await fs.writeFile(path.join(root, 'image.png'), 'png');
   await fs.utimes(path.join(root, 'older.md'), new Date(1), new Date(1));
 
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/workspace/overview`);
@@ -79,7 +121,9 @@ test('accepts document updates and exposes them as SSE events', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), 'old');
 
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
   const abort = new AbortController();
 
   try {
@@ -117,7 +161,9 @@ test('accepts document updates and exposes them as SSE events', async () => {
 
 test('saves pasted images through the workspace API', async () => {
   const root = await tempRoot();
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/workspace/images`, {
@@ -148,7 +194,9 @@ test('saves pasted images through the workspace API', async () => {
 
 test('creates folders through the workspace API', async () => {
   const root = await tempRoot();
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/workspace/folders`, {
@@ -246,7 +294,10 @@ test('suggests related notes as links that resolve back to real files', async ()
     path.join(root, 'wiki', 'triton.md'),
     '# Triton\nTriton batches ONNX inference requests across GPU instances.\n'
   );
-  await fs.writeFile(path.join(root, 'wiki', 'bread.md'), '# Bread\nProof the dough.\n');
+  await fs.writeFile(
+    path.join(root, 'wiki', 'bread.md'),
+    '# Bread\nProof the dough.\n'
+  );
 
   const { server, url } = await listen(
     await createApp({
@@ -295,8 +346,14 @@ test('suggests related notes as links that resolve back to real files', async ()
 
 test('skips the AI call when no note shares wording with the open one', async () => {
   const root = await tempRoot();
-  await fs.writeFile(path.join(root, 'note.md'), '# Today\nTriton inference.\n');
-  await fs.writeFile(path.join(root, 'bread.md'), '# Bread\nProof the dough.\n');
+  await fs.writeFile(
+    path.join(root, 'note.md'),
+    '# Today\nTriton inference.\n'
+  );
+  await fs.writeFile(
+    path.join(root, 'bread.md'),
+    '# Bread\nProof the dough.\n'
+  );
 
   const { server, url } = await listen(
     await createApp({
@@ -383,7 +440,9 @@ test('lists prompt presets without their system prompts', async () => {
     })
   );
 
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/ai/presets`);
@@ -436,7 +495,10 @@ test('runs an AI chat turn from a chat preset', async () => {
       aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
       aiFetch: async (_url, options) => {
         const body = JSON.parse(options.body);
-        assert.match(body.messages[0].content, /You list the risks in a note\./);
+        assert.match(
+          body.messages[0].content,
+          /You list the risks in a note\./
+        );
         // The preset asks the question; the typed text narrows it.
         assert.match(body.messages[1].content, /Risks, for the current note\./);
         assert.match(body.messages[1].content, /only the schedule/);
@@ -475,7 +537,9 @@ test('runs an AI chat turn from a chat preset', async () => {
 test('rejects a prompt preset used for the wrong kind of request', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   const post = (route, body) =>
     fetch(`${url}/api/ai/${route}`, {
@@ -521,7 +585,9 @@ test('runs an AI edit from a prompt preset', async () => {
           new ReadableStream({
             start(controller) {
               controller.enqueue(
-                new TextEncoder().encode('{"message":{"content":"tight text"}}\n')
+                new TextEncoder().encode(
+                  '{"message":{"content":"tight text"}}\n'
+                )
               );
               controller.close();
             }
@@ -553,7 +619,9 @@ test('runs an AI edit from a prompt preset', async () => {
 test('rejects AI edits with a bad or missing prompt', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), '# Note\nrough text\n');
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   const post = (body) =>
     fetch(`${url}/api/ai/edit`, {
@@ -575,7 +643,10 @@ test('rejects AI edits with a bad or missing prompt', async () => {
     assert.equal(empty.status, 400);
     assert.match((await empty.json()).error, /preset or an edit instruction/);
 
-    const noSelection = await post({ selectedText: '', presetId: 'note-bullets' });
+    const noSelection = await post({
+      selectedText: '',
+      presetId: 'note-bullets'
+    });
     assert.equal(noSelection.status, 400);
     assert.match((await noSelection.json()).error, /Selected text is required/);
   } finally {
@@ -630,7 +701,10 @@ test('rejects an arXiv lookup without a valid identifier', async () => {
     for (const query of ['', '?id=', '?id=https://arxiv.org/abs/2608.00146']) {
       const response = await fetch(`${url}/api/arxiv${query}`);
       assert.equal(response.status, 400, query);
-      assert.match((await response.json()).error, /arXiv identifier is required/);
+      assert.match(
+        (await response.json()).error,
+        /arXiv identifier is required/
+      );
     }
   } finally {
     server.close();
@@ -653,7 +727,9 @@ test('lists open tasks across the workspace', async () => {
   );
   await fs.writeFile(path.join(root, 'notes.md'), '- [ ] Email Sarah\n');
 
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/workspace/tasks`);
@@ -662,14 +738,22 @@ test('lists open tasks across the workspace', async () => {
 
     assert.equal(total, 2);
     assert.deepEqual(
-      tasks.map((task) => [task.path, task.line, task.text, task.due, task.priority]),
+      tasks.map((task) => [
+        task.path,
+        task.line,
+        task.text,
+        task.due,
+        task.priority
+      ]),
       [
         ['/notes.md', 0, 'Email Sarah', '', ''],
         ['/plan.md', 1, 'Submit the abstract', '2026-08-20', 'high']
       ]
     );
 
-    const all = await (await fetch(`${url}/api/workspace/tasks?include=all`)).json();
+    const all = await (
+      await fetch(`${url}/api/workspace/tasks?include=all`)
+    ).json();
     assert.deepEqual(
       all.tasks.map((task) => task.checked),
       [false, false, true]
@@ -683,7 +767,9 @@ test('renames a note through the workspace API', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'Untitled.md'), '# Field Notes\n');
   await fs.writeFile(path.join(root, 'index.md'), 'See [[Untitled]].\n');
-  const { server, url } = await listen(await createApp({ workspaceRoots: [root] }));
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
 
   try {
     const response = await fetch(`${url}/api/workspace/rename`, {

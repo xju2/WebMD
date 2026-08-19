@@ -822,54 +822,6 @@ button {
   gap: 8px;
 }
 
-.asset-folder-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: #637083;
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-.asset-folder-control label,
-.asset-folder-new {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-}
-
-.asset-folder-control select,
-.asset-folder-control input {
-  width: 130px;
-  height: 34px;
-  min-width: 0;
-  padding: 0 9px;
-  border: 1px solid #cbd4df;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #273246;
-  font: inherit;
-}
-
-.asset-folder-new button {
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid #cbd4df;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #273246;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 720;
-}
-
-.asset-folder-new button:disabled {
-  color: #8994a5;
-  cursor: default;
-}
-
 .file-heading {
   display: flex;
   min-width: 0;
@@ -1080,32 +1032,6 @@ button {
   margin: 4px 6px;
   border: 0;
   border-top: 1px solid #e1e5eb;
-}
-
-/* The folder picker keeps its own control styling inside the menu instead of
-   inheriting the menu item look. */
-.view-menu-list .asset-folder-control {
-  padding: 8px 10px;
-  font-size: 0.82rem;
-}
-
-.view-menu-list .asset-folder-control label {
-  flex-wrap: wrap;
-}
-
-.view-menu-list .asset-folder-control select,
-.view-menu-list .asset-folder-control input {
-  width: 100%;
-}
-
-.view-menu-list .asset-folder-new button {
-  padding: 0 10px;
-  border: 1px solid #cbd4df;
-  border-radius: 6px;
-  background: #ffffff;
-  font-size: 0.82rem;
-  font-weight: 720;
-  text-align: center;
 }
 
 .upload-button,
@@ -3833,19 +3759,14 @@ button {
   }
 
   .topbar-actions {
-    /* Upload, Delete, Reference, and the asset folder move into the ... menu
-       here, but wrapping keeps anything that is left from clipping off-screen. */
+    /* Upload, Delete, and Reference move into the ... menu here, but wrapping
+       keeps anything that is left from clipping off-screen. */
     flex-wrap: wrap;
     justify-content: space-between;
   }
 
   .view-menu-list {
     max-width: calc(100vw - 24px);
-  }
-
-  .asset-folder-control {
-    flex: 1 1 100%;
-    flex-wrap: wrap;
   }
 
   .view-toggle {

@@ -83,6 +83,8 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `WORKSPACE_ROOT`: required absolute path to the Markdown workspace.
 - `WORKSPACE_ROOTS`: optional path-delimited list of Markdown workspaces.
 - `PORT`: backend port, defaults to `3000`.
+- `IMAGE_ASSET_FOLDER`: workspace folder for pasted and uploaded images and
+  PDFs, defaults to `/assets`. It is created on the first upload if missing.
 - `VITE_API_PROXY_TARGET`: optional dev proxy target, set by `npm run dev`.
 - `AI_PROVIDER`: optional `ollama` or `openai`, defaults to `openai` when `OPENAI_API_KEY` is set and `ollama` otherwise.
 - `AI_MODEL`: optional model override. Ollama defaults to `llama3.2`; OpenAI defaults to `gpt-5.6`.

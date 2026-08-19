@@ -94,8 +94,6 @@
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
-  const IMAGE_ASSET_FOLDER_KEY = 'webmd:image-asset-folder';
-  const NEW_IMAGE_ASSET_FOLDER = '__new_image_asset_folder__';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
   const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -254,9 +252,9 @@
   // named template in the workspace stand in. '' is the deliberate "None".
   let dailyNoteTemplatePath = null;
   let dailyNoteFolderStored = false;
+  // Server-side setting (IMAGE_ASSET_FOLDER in ~/.webmd.conf), not a per-browser
+  // choice, so there is no control for it in the UI.
   let imageAssetFolder = '/assets';
-  let imageAssetFolderDraft = '';
-  let creatingImageAssetFolder = false;
   let calendarMonth = new Date(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -301,7 +299,6 @@
     (file) => file.fileKind === 'markdown'
   );
   $: dailyNoteFolders = ['/', ...collectVisibleDirectories(tree)];
-  $: imageAssetFolders = dailyNoteFolders;
   $: activeDailyNoteFolder =
     !treeLoaded || dailyNoteFolders.includes(dailyNoteFolder)
       ? dailyNoteFolder
@@ -321,9 +318,6 @@
   $: dailyNoteTemplateMissing =
     activeDailyNoteTemplatePath &&
     !markdownFiles.some((file) => file.path === activeDailyNoteTemplatePath);
-  $: imageAssetFolderOptions = imageAssetFolders.includes(imageAssetFolder)
-    ? imageAssetFolders
-    : [imageAssetFolder, ...imageAssetFolders];
   $: calendarDays = buildCalendarDays(calendarMonth);
   $: dueTaskCounts = countTasksByDueDate(workspaceTasks);
   $: calendarMonthName = calendarMonth.toLocaleDateString([], {
@@ -989,6 +983,18 @@
     editorView?.focus();
   }
 
+  // The asset folder lives in the server config, so ask for it once at startup
+  // and fall back to the default if the request fails.
+  async function loadSettings() {
+    try {
+      const settings = await requestJson('/api/settings');
+      if (settings.imageAssetFolder)
+        imageAssetFolder = settings.imageAssetFolder;
+    } catch {
+      // Keep the default; uploads still land somewhere sensible.
+    }
+  }
+
   async function loadRoots() {
     try {
       workspaceRoots = await requestJson('/api/workspace/roots');
@@ -997,7 +1003,7 @@
       ({ folder: dailyNoteFolder, stored: dailyNoteFolderStored } =
         readDailyNoteFolder());
       dailyNoteTemplatePath = readDailyNoteTemplatePath();
-      imageAssetFolder = readImageAssetFolder();
+      await loadSettings();
       recentPaths = readRecentFiles(selectedRoot);
       loadAiPresets(selectedRoot);
       await loadTree(selectedRoot);
@@ -3130,51 +3136,6 @@
     }
   }
 
-  function chooseImageAssetFolder(folder) {
-    if (folder === NEW_IMAGE_ASSET_FOLDER) {
-      creatingImageAssetFolder = true;
-      imageAssetFolderDraft = '';
-      return;
-    }
-
-    setImageAssetFolder(folder);
-    creatingImageAssetFolder = false;
-  }
-
-  function setImageAssetFolder(folder) {
-    imageAssetFolder = normalizeWorkspaceFolder(folder) || '/assets';
-    try {
-      localStorage.setItem(IMAGE_ASSET_FOLDER_KEY, imageAssetFolder);
-    } catch {
-      // Ignore storage failures; pasted images still use the selected folder.
-    }
-  }
-
-  async function createImageAssetFolder() {
-    const folder = newImageAssetFolderPath();
-    if (!folder) return;
-
-    try {
-      const result = await requestJson('/api/workspace/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ root: selectedRoot, path: folder })
-      });
-      setImageAssetFolder(result.path);
-      imageAssetFolderDraft = '';
-      creatingImageAssetFolder = false;
-      await loadTree(selectedRoot);
-    } catch (err) {
-      error = err.message;
-    }
-  }
-
-  function newImageAssetFolderPath() {
-    return imageAssetFolderDraft.trim()
-      ? normalizeWorkspaceFolder(imageAssetFolderDraft)
-      : '';
-  }
-
   function readDailyNoteFolder() {
     try {
       const folder =
@@ -3208,23 +3169,6 @@
   function reconcileDailyNoteFolder() {
     if (!dailyNoteFolderStored && !dailyNoteFolders.includes(dailyNoteFolder))
       dailyNoteFolder = '/';
-  }
-
-  function readImageAssetFolder() {
-    try {
-      return normalizeWorkspaceFolder(
-        localStorage.getItem(IMAGE_ASSET_FOLDER_KEY) || '/assets'
-      );
-    } catch {
-      return '/assets';
-    }
-  }
-
-  function normalizeWorkspaceFolder(folder) {
-    const normalized = normalizeWorkspaceFilePath(`${folder || '/assets'}/_`);
-    return normalized
-      ? normalized.slice(0, normalized.lastIndexOf('/')) || '/'
-      : '';
   }
 
   function toggleFolder(path) {
@@ -3868,41 +3812,6 @@
   </article>
 {/snippet}
 
-<!-- Rendered in the toolbar on a wide screen and inside the ... menu on a
-     narrow one, so the control itself only exists once. -->
-{#snippet assetFolderControl()}
-  <div class="asset-folder-control">
-    <label>
-      Assets
-      <select
-        aria-label="Image asset folder"
-        value={imageAssetFolder}
-        on:change={(event) => chooseImageAssetFolder(event.currentTarget.value)}
-      >
-        {#each imageAssetFolderOptions as folder}
-          <option value={folder}>{folder}</option>
-        {/each}
-        <option value={NEW_IMAGE_ASSET_FOLDER}>New folder...</option>
-      </select>
-    </label>
-    {#if creatingImageAssetFolder}
-      <form
-        class="asset-folder-new"
-        on:submit|preventDefault={createImageAssetFolder}
-      >
-        <input
-          aria-label="New image asset folder"
-          bind:value={imageAssetFolderDraft}
-          placeholder="/assets"
-        />
-        <button disabled={!newImageAssetFolderPath()} type="submit">
-          Create
-        </button>
-      </form>
-    {/if}
-  </div>
-{/snippet}
-
 <svelte:window
   on:keydown={handleShortcut}
   on:mousedown={handleMouseNavigation}
@@ -4384,9 +4293,6 @@
         </button>
       </div>
       <div class="topbar-actions">
-        {#if !narrowLayout}
-          {@render assetFolderControl()}
-        {/if}
         <input
           bind:this={uploadInput}
           class="hidden"
@@ -4542,7 +4448,6 @@
                 >
                   Reference
                 </button>
-                {@render assetFolderControl()}
               {/if}
             </div>
           {/if}

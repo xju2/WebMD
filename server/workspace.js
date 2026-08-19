@@ -1039,7 +1039,7 @@ function timestampStem() {
   return `file-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}`;
 }
 
-function normalizeWorkspaceFolder(folder) {
+export function normalizeWorkspaceFolder(folder) {
   if (!folder || folder === '/') return '/';
   const value = String(folder);
   const normalized = normalizeWorkspacePath(
