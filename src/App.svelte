@@ -3758,80 +3758,91 @@
         </table>
       </div>
     {:else if block.type === 'list'}
-      <svelte:element this={block.ordered ? 'ol' : 'ul'} data-line={block.line}>
-        {#each block.items as item}
-          <li
-            class:task={item.task}
-            class:task-done={item.task && item.checked}
-            data-line={item.line}
-            data-priority={item.meta?.priority || null}
-          >
-            {#if item.task}
-              <input
-                checked={item.checked}
-                disabled={readOnly}
-                type="checkbox"
-                on:change={() => toggleTask(item.line)}
-              />
-            {/if}
-            <!-- Column two is the sentence and everything that belongs to it:
-                 tags read as words, and the done stamp and origin link trail the
-                 text the way a footnote would. Long text wraps here beside the
-                 checkbox rather than below it. -->
-            <div class="task-body">
-              <span>{@render inline(item.children)}</span>
-              {#if item.meta}
-                {#if item.meta.done}
-                  <span class="task-stamp" title={`Done ${item.meta.done}`}>
-                    {`Done ${formatDueLabel(item.meta.done)}`}
-                  </span>
-                {/if}
-                {#if item.meta.origin}
-                  <a
-                    class="task-origin wiki-link"
-                    href={wikiLinkHref(item.meta.origin)}
-                    title={`Carried over from ${item.meta.origin}`}
-                    on:click={(event) => openWikiLink(event, item.meta.origin)}
-                  >
-                    {`↩︎ ${item.meta.origin}`}
-                  </a>
-                {/if}
-              {/if}
-            </div>
-            <!-- Column three is the rail. Priority and due date leave the
-                 sentence so they line up down the page: with the pills trailing
-                 the text they landed at a different x on every row, and orphaned
-                 onto a line of their own whenever the text wrapped. The priority
-                 slot is always emitted so the dates share one left edge. -->
-            {#if item.task}
-              <div class="task-meta">
-                <span
-                  aria-hidden={item.meta?.priority ? null : 'true'}
-                  aria-label={item.meta?.priority
-                    ? `${item.meta.priority} priority`
-                    : null}
-                  class={`task-priority task-priority-${item.meta?.priority || 'none'}`}
-                  title={item.meta?.priority
-                    ? `${item.meta.priority} priority`
-                    : null}
-                >
-                  {priorityGlyph(item.meta?.priority)}
-                </span>
-                {#if item.meta?.due}
-                  <span
-                    class={`task-due task-due-${taskUrgency(item.meta.due, todayText)}`}
-                    title={`Due ${item.meta.due}`}
-                  >
-                    {formatDueChip(item.meta.due, todayText)}
-                  </span>
-                {/if}
-              </div>
-            {/if}
-          </li>
-        {/each}
-      </svelte:element>
+      {@render markdownList(block, readOnly)}
     {/if}
   {/each}
+{/snippet}
+
+<!-- Its own snippet so it can render itself: a sub-list is a list block
+     hanging off the item above it, at any depth. -->
+{#snippet markdownList(block, readOnly = false)}
+  <svelte:element this={block.ordered ? 'ol' : 'ul'} data-line={block.line}>
+    {#each block.items as item}
+      <li
+        class:task={item.task}
+        class:task-done={item.task && item.checked}
+        data-line={item.line}
+        data-priority={item.meta?.priority || null}
+      >
+        {#if item.task}
+          <input
+            checked={item.checked}
+            disabled={readOnly}
+            type="checkbox"
+            on:change={() => toggleTask(item.line)}
+          />
+        {/if}
+        <!-- Column two is the sentence and everything that belongs to it:
+               tags read as words, and the done stamp and origin link trail the
+               text the way a footnote would. Long text wraps here beside the
+               checkbox rather than below it. -->
+        <div class="task-body">
+          <span>{@render inline(item.children)}</span>
+          {#if item.meta}
+            {#if item.meta.done}
+              <span class="task-stamp" title={`Done ${item.meta.done}`}>
+                {`Done ${formatDueLabel(item.meta.done)}`}
+              </span>
+            {/if}
+            {#if item.meta.origin}
+              <a
+                class="task-origin wiki-link"
+                href={wikiLinkHref(item.meta.origin)}
+                title={`Carried over from ${item.meta.origin}`}
+                on:click={(event) => openWikiLink(event, item.meta.origin)}
+              >
+                {`↩︎ ${item.meta.origin}`}
+              </a>
+            {/if}
+          {/if}
+        </div>
+        <!-- Column three is the rail. Priority and due date leave the
+               sentence so they line up down the page: with the pills trailing
+               the text they landed at a different x on every row, and orphaned
+               onto a line of their own whenever the text wrapped. The priority
+               slot is always emitted so the dates share one left edge. -->
+        {#if item.task}
+          <div class="task-meta">
+            <span
+              aria-hidden={item.meta?.priority ? null : 'true'}
+              aria-label={item.meta?.priority
+                ? `${item.meta.priority} priority`
+                : null}
+              class={`task-priority task-priority-${item.meta?.priority || 'none'}`}
+              title={item.meta?.priority
+                ? `${item.meta.priority} priority`
+                : null}
+            >
+              {priorityGlyph(item.meta?.priority)}
+            </span>
+            {#if item.meta?.due}
+              <span
+                class={`task-due task-due-${taskUrgency(item.meta.due, todayText)}`}
+                title={`Due ${item.meta.due}`}
+              >
+                {formatDueChip(item.meta.due, todayText)}
+              </span>
+            {/if}
+          </div>
+        {/if}
+        {#if item.list}
+          {#each item.list as sublist}
+            {@render markdownList(sublist, readOnly)}
+          {/each}
+        {/if}
+      </li>
+    {/each}
+  </svelte:element>
 {/snippet}
 
 {#snippet diffFile(file)}

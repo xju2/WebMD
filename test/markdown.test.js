@@ -432,3 +432,79 @@ Body.
     ]
   );
 });
+
+test('nests an indented list under the item above it', () => {
+  const blocks = renderMarkdown(`- alpha
+  - beta
+    - gamma
+- delta
+`);
+
+  assert.equal(blocks.length, 1);
+  assert.deepEqual(
+    blocks[0].items.map((item) => item.children[0].text),
+    ['alpha', 'delta']
+  );
+
+  const [beta] = blocks[0].items[0].list;
+  assert.equal(beta.type, 'list');
+  assert.equal(beta.items[0].children[0].text, 'beta');
+  assert.equal(beta.items[0].line, 1);
+  assert.equal(beta.items[0].list[0].items[0].children[0].text, 'gamma');
+});
+
+test('a sub-list may change marker without leaving its parent', () => {
+  const blocks = renderMarkdown(`- alpha
+  1. one
+  2. two
+- beta
+`);
+
+  assert.equal(blocks.length, 1);
+  assert.equal(blocks[0].ordered, false);
+  assert.equal(blocks[0].items.length, 2);
+
+  const [numbers] = blocks[0].items[0].list;
+  assert.equal(numbers.ordered, true);
+  assert.deepEqual(
+    numbers.items.map((item) => item.children[0].text),
+    ['one', 'two']
+  );
+});
+
+test('a different marker at the same depth still starts a new list', () => {
+  const blocks = renderMarkdown(`- bullet
+1. number
+`);
+
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.ordered]),
+    [
+      ['list', false],
+      ['list', true]
+    ]
+  );
+});
+
+test('numbers sub-tasks in source order and keeps their lines', () => {
+  const counter = { value: 0 };
+  const blocks = renderMarkdown(
+    `- [ ] parent
+  - [x] child
+- [ ] sibling
+`,
+    counter
+  );
+
+  assert.equal(counter.value, 3);
+  assert.deepEqual(
+    [
+      blocks[0].items[0].taskIndex,
+      blocks[0].items[0].list[0].items[0].taskIndex,
+      blocks[0].items[1].taskIndex
+    ],
+    [0, 1, 2]
+  );
+  assert.equal(blocks[0].items[0].list[0].items[0].line, 1);
+  assert.equal(blocks[0].items[0].list[0].items[0].checked, true);
+});

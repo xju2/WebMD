@@ -2521,6 +2521,19 @@ button {
   margin: 0.25em 0;
 }
 
+/* A sub-list belongs to the sentence above it, so it keeps that text's left
+   edge: inside a task row the three-column grid would otherwise drop it into
+   the checkbox column, and the default block margin would double-space it. */
+.preview-pane li > ul,
+.preview-pane li > ol {
+  margin: 0.25em 0 0;
+}
+
+.preview-pane li.task > ul,
+.preview-pane li.task > ol {
+  grid-column: 2 / -1;
+}
+
 /* Three columns: checkbox, the sentence, and a right-hand rail carrying the
    priority and the due date. The rail exists so those two line up down the page
    — trailing the text, they landed at a different x on every row and orphaned

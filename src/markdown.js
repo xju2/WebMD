@@ -102,19 +102,10 @@ export function renderMarkdown(
       continue;
     }
 
-    const list = parseListItem(line);
-    if (list) {
-      const ordered = list.ordered;
-      const items = [];
-      while (index < lines.length) {
-        const item = parseListItem(lines[index]);
-        if (!item || item.ordered !== ordered) break;
-        if (item.task) item.taskIndex = taskCounter.value++;
-        item.line = base + index;
-        items.push(item);
-        index += 1;
-      }
-      blocks.push({ type: 'list', ordered, items, line: start });
+    if (parseListItem(line)) {
+      const list = parseList(lines, index, base, taskCounter);
+      blocks.push({ ...list.block, line: start });
+      index = list.nextIndex;
       continue;
     }
 
@@ -306,20 +297,59 @@ function normalizeTableCells(cells, count) {
   return Array.from({ length: count }, (_, index) => cells[index] || '');
 }
 
+// A list runs until the indentation drops below where it started; a deeper item
+// opens a sub-list under the item above it. Same-depth items with a different
+// marker still start a new list, the way CommonMark reads them.
+function parseList(lines, index, base, taskCounter) {
+  const { indent, ordered } = parseListItem(lines[index]);
+  const items = [];
+
+  while (index < lines.length) {
+    const item = parseListItem(lines[index]);
+    if (!item || item.indent < indent) break;
+
+    if (item.indent > indent) {
+      const parent = items[items.length - 1];
+      if (!parent) break;
+      const nested = parseList(lines, index, base, taskCounter);
+      parent.list = [...(parent.list || []), nested.block];
+      index = nested.nextIndex;
+      continue;
+    }
+
+    if (item.ordered !== ordered) break;
+    if (item.task) item.taskIndex = taskCounter.value++;
+    item.line = base + index;
+    items.push(item);
+    index += 1;
+  }
+
+  return {
+    block: {
+      type: 'list',
+      ordered,
+      items,
+      line: items[0]?.line ?? base + index
+    },
+    nextIndex: index
+  };
+}
+
 function parseListItem(line) {
-  const match = line.match(/^\s*((?:[-*+])|(?:\d+[.)]))\s+(.+)$/);
+  const match = line.match(/^([ \t]*)((?:[-*+])|(?:\d+[.)]))\s+(.+)$/);
   if (!match) return null;
 
-  const task = match[2].match(/^\[([ xX])\]\s+(.+)$/);
+  const task = match[3].match(/^\[([ xX])\]\s+(.+)$/);
   // A task's due date, priority, and completion stamp render as pills rather
   // than as part of the sentence, so they come off the text before inlines.
   const fields = task ? parseTaskFields(task[2]) : null;
   return {
-    ordered: /^\d/.test(match[1]),
+    indent: match[1].replace(/\t/g, '    ').length,
+    ordered: /^\d/.test(match[2]),
     task: !!task,
     checked: task ? task[1].toLowerCase() === 'x' : false,
     meta: fields,
-    children: parseInline(fields ? fields.text : match[2])
+    children: parseInline(fields ? fields.text : match[3])
   };
 }
 
