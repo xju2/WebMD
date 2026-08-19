@@ -1,6 +1,7 @@
 <script>
   import { indentWithTab } from '@codemirror/commands';
   import { markdown } from '@codemirror/lang-markdown';
+  import { yamlFrontmatter } from '@codemirror/lang-yaml';
   import { EditorState, Transaction } from '@codemirror/state';
   import { EditorView, keymap } from '@codemirror/view';
   import katex from 'katex';
@@ -496,7 +497,10 @@
         // so a selected block shifts with Tab and back with Shift+Tab.
         // Escape then Tab still leaves the editor for keyboard-only use.
         keymap.of([indentWithTab]),
-        markdown(),
+        // Plain CommonMark reads the closing `---` as a setext heading, which
+        // renders the whole frontmatter block — and the note under it — as one
+        // bold heading. This parses the block as the YAML it is.
+        yamlFrontmatter({ content: markdown() }),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
           dragover: handleEditorDragOver,
