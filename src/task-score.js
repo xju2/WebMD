@@ -125,18 +125,36 @@ export function ageBand(ageDays) {
   return ageDays <= 90 ? 'cool' : 'cold';
 }
 
+// `who:julien` in the filter box asks a different question from the rest of it:
+// it means the assignee, not the word. A bare `who:` asks for everything that
+// is assigned to somebody, which is how you see what you have handed out.
+const ASSIGNEE_FILTER = /^who:(.*)$/;
+
 /**
  * The filter box: one string against everything a task can be found by — its
- * prose, its tags, the headings it sits under, and its path. Deliberately a
- * substring match rather than the section machinery's whole-term matching, so
- * typing "gnl" finds "GNLarge" halfway through a word.
+ * prose, its tags, the headings it sits under, its assignee, and its path.
+ * Deliberately a substring match rather than the section machinery's whole-term
+ * matching, so typing "gnl" finds "GNLarge" halfway through a word.
  */
 export function filterTasks(tasks = [], filter = '') {
+  const assignee = ASSIGNEE_FILTER.exec(String(filter).trim().toLowerCase());
+  if (assignee) {
+    const name = assignee[1].trim();
+    return tasks.filter(
+      (task) => task.assignee && (!name || task.assignee.includes(name))
+    );
+  }
+
   const needle = normalizeTerm(filter);
   if (!needle) return tasks;
 
   return tasks.filter((task) =>
-    [task.displayText || task.text || '', task.path || '', ...taskTerms(task)]
+    [
+      task.displayText || task.text || '',
+      task.path || '',
+      task.assignee || '',
+      ...taskTerms(task)
+    ]
       .join(' ')
       .toLowerCase()
       .includes(needle)

@@ -3426,6 +3426,14 @@
     taskFilter = taskFilter === next ? '' : next;
   }
 
+  // The same undo-itself behaviour for a `who:` chip, which narrows the view to
+  // one person's work.
+  function filterByAssignee(assignee, event) {
+    event.stopPropagation();
+    const next = `who:${assignee}`;
+    taskFilter = taskFilter === next ? '' : next;
+  }
+
   function readTaskSections() {
     try {
       return sanitizeSections(
@@ -3776,6 +3784,14 @@
         <div class="task-body">
           <span>{@render inline(item.children)}</span>
           {#if item.meta}
+            {#if item.meta.assignee}
+              <span
+                class="task-who"
+                title={`Assigned to ${item.meta.assignee}`}
+              >
+                {item.meta.assignee}
+              </span>
+            {/if}
             {#if item.meta.done}
               <span class="task-stamp" title={`Done ${item.meta.done}`}>
                 {`Done ${formatDueLabel(item.meta.done)}`}
@@ -4625,6 +4641,14 @@
               </dd>
             </div>
             <div>
+              <dt>Task assignee</dt>
+              <dd>
+                <code>- [ ] who:julien Update the metrics</code>
+                stays as written; filter the Tasks view with
+                <code>who:julien</code>
+              </dd>
+            </div>
+            <div>
               <dt>Table</dt>
               <dd><code>| Name | Notes |</code> <code>| --- | --- |</code></dd>
             </div>
@@ -4772,6 +4796,7 @@
                   type="search"
                   placeholder="Filter  /"
                   aria-label="Filter tasks"
+                  title={'Filter by text, #tag, or who:name — who: alone shows everything assigned'}
                   bind:this={taskFilterInput}
                   bind:value={taskFilter}
                   on:keydown={(event) => {
@@ -5009,6 +5034,22 @@
                                       {formatDueChip(card.task.due, todayText)}
                                     </span>
                                   {/if}
+                                  {#if card.task.assignee}
+                                    <button
+                                      class="task-who"
+                                      class:task-who-active={taskFilter ===
+                                        `who:${card.task.assignee}`}
+                                      title={`Filter by who:${card.task.assignee}`}
+                                      type="button"
+                                      on:click={(event) =>
+                                        filterByAssignee(
+                                          card.task.assignee,
+                                          event
+                                        )}
+                                    >
+                                      {card.task.assignee}
+                                    </button>
+                                  {/if}
                                   {#each card.task.tags || [] as tag}
                                     <button
                                       class="task-tag"
@@ -5090,6 +5131,19 @@
                                 {/if}
                               {/each}
                             </span>
+                            {#if task.assignee}
+                              <button
+                                class="task-who"
+                                class:task-who-active={taskFilter ===
+                                  `who:${task.assignee}`}
+                                title={`Filter by who:${task.assignee}`}
+                                type="button"
+                                on:click={(event) =>
+                                  filterByAssignee(task.assignee, event)}
+                              >
+                                {task.assignee}
+                              </button>
+                            {/if}
                             {#each task.tags || [] as tag}
                               <button
                                 class="task-tag"

@@ -188,6 +188,24 @@ test('filters on prose, tags, headings, and path alike', () => {
   assert.equal(filterTasks(tasks, '  ').length, 4);
 });
 
+test('who: filters on the assignee, and who: alone on having one', () => {
+  const tasks = [
+    task({ text: 'Update the metrics', assignee: 'julien' }),
+    task({ text: 'Ask Julien about the metrics' }),
+    task({ text: 'Write the summary', assignee: 'sam' })
+  ];
+  assert.deepEqual(
+    filterTasks(tasks, 'who:julien').map((entry) => entry.text),
+    ['Update the metrics']
+  );
+  assert.deepEqual(
+    filterTasks(tasks, 'who:').map((entry) => entry.text),
+    ['Update the metrics', 'Write the summary']
+  );
+  // Plain text still finds the assignee, and the task that merely says the name.
+  assert.equal(filterTasks(tasks, 'julien').length, 2);
+});
+
 test('every lane is returned, empty ones included, in a fixed order', () => {
   const result = board([]);
   assert.deepEqual(

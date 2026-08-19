@@ -1671,6 +1671,40 @@ button {
   color: #33538a;
 }
 
+/* An assignee is a different kind of fact from a tag — it names a person, not a
+   category — so it gets its own quiet colour rather than another grey chip to
+   read past. */
+.task-who {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: #eaf1ec;
+  color: #46695a;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 1px 7px;
+  cursor: pointer;
+}
+
+.task-who:hover {
+  background: #dbe7de;
+  color: #35564a;
+}
+
+.task-who-active {
+  background: #cfe3d6;
+  color: #2b4d3f;
+}
+
+/* In the preview it is a label, not a control: nothing to click, so nothing
+   that invites a click. */
+.preview-pane .task-who {
+  cursor: default;
+  font-size: 0.78em;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
 .task-row-done .task-row-text {
   color: #8a94a6;
   text-decoration: line-through;

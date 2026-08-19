@@ -30,8 +30,46 @@ test('splits task metadata off the task text', () => {
     due: '2026-08-20',
     done: '2026-08-14',
     priority: 'high',
-    origin: ''
+    origin: '',
+    assignee: ''
   });
+});
+
+test('reads who: as the assignee and takes it out of the text', () => {
+  const fields = parseTaskFields(
+    'who:Julien will update the scaling metrics 📅 2026-08-20'
+  );
+  assert.equal(fields.assignee, 'julien');
+  assert.equal(fields.due, '2026-08-20');
+  assert.equal(fields.text, 'will update the scaling metrics');
+});
+
+test('only a who: that opens a word, with a name, is an assignee', () => {
+  assert.equal(parseTaskFields('Ask who: about it').assignee, '');
+  assert.equal(parseTaskFields('See docs/who:-notes').assignee, '');
+  assert.equal(parseTaskFields('Ping who:mary-anne').assignee, 'mary-anne');
+});
+
+test('keeps a second who: in the text rather than overwriting the first', () => {
+  const fields = parseTaskFields('Review who:julien and who:sam');
+  assert.equal(fields.assignee, 'julien');
+  assert.equal(fields.text, 'Review and who:sam');
+});
+
+test('round-trips an assignee alongside the emoji fields', () => {
+  const line = 'Update the metrics who:julien 📅 2026-08-20 ⏫';
+  const fields = parseTaskFields(line);
+  assert.equal(
+    formatTaskFields(fields.text, fields),
+    'Update the metrics who:julien ⏫ 📅 2026-08-20'
+  );
+});
+
+test('expanding date shorthand keeps the assignee on the line', () => {
+  assert.equal(
+    expandTaskShorthand('- [ ] who:julien Ship it due:tomorrow', '2026-08-19'),
+    '- [ ] Ship it who:julien 📅 2026-08-20'
+  );
 });
 
 test('leaves unrecognised and malformed fields in the text', () => {

@@ -6,6 +6,10 @@ import { parseFrontmatter } from './frontmatter.js';
 //   - [ ] Submit the abstract 📅 2026-08-20 ⏫
 //   - [x] Draft outline ➕ 2026-08-01 📅 2026-08-10 ✅ 2026-08-14
 //
+// `who:julien` is WebMD's own addition too, naming who a task is assigned to.
+// It has no Obsidian emoji, so it stays written as plain text on the line and
+// is read back out of it, which keeps the note readable in any Markdown tool.
+//
 // `↩ [[origin]]` is WebMD's own addition, recording the note a task came from.
 // Nothing writes it any more — daily notes no longer copy yesterday's backlog
 // forward — but notes written before that still carry it, so it is still parsed
@@ -32,6 +36,11 @@ const PRIORITY_RANK = {
 const DATE_FIELD_PATTERN = new RegExp(`([➕📅✅])\\s*(${DATE})`, 'gu');
 const PRIORITY_PATTERN = /[🔺⏫🔼🔽⏬]/gu;
 const ORIGIN_PATTERN = /↩\s*\[\[([^\]\n]+)\]\]/u;
+// `who:name`, where a name is a word a person would actually write — letters,
+// digits, and the joiners in `mary-anne` or `j.smith`. It has to open a word,
+// so `somewho:x` is left alone, and the name has to start with a letter or
+// digit, so a bare `who:` is not an assignment to nobody.
+const ASSIGNEE_PATTERN = /(^|\s)who:([\p{L}\p{N}][\p{L}\p{N}._-]*)/giu;
 const ORIGIN_TAIL = /(\s*↩\s*\[\[[^\]\n]+\]\])\s*$/u;
 const DONE_PATTERN = new RegExp(`✅\\s*${DATE}`, 'u');
 const DONE_TAIL = new RegExp(`\\s*✅\\s*${DATE}`, 'u');
@@ -85,7 +94,14 @@ const WEEKDAYS = [
  * left in `text` rather than silently dropped.
  */
 export function parseTaskFields(text = '') {
-  const fields = { created: '', due: '', done: '', priority: '', origin: '' };
+  const fields = {
+    created: '',
+    due: '',
+    done: '',
+    priority: '',
+    origin: '',
+    assignee: ''
+  };
   let rest = String(text);
 
   rest = rest.replace(DATE_FIELD_PATTERN, (match, mark, date) => {
@@ -110,6 +126,15 @@ export function parseTaskFields(text = '') {
     return lead;
   });
 
+  // Lowercased like a tag, so `who:Julien` and `who:julien` are one person as
+  // far as filtering is concerned. A second `who:` is left in the text rather
+  // than silently overwriting the first.
+  rest = rest.replace(ASSIGNEE_PATTERN, (match, lead, name) => {
+    if (fields.assignee) return match;
+    fields.assignee = name.toLowerCase();
+    return lead;
+  });
+
   rest = rest.replace(ORIGIN_PATTERN, (match, target) => {
     fields.origin = target.trim();
     return ' ';
@@ -125,6 +150,7 @@ export function formatTaskFields(text = '', fields = {}) {
   );
   return [
     String(text).trim(),
+    fields.assignee && `who:${fields.assignee}`,
     priority,
     fields.created && `➕ ${fields.created}`,
     fields.due && `📅 ${fields.due}`,
