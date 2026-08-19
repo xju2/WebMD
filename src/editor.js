@@ -1,10 +1,16 @@
-const ARXIV_URL =
-  /^(?:https?:\/\/)?(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(v\d+)?(?:\.pdf)?\/?$/i;
+const ARXIV_ID = /(\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(v\d+)?/.source;
+const ARXIV_URL = new RegExp(
+  `^(?:https?://)?(?:www\\.)?arxiv\\.org/(?:abs|pdf|html)/${ARXIV_ID}(?:\\.pdf)?/?$`,
+  'i'
+);
+/** The identifier on its own, as arXiv prints it: `arXiv:2511.15684`. */
+const ARXIV_REF = new RegExp(`^arxiv:\\s*${ARXIV_ID}$`, 'i');
 
 export function arxivPasteId(text, { beforeCursor = '' } = {}) {
   if (/[(<]$/.test(beforeCursor)) return null;
 
-  const match = ARXIV_URL.exec(text.trim());
+  const trimmed = text.trim();
+  const match = ARXIV_URL.exec(trimmed) || ARXIV_REF.exec(trimmed);
   if (!match) return null;
 
   return `${match[1]}${match[2] || ''}`;

@@ -90,6 +90,10 @@ test('reports the identifier a pasted arXiv link carries', () => {
   assert.equal(arxivPasteId('https://arxiv.org/abs/hep-th/9901001'), 'hep-th/9901001');
   assert.equal(arxivPasteId('arxiv.org/pdf/2511.15684'), '2511.15684');
   assert.equal(arxivPasteId('www.arxiv.org/abs/2608.00146'), '2608.00146');
+  assert.equal(arxivPasteId('arXiv:2511.15684'), '2511.15684');
+  assert.equal(arxivPasteId('arxiv: 2608.00146v2'), '2608.00146v2');
+  assert.equal(arxivPasteId('arXiv:hep-th/9901001'), 'hep-th/9901001');
+  assert.equal(arxivPasteId('arXiv 2511.15684'), null);
   assert.equal(arxivPasteId('https://example.com/abs/2608.00146'), null);
   assert.equal(
     arxivPasteId('https://arxiv.org/pdf/2608.00146', { beforeCursor: '[p](' }),
