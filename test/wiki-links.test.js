@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resolveWikiLinkPath } from '../src/wiki-links.js';
+import { parseWikiLinkValue, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 test('resolves simple wiki links beside the current note', () => {
   const files = [
@@ -136,4 +136,25 @@ test('resolves date links beside the link without a daily note folder', () => {
 
 test('rejects traversal wiki links', () => {
   assert.equal(resolveWikiLinkPath('../secret', '/notes/today.md', []), '');
+});
+
+test('labels a path link with just the note name', () => {
+  assert.deepEqual(parseWikiLinkValue('/raw/projects/atlas-software/athena-setup'), {
+    target: '/raw/projects/atlas-software/athena-setup',
+    text: 'athena-setup'
+  });
+});
+
+test('keeps a heading in the label of a path link', () => {
+  assert.deepEqual(parseWikiLinkValue('projects/athena-setup#Build'), {
+    target: 'projects/athena-setup#Build',
+    text: 'athena-setup#Build'
+  });
+});
+
+test('keeps an explicit alias over the note name', () => {
+  assert.deepEqual(parseWikiLinkValue('/raw/notes/q2c|the plan'), {
+    target: '/raw/notes/q2c',
+    text: 'the plan'
+  });
 });

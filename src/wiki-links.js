@@ -5,9 +5,20 @@ const MEDIA_PATTERN = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
 export function parseWikiLinkValue(value = '') {
   const pipeIndex = value.indexOf('|');
   const target = (pipeIndex === -1 ? value : value.slice(0, pipeIndex)).trim();
-  const text = (pipeIndex === -1 ? target : value.slice(pipeIndex + 1)).trim();
+  const text = (pipeIndex === -1 ? '' : value.slice(pipeIndex + 1)).trim();
 
-  return { target, text: text || target };
+  return { target, text: text || wikiLinkLabel(target) };
+}
+
+// A link without an alias reads better as just the note's name: the folders it
+// lives in are how the link resolves, not what the sentence is about. Any
+// `#heading` the target carries stays, since that is part of the destination.
+export function wikiLinkLabel(target = '') {
+  const trimmed = String(target).trim();
+  const slashIndex = trimmed.lastIndexOf('/');
+  const name = slashIndex === -1 ? trimmed : trimmed.slice(slashIndex + 1);
+
+  return name || trimmed;
 }
 
 export function isMediaWikiTarget(target) {
