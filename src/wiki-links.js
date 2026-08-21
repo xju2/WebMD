@@ -21,6 +21,42 @@ export function wikiLinkLabel(target = '') {
   return name || trimmed;
 }
 
+// `[[note#Section]]` points at a place inside a note, so the note and the
+// heading are two different halves of the target.
+export function splitWikiTarget(target = '') {
+  const value = String(target ?? '');
+  const hashIndex = value.indexOf('#');
+  if (hashIndex === -1) return { path: value.trim(), heading: '' };
+
+  return {
+    path: value.slice(0, hashIndex).trim(),
+    heading: value.slice(hashIndex + 1).trim()
+  };
+}
+
+/**
+ * Where a wiki link goes, as the `path` of the note, the `heading` inside it,
+ * and whether that note `exists` in the workspace.
+ *
+ * An unresolved target still returns the path it would take, since that is the
+ * note the link means; `exists` is what tells a reader the link is dead before
+ * they click it and land on a note that is not there.
+ */
+export function resolveWikiLink(
+  target,
+  currentPath = '',
+  files = [],
+  options = {}
+) {
+  const path = resolveWikiLinkPath(target, currentPath, files, options);
+
+  return {
+    path,
+    heading: splitWikiTarget(target).heading,
+    exists: Boolean(path) && workspacePaths(files).includes(path)
+  };
+}
+
 export function isMediaWikiTarget(target) {
   return (
     typeof target === 'string' &&
@@ -42,9 +78,9 @@ export function resolveWikiLinkPath(
   const kindPattern = MEDIA_PATTERN.test(fileTarget)
     ? MEDIA_PATTERN
     : MARKDOWN_PATTERN;
-  const candidatePaths = files
-    .map((file) => (typeof file === 'string' ? file : file?.path))
-    .filter((path) => typeof path === 'string' && kindPattern.test(path));
+  const candidatePaths = workspacePaths(files).filter((path) =>
+    kindPattern.test(path)
+  );
 
   const dailyNotePath = toDailyNotePath(fileTarget, dailyNoteFolder);
   if (dailyNotePath && candidatePaths.includes(dailyNotePath)) {
@@ -75,6 +111,12 @@ export function resolveWikiLinkPath(
   }
 
   return dailyNotePath || siblingPath;
+}
+
+function workspacePaths(files) {
+  return (Array.isArray(files) ? files : [])
+    .map((file) => (typeof file === 'string' ? file : file?.path))
+    .filter((path) => typeof path === 'string');
 }
 
 function toDailyNotePath(fileTarget, folder) {

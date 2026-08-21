@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseWikiLinkValue, resolveWikiLinkPath } from '../src/wiki-links.js';
+import {
+  parseWikiLinkValue,
+  resolveWikiLink,
+  resolveWikiLinkPath,
+  splitWikiTarget
+} from '../src/wiki-links.js';
 
 test('resolves simple wiki links beside the current note', () => {
   const files = [
@@ -139,10 +144,13 @@ test('rejects traversal wiki links', () => {
 });
 
 test('labels a path link with just the note name', () => {
-  assert.deepEqual(parseWikiLinkValue('/raw/projects/atlas-software/athena-setup'), {
-    target: '/raw/projects/atlas-software/athena-setup',
-    text: 'athena-setup'
-  });
+  assert.deepEqual(
+    parseWikiLinkValue('/raw/projects/atlas-software/athena-setup'),
+    {
+      target: '/raw/projects/atlas-software/athena-setup',
+      text: 'athena-setup'
+    }
+  );
 });
 
 test('keeps a heading in the label of a path link', () => {
@@ -156,5 +164,32 @@ test('keeps an explicit alias over the note name', () => {
   assert.deepEqual(parseWikiLinkValue('/raw/notes/q2c|the plan'), {
     target: '/raw/notes/q2c',
     text: 'the plan'
+  });
+});
+
+test('reports whether a linked note exists, and the heading inside it', () => {
+  const files = ['/wiki/triton.md', '/wiki/hybrid-search.md'];
+
+  assert.deepEqual(resolveWikiLink('triton#Setup', '/wiki/notes.md', files), {
+    path: '/wiki/triton.md',
+    heading: 'Setup',
+    exists: true
+  });
+
+  assert.deepEqual(resolveWikiLink('typo', '/wiki/notes.md', files), {
+    path: '/wiki/typo.md',
+    heading: '',
+    exists: false
+  });
+});
+
+test('splits a target into its note and heading', () => {
+  assert.deepEqual(splitWikiTarget(' wiki/triton # Setup '), {
+    path: 'wiki/triton',
+    heading: 'Setup'
+  });
+  assert.deepEqual(splitWikiTarget('triton'), {
+    path: 'triton',
+    heading: ''
   });
 });

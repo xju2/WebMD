@@ -2777,6 +2777,71 @@ button {
   text-decoration-style: dotted;
 }
 
+/* A link to a note that is not there. Wavy and warm rather than red: usually a
+   typo worth fixing, not an error that stops the reading. */
+.preview-pane a.wiki-link-missing {
+  color: #9a4a12;
+  text-decoration-style: wavy;
+  text-decoration-color: #d08b45;
+}
+
+.backlinks {
+  margin: 2.4em 0 0;
+  padding-top: 0.9em;
+  border-top: 1px solid #dfe6ee;
+}
+
+.backlinks-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #4f5d70;
+  font: inherit;
+  font-size: 0.85em;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.backlinks-list,
+.backlinks-mentions {
+  margin: 0.6em 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.backlinks-note + .backlinks-note {
+  margin-top: 0.7em;
+}
+
+.backlinks-mentions {
+  margin: 0.2em 0 0;
+  padding-left: 14px;
+  border-left: 2px solid #e3e8ef;
+}
+
+.backlinks-mention {
+  display: block;
+  width: 100%;
+  padding: 0.15em 0;
+  border: 0;
+  background: none;
+  color: #4f5d70;
+  font: inherit;
+  font-size: 0.9em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.backlinks-mention:hover {
+  color: #174b82;
+}
+
+.backlinks-status {
+  margin-top: 2em;
+  color: #6b7686;
+  font-size: 0.85em;
+}
+
 .preview-pane .embedded-image {
   display: block;
   max-width: min(100%, 960px);

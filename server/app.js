@@ -77,6 +77,13 @@ export async function createApp({
   );
 
   app.get(
+    '/api/workspace/backlinks',
+    asyncHandler(async (req, res) => {
+      res.json(await workspaces.get(req.query.root).backlinks(req.query.path));
+    })
+  );
+
+  app.get(
     '/api/workspace/tree',
     asyncHandler(async (req, res) => {
       res.json(await workspaces.get(req.query.root).readTree());

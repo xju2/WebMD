@@ -1,17 +1,10 @@
 import { parseFrontmatter } from './frontmatter.js';
+import { splitWikiTarget } from './wiki-links.js';
+import { normalizeHeading } from './note-headings.js';
 
 // `![[note#Section]]` previews one section rather than the whole note, so the
-// target splits the same way a wiki link's does.
-export function splitEmbedTarget(target = '') {
-  const value = String(target);
-  const hashIndex = value.indexOf('#');
-  if (hashIndex === -1) return { path: value.trim(), heading: '' };
-
-  return {
-    path: value.slice(0, hashIndex).trim(),
-    heading: value.slice(hashIndex + 1).trim()
-  };
-}
+// target splits exactly the way a wiki link's does.
+export const splitEmbedTarget = splitWikiTarget;
 
 /**
  * The note's body without its frontmatter, or just the named section of it.
@@ -46,8 +39,4 @@ export function sliceNoteSection(content = '', heading = '') {
   }
 
   return start === -1 ? '' : lines.slice(start).join('\n').trim();
-}
-
-function normalizeHeading(text = '') {
-  return String(text).trim().toLowerCase();
 }

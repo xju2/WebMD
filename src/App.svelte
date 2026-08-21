@@ -78,7 +78,19 @@
     sanitizeSections
   } from './task-sections.js';
   import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
-  import { resolveWikiLinkPath, wikiLinkLabel } from './wiki-links.js';
+  import {
+    isMediaWikiTarget,
+    resolveWikiLink,
+    resolveWikiLinkPath,
+    splitWikiTarget,
+    wikiLinkLabel
+  } from './wiki-links.js';
+  import { findHeadingLine } from './note-headings.js';
+  import {
+    headingCompletions,
+    noteCompletions,
+    wikiCompletionQuery
+  } from './wiki-complete.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const TASK_SECTIONS_KEY = 'webmd:task-sections';
@@ -208,6 +220,14 @@
   let inlineEditLoading = false;
   let inlineEditPreview = null;
   let inlineEditAbort = null;
+  let backlinks = null;
+  let backlinksStatus = '';
+  let backlinksOpen = true;
+  let backlinksRun = 0;
+  // Note bodies fetched to complete a `[[note#heading]]`. A note's headings
+  // move rarely and a stale row costs a keystroke, so one fetch per note per
+  // session is enough.
+  const completionNotes = new Map();
   let relatedLoading = false;
   let relatedStatus = '';
   let relatedPanel = null;
@@ -382,6 +402,9 @@
     workspaceRoots.find((root) => root.id === selectedRoot)?.name ||
     'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
+  // Which notes link here follows the open note, and nothing else, so reading
+  // one always shows its own mentions.
+  $: loadBacklinks(selectedRoot, selectedIsMarkdown ? selectedPath : '');
   $: selectedIsMedia = selectedPath && !selectedIsMarkdown;
   $: canNavigateBack = navigationBackStack.length > 0;
   $: canNavigateForward = navigationForwardStack.length > 0;
@@ -522,6 +545,10 @@
         // renders the whole frontmatter block — and the note under it — as one
         // bold heading. This parses the block as the YAML it is.
         yamlFrontmatter({ content: markdown() }),
+        // `[[` completes note names, and `#` after one completes that note's
+        // headings. Registered as language data so it joins the autocompletion
+        // basicSetup already runs rather than replacing it.
+        EditorState.languageData.of(() => [{ autocomplete: completeWikiLink }]),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
           dragover: handleEditorDragOver,
@@ -3054,20 +3081,195 @@
     });
   }
 
+  function wikiLink(target) {
+    return resolveWikiLink(target, selectedPath, workspaceFiles, {
+      dailyNoteFolder: activeDailyNoteFolder
+    });
+  }
+
   function wikiLinkHref(target) {
     const path = wikiLinkPath(target);
     return path ? `#${encodeURI(path)}` : '';
   }
 
+  /**
+   * A link whose note is not in the workspace. Marked in the preview rather
+   * than left to fail on click: a dead link is usually a typo, and seeing it
+   * while reading is what gets it fixed. Media embeds resolve against the
+   * upload folder and are left to the image renderer.
+   */
+  function wikiLinkMissing(target) {
+    if (isMediaWikiTarget(target)) return false;
+    return !wikiLink(target).exists;
+  }
+
+  function wikiLinkTitle(target) {
+    const { path, exists } = wikiLink(target);
+    return exists ? path : `No note named ${splitWikiTarget(target).path}`;
+  }
+
   async function openWikiLink(event, target) {
     event.preventDefault();
-    const path = wikiLinkPath(target);
+    const { path, heading, exists } = wikiLink(target);
     if (!path) {
       error = `Invalid wiki link: ${target}`;
       return;
     }
 
+    // Opening a note that is not there would show an empty page belonging to no
+    // file, so the missing note is offered instead of silently loaded.
+    if (!exists) {
+      if (!confirm(`No note named ${splitWikiTarget(target).path}. Create it?`))
+        return;
+      await createNoteAt(path);
+      return;
+    }
+
     await openFile(path);
+    if (heading) await revealHeading(heading);
+  }
+
+  /** Creates an empty note at `path` and opens it, the way a new note starts. */
+  async function createNoteAt(path) {
+    const root = selectedRoot;
+    const title = basename(path).replace(/\.(md|markdown)$/i, '');
+    const heading = `# ${title}\n\n`;
+    const body = isDateNamedPath(path)
+      ? heading
+      : stampNoteDates(heading, dailyNoteDate(new Date()));
+
+    try {
+      await requestJson('/api/workspace/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, path, content: body })
+      });
+      if (root !== selectedRoot) return;
+      await loadTree(root);
+      await openFile(path);
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  /**
+   * Puts the `#Section` half of a link on screen: the preview scrolls to the
+   * heading, and the editor drops the cursor on it, so the same link lands in
+   * the same place whichever pane is open.
+   */
+  async function revealHeading(heading) {
+    const line = findHeadingLine(content, heading);
+    if (line === null) {
+      error = `No section named ${heading} in this note.`;
+      return;
+    }
+
+    await tick();
+    if (viewMode === 'preview') {
+      revealPreviewLine(line);
+      return;
+    }
+
+    const docLine = editorView?.state.doc.line(line + 1);
+    if (!docLine) return;
+    editorView.dispatch({
+      selection: { anchor: docLine.from },
+      effects: EditorView.scrollIntoView(docLine.from, { y: 'center' })
+    });
+    editorView.focus();
+  }
+
+  /**
+   * Completions inside `[[ ]]`. Note names come from the workspace tree that
+   * is already in memory, so the list opens without a round trip; headings
+   * need the target note, which is fetched once and kept.
+   */
+  async function completeWikiLink(context) {
+    const line = context.state.doc.lineAt(context.pos);
+    const query = wikiCompletionQuery(
+      line.text.slice(0, context.pos - line.from)
+    );
+    if (!query) return null;
+
+    const from = context.pos - query.length;
+    if (query.kind === 'heading') {
+      const noteContent = await completionNoteContent(query.note);
+      if (noteContent === null) return null;
+
+      return {
+        from,
+        filter: false,
+        options: headingCompletions(query.query, noteContent).map(toCompletion)
+      };
+    }
+
+    return {
+      from,
+      // Ranked here against both the name and the folder, so a path fragment
+      // finds a note the label alone would not match.
+      filter: false,
+      options: noteCompletions(query.query, workspaceFiles, selectedPath).map(
+        toCompletion
+      )
+    };
+  }
+
+  function toCompletion(option) {
+    return {
+      label: option.label,
+      detail: option.detail,
+      apply: option.target
+    };
+  }
+
+  async function completionNoteContent(note) {
+    const path = wikiLinkPath(note);
+    if (!path) return null;
+    if (path === selectedPath) return content;
+
+    const key = rootPathKey(selectedRoot, path);
+    if (completionNotes.has(key)) return completionNotes.get(key);
+
+    let noteContent = null;
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(selectedRoot)}&path=${encodeURIComponent(path)}`
+      );
+      noteContent = file.content;
+    } catch {
+      noteContent = null;
+    }
+    completionNotes.set(key, noteContent);
+    return noteContent;
+  }
+
+  /**
+   * The notes linking to the open one. Fetched from the same cached corpus the
+   * graph is built from, so it costs no walk of the workspace.
+   */
+  async function loadBacklinks(root, path) {
+    const run = ++backlinksRun;
+    backlinks = null;
+    backlinksStatus = '';
+    if (!path || fileKindForPath(path) !== 'markdown') return;
+
+    try {
+      const result = await requestJson(
+        `/api/workspace/backlinks?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+      );
+      if (run !== backlinksRun) return;
+      backlinks = result;
+    } catch {
+      if (run !== backlinksRun) return;
+      backlinksStatus = 'Could not load backlinks';
+    }
+  }
+
+  async function openBacklink(note, mention) {
+    await openFile(note.path);
+    if (viewMode !== 'preview') return;
+    await tick();
+    revealPreviewLine(mention.line);
   }
 
   async function openNavigationState(event) {
@@ -3752,8 +3954,9 @@
     {:else if segment.type === 'wikiLink'}
       <a
         class="wiki-link"
+        class:wiki-link-missing={wikiLinkMissing(segment.target)}
         href={wikiLinkHref(segment.target)}
-        title={wikiLinkHref(segment.target)}
+        title={wikiLinkTitle(segment.target)}
         on:click={(event) => openWikiLink(event, segment.target)}
         >{segment.text}</a
       >
@@ -3770,8 +3973,9 @@
              rather than as dead text. -->
         <a
           class="wiki-link"
+          class:wiki-link-missing={wikiLinkMissing(segment.target)}
           href={wikiLinkHref(segment.target)}
-          title={wikiLinkHref(segment.target)}
+          title={wikiLinkTitle(segment.target)}
           on:click={(event) => openWikiLink(event, segment.target)}
           >{segment.text}</a
         >
@@ -3919,8 +4123,9 @@
         <p data-line={block.line}>
           <a
             class="wiki-link"
+            class:wiki-link-missing={wikiLinkMissing(block.target)}
             href={wikiLinkHref(block.target)}
-            title={wikiLinkHref(block.target)}
+            title={wikiLinkTitle(block.target)}
             on:click={(event) => openWikiLink(event, block.target)}
             >{block.text}</a
           >
@@ -3931,8 +4136,9 @@
           <header class="note-embed-header">
             <a
               class="wiki-link"
+              class:wiki-link-missing={wikiLinkMissing(block.target)}
               href={wikiLinkHref(block.target)}
-              title={wikiLinkHref(block.target)}
+              title={wikiLinkTitle(block.target)}
               on:click={(event) => openWikiLink(event, block.target)}
               >{view?.label ?? block.text}</a
             >
@@ -5622,6 +5828,51 @@
               {@render markdownBlocks(renderedBlocks)}
             {:else}
               <p class="preview-empty">Empty file</p>
+            {/if}
+            {#if backlinksStatus}
+              <p class="backlinks-status">{backlinksStatus}</p>
+            {:else if backlinks && backlinks.total}
+              <section class="backlinks" aria-label="Linked mentions">
+                <button
+                  aria-expanded={backlinksOpen}
+                  class="backlinks-toggle"
+                  type="button"
+                  on:click={() => (backlinksOpen = !backlinksOpen)}
+                >
+                  {backlinksOpen ? '▾' : '▸'}
+                  {backlinks.total}
+                  {backlinks.total === 1 ? 'linked mention' : 'linked mentions'}
+                  in {backlinks.notes.length}
+                  {backlinks.notes.length === 1 ? 'note' : 'notes'}
+                </button>
+                {#if backlinksOpen}
+                  <ul class="backlinks-list">
+                    {#each backlinks.notes as note}
+                      <li class="backlinks-note">
+                        <a
+                          class="wiki-link"
+                          href={`#${encodeURI(note.path)}`}
+                          title={note.path}
+                          on:click|preventDefault={() => openFile(note.path)}
+                          >{note.name}</a
+                        >
+                        <ul class="backlinks-mentions">
+                          {#each note.mentions as mention}
+                            <li>
+                              <button
+                                class="backlinks-mention"
+                                type="button"
+                                on:click={() => openBacklink(note, mention)}
+                                >{mention.text}</button
+                              >
+                            </li>
+                          {/each}
+                        </ul>
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+              </section>
             {/if}
           </article>
           <section

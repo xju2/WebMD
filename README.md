@@ -163,6 +163,29 @@ Two notes are left alone: a daily note, which is addressed by its date rather
 than its heading, and a note whose new name is already taken — that rename is
 reported as an error instead of overwriting the other note.
 
+## Wiki links
+
+Typing `[[` in the editor offers the notes it could mean — matched on the name
+and on the folder, so `iaas` finds `/raw/projects/iaas/triton.md` too. Accepting
+one writes the shortest form that still resolves back to that note, so a
+completed link is never ambiguous and never dead.
+
+Typing `#` after the note name switches to that note's headings:
+`[[hybrid-search#Setup]]` opens the note and scrolls to its `## Setup`, in the
+preview or in the editor, whichever pane is open. `![[hybrid-search#Setup]]`
+embeds that one section as a card.
+
+A link to a note that is not in the workspace is drawn wavy and warm in the
+preview, since a dead link is usually a typo worth seeing while reading.
+Clicking one offers to create the note rather than opening an empty page that
+belongs to no file.
+
+The bottom of every note lists its **linked mentions** — the notes that link
+here, with the line each link sits on. Clicking a mention opens that note at
+that line. Mentions are resolved rather than string-matched, so `[[triton]]`,
+`[[iaas/triton]]` and `[[/raw/projects/iaas/triton|Triton]]` all count as the
+same link.
+
 ## Connect notes
 
 **Connect notes** in the AI panel links the open note to notes you already have.

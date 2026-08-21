@@ -63,6 +63,9 @@ export async function createWorkspace(workspaceRoot) {
   return {
     root,
     graph: async () => (graphIndex ??= buildWorkspaceGraph(await files())),
+    // Rides the same cached corpus as the graph, so asking every note what it
+    // links to costs no extra walk of the workspace.
+    backlinks: async (filePath) => collectBacklinks(await files(), filePath),
     markdownFiles: async () =>
       (await files()).filter((file) => file.fileKind === 'markdown'),
     overview: () => readOverview(root),
@@ -186,6 +189,54 @@ function buildWorkspaceGraph(corpus) {
       `${a.source}\0${a.target}`.localeCompare(`${b.source}\0${b.target}`)
     ),
     unresolved
+  };
+}
+
+/**
+ * Every mention of `filePath` in the workspace, grouped by the note it is
+ * written in: which note, and the line of the sentence around each link.
+ *
+ * Links are resolved rather than string-matched, so `[[triton]]`,
+ * `[[iaas/triton]]` and `[[/raw/projects/iaas/triton|Triton]]` all count as
+ * mentions of the same note. A note linking to itself is not a backlink.
+ */
+function collectBacklinks(corpus, filePath) {
+  const target = normalizeWorkspacePath(filePath);
+  assertMarkdown(target);
+
+  const files = corpus.filter((file) => file.fileKind === 'markdown');
+  const paths = files.map((file) => file.path);
+  const notes = [];
+
+  for (const file of files) {
+    if (file.path === target) continue;
+
+    const mentions = [];
+    const lines = file.content.split('\n');
+    for (let index = 0; index < lines.length; index += 1) {
+      for (const match of lines[index].matchAll(/!?\[\[([^\]\n]+)\]\]/g)) {
+        const wikiTarget = match[1].split('|')[0].trim();
+        if (resolveWikiLinkPath(wikiTarget, file.path, paths) !== target)
+          continue;
+
+        mentions.push({ line: index, text: lines[index].trim() });
+        break;
+      }
+    }
+
+    if (mentions.length) {
+      notes.push({
+        path: file.path,
+        name: path.basename(file.path).replace(/\.(md|markdown)$/i, ''),
+        mentions
+      });
+    }
+  }
+
+  return {
+    path: target,
+    notes: notes.sort((a, b) => a.path.localeCompare(b.path)),
+    total: notes.reduce((sum, note) => sum + note.mentions.length, 0)
   };
 }
 

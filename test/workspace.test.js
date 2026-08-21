@@ -182,6 +182,39 @@ test('indexes resolved wiki links and invalidates after saves', async () => {
   assert.equal((await workspace.graph()).edges.length, 1);
 });
 
+test('collects backlinks by resolving links, not by matching text', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'wiki'));
+  await fs.writeFile(
+    path.join(root, 'a.md'),
+    'see [[wiki/b|B]]\n\nand again [[b#Setup]]\n'
+  );
+  await fs.writeFile(
+    path.join(root, 'wiki', 'b.md'),
+    '[[b]] links to itself\n'
+  );
+  await fs.writeFile(path.join(root, 'wiki', 'c.md'), 'no links here\n');
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(await workspace.backlinks('/wiki/b.md'), {
+    path: '/wiki/b.md',
+    notes: [
+      {
+        path: '/a.md',
+        name: 'a',
+        mentions: [
+          { line: 0, text: 'see [[wiki/b|B]]' },
+          { line: 2, text: 'and again [[b#Setup]]' }
+        ]
+      }
+    ],
+    total: 2
+  });
+
+  await workspace.saveFile('/wiki/c.md', 'now it links to [[b]]\n');
+  assert.equal((await workspace.backlinks('/wiki/b.md')).notes.length, 2);
+});
+
 test('invalidates the search index after saving markdown', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'note.md'), 'old phrase\n');
