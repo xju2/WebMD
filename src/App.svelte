@@ -38,6 +38,7 @@
   import { renderMarkdown } from './markdown.js';
   import { sliceNoteSection, splitEmbedTarget } from './note-embed.js';
   import { renderMermaid } from './mermaid.js';
+  import { SNIPPETS, clockTime, snippetExpansion } from './snippets.js';
   import { noteDateEdits, stampNoteDates } from './note-dates.js';
   import {
     isDateNamedPath,
@@ -511,10 +512,12 @@
       doc,
       extensions: [
         basicSetup,
-        // Tab indents by the default two-space unit instead of moving focus,
-        // so a selected block shifts with Tab and back with Shift+Tab.
-        // Escape then Tab still leaves the editor for keyboard-only use.
-        keymap.of([indentWithTab]),
+        // Tab expands a `/name` snippet when the caret sits right after one,
+        // and otherwise indents by the default two-space unit instead of
+        // moving focus, so a selected block shifts with Tab and back with
+        // Shift+Tab. Escape then Tab still leaves the editor for keyboard-only
+        // use.
+        keymap.of([{ key: 'Tab', run: expandSnippetInEditor }, indentWithTab]),
         // Plain CommonMark reads the closing `---` as a setext heading, which
         // renders the whole frontmatter block — and the note under it — as one
         // bold heading. This parses the block as the YAML it is.
@@ -1861,6 +1864,33 @@
         ? state.doc.line(line.number - 1).text
         : '';
     return quotedBlockPaste(text, { beforeCursor, previousLine });
+  }
+
+  /**
+   * Replaces the `/name` before the caret with the snippet's text. Returns
+   * false when there is nothing to expand, which hands Tab back to indenting.
+   */
+  function expandSnippetInEditor(view) {
+    if (!selectedPath || !selectedIsMarkdown) return false;
+
+    const selection = view.state.selection.main;
+    if (!selection.empty) return false;
+
+    const line = view.state.doc.lineAt(selection.head);
+    const now = new Date();
+    const expansion = snippetExpansion(
+      line.text.slice(0, selection.head - line.from),
+      { date: dailyNoteDate(now), time: clockTime(now) }
+    );
+    if (!expansion) return false;
+
+    const from = selection.head - expansion.length;
+    view.dispatch({
+      changes: { from, to: selection.head, insert: expansion.insert },
+      selection: { anchor: from + expansion.caret },
+      scrollIntoView: true
+    });
+    return true;
   }
 
   function insertText(view, insert) {
@@ -4827,6 +4857,15 @@
                 <code>resource</code>
                 <code>tags</code>
                 <code>timestamp</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Snippets</dt>
+              <dd>
+                type one and press <code>Tab</code>
+                {#each SNIPPETS as snippet}
+                  <code title={snippet.hint}>/{snippet.name}</code>
+                {/each}
               </dd>
             </div>
             <div>

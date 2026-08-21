@@ -188,6 +188,27 @@ note it names, so it can never be a dead link. Notes the file already links to
 are never suggested again, and the model can only choose from the shortlist, so
 it cannot invent a path.
 
+## Snippets
+
+Typing `/date` and pressing Tab writes `2026-08-21` into the note. Tab anywhere
+else still indents, so an unknown `/word` is left alone.
+
+| Snippet | Inserts |
+| --- | --- |
+| `/date` `/time` `/now` | `2026-08-21`, `14:30`, or both |
+| `/lastupdate` | `Last update: 2026-08-21` |
+| `/today` `/tomorrow` `/yesterday` | a link to that day's note |
+| `/task` | `- [ ] ` |
+| `/log` | `- **14:30** `, for a running log |
+| `/meeting` | date heading, Present, Notes, Actions |
+| `/table` `/code` `/details` | a skeleton, caret in the first field |
+| `/note` `/idea` `/warning` | the matching callout |
+
+Snippets expand to plain Markdown, once, at the moment you type them: nothing
+is re-evaluated when the note is rendered, so `Last update: 2026-08-21` keeps
+saying the day it was written — in this editor, in Obsidian, and in
+`git show HEAD:note.md`. Add or edit snippets in `src/snippets.js`.
+
 ## Tasks
 
 Any `- [ ]` checkbox is a task. Ticking one in the preview writes today's date
