@@ -97,8 +97,8 @@
   const TASK_BOARD_KEY = 'webmd:task-board';
   const TASK_GROUPINGS = ['board', 'sections', 'urgency'];
   const SEARCH_HISTORY_LIMIT = 8;
-  const RECENT_FILES_KEY = 'webmd:recent-files';
-  const RECENT_FILES_LIMIT = 5;
+  const EDITED_FILES_KEY = 'webmd:edited-files';
+  const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
   // 'tasks' and 'calendar' are workspace-wide views rather than ways of looking
@@ -191,7 +191,7 @@
   let paletteResults = [];
   let paletteStatus = '';
   let paletteIndex = -1;
-  let recentPaths = [];
+  let editedPaths = [];
   let overview = {
     fileCount: 0,
     markdownCount: 0,
@@ -396,7 +396,9 @@
     markdownViewsHidden && sidebarVisible && sidebarView === 'chat';
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
-  $: continueFiles = recentPaths
+  // Resume follows the notes this browser has changed, not the ones it merely
+  // opened, so reading around the workspace never pushes the work out of reach.
+  $: continueFiles = editedPaths
     .map((path) => findFileNode(workspaceTree, path))
     .filter(Boolean);
   $: activeWorkspaceName =
@@ -1064,7 +1066,7 @@
         readDailyNoteFolder());
       dailyNoteTemplatePath = readDailyNoteTemplatePath();
       await loadSettings();
-      recentPaths = readRecentFiles(selectedRoot);
+      editedPaths = readEditedFiles(selectedRoot);
       loadAiPresets(selectedRoot);
       await loadTree(selectedRoot);
       reconcileDailyNoteFolder();
@@ -1156,7 +1158,7 @@
     stopCollaboration();
 
     selectedRoot = root;
-    recentPaths = readRecentFiles(root);
+    editedPaths = readEditedFiles(root);
     tree = [];
     selectedPath = '';
     selectedFileKind = 'markdown';
@@ -1214,7 +1216,6 @@
 
     if (fileKind !== 'markdown') {
       showMediaFile(path);
-      rememberRecentFile(path);
       status = '[Read-only]';
       rememberNavigationEntry(previousEntry, fileNavigationEntry(path), {
         historyMode,
@@ -1238,7 +1239,6 @@
       showFile(root, path, nextContent, file.content, file.version, {
         collaborate: !buffered
       });
-      rememberRecentFile(path);
       status = buffered ? '[Offline - Retrying]' : '[Saved]';
       rememberNavigationEntry(previousEntry, fileNavigationEntry(path), {
         historyMode,
@@ -1292,7 +1292,6 @@
       );
       if (root !== selectedRoot || selectedPath !== path) return;
       showFile(root, path, file.content, file.content, file.version);
-      rememberRecentFile(path);
       status = '[Saved]';
       rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
       updateNavigationState(path);
@@ -1320,7 +1319,7 @@
         });
         if (root !== selectedRoot || selectedPath !== path) return;
         showFile(root, path, nextContent, nextContent, 0);
-        rememberRecentFile(path);
+        rememberEditedFile(path, root);
         status = '[Saved]';
         rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
         updateNavigationState(path);
@@ -1376,6 +1375,7 @@
       });
       if (root !== selectedRoot) return;
 
+      rememberEditedFile(path, root);
       await loadTree(root);
       await openFile(path);
     } catch (err) {
@@ -2090,7 +2090,7 @@
       if (root !== selectedRoot || path !== selectedPath) return;
 
       fileCache.delete(rootPathKey(root, path));
-      recentPaths = recentPaths.filter((item) => item !== path);
+      editedPaths = editedPaths.filter((item) => item !== path);
       searchResults = searchResults.filter((item) => item.path !== path);
       navigationBackStack = navigationBackStack.filter(
         (item) => item.path !== path && item.path !== fallbackPath
@@ -2101,8 +2101,8 @@
       tree = removePathFromTree(tree, path);
       try {
         localStorage.setItem(
-          recentFilesStorageKey(root),
-          JSON.stringify(recentPaths)
+          editedFilesStorageKey(root),
+          JSON.stringify(editedPaths)
         );
       } catch {
         // Ignore storage failures; the visible list is already updated.
@@ -2368,6 +2368,7 @@
         fileCache.set(rootPathKey(root, path), nextContent);
         status = '[Saved]';
       }
+      rememberEditedFile(path, root);
       await syncFileNameToTitle(root, path, nextContent);
       await loadTree(root);
     } catch (err) {
@@ -2424,6 +2425,7 @@
         lastSaved = content;
         fileCache.set(rootPathKey(root, path), content);
         status = '[Saved]';
+        rememberEditedFile(path, root);
         await syncFileNameToTitle(root, path, content);
         await loadTree(root);
       }
@@ -2497,8 +2499,8 @@
       item.path === from ? { ...item, path: to } : item
     );
     if (referencePath === from) referencePath = to;
-    recentPaths = recentPaths.map((item) => (item === from ? to : item));
-    persistRecentFiles(root);
+    editedPaths = editedPaths.map((item) => (item === from ? to : item));
+    persistEditedFiles(root);
     if (root !== selectedRoot || selectedPath !== from) return;
 
     selectedPath = to;
@@ -2865,42 +2867,47 @@
     }
   }
 
-  function rememberRecentFile(path) {
-    recentPaths = [path, ...recentPaths.filter((item) => item !== path)].slice(
+  /**
+   * Records a note the user has just changed, so Resume offers the work in
+   * progress rather than everything that was merely opened and read.
+   */
+  function rememberEditedFile(path, root = selectedRoot) {
+    if (root !== selectedRoot) return;
+    editedPaths = [path, ...editedPaths.filter((item) => item !== path)].slice(
       0,
-      RECENT_FILES_LIMIT
+      EDITED_FILES_LIMIT
     );
-    persistRecentFiles(selectedRoot);
+    persistEditedFiles(root);
   }
 
-  function persistRecentFiles(root) {
+  function persistEditedFiles(root) {
     try {
       localStorage.setItem(
-        recentFilesStorageKey(root),
-        JSON.stringify(recentPaths)
+        editedFilesStorageKey(root),
+        JSON.stringify(editedPaths)
       );
     } catch {
-      // Ignore storage failures; recent files still work this session.
+      // Ignore storage failures; edited files still work this session.
     }
   }
 
-  function readRecentFiles(root) {
+  function readEditedFiles(root) {
     try {
       const value = JSON.parse(
-        localStorage.getItem(recentFilesStorageKey(root)) || '[]'
+        localStorage.getItem(editedFilesStorageKey(root)) || '[]'
       );
       return Array.isArray(value)
         ? value
             .filter((item) => typeof item === 'string')
-            .slice(0, RECENT_FILES_LIMIT)
+            .slice(0, EDITED_FILES_LIMIT)
         : [];
     } catch {
       return [];
     }
   }
 
-  function recentFilesStorageKey(root) {
-    return `${RECENT_FILES_KEY}:${root}`;
+  function editedFilesStorageKey(root) {
+    return `${EDITED_FILES_KEY}:${root}`;
   }
 
   function readWorkspaceViewMode(root) {
@@ -3149,6 +3156,7 @@
         body: JSON.stringify({ root, path, content: body })
       });
       if (root !== selectedRoot) return;
+      rememberEditedFile(path, root);
       await loadTree(root);
       await openFile(path);
     } catch (err) {
@@ -3686,8 +3694,8 @@
     paletteIndex = -1;
   }
 
-  // An empty query lists the recent files, so the palette always opens onto
-  // something to pick rather than an empty box.
+  // An empty query lists the recently edited files, so the palette always
+  // opens onto something to pick rather than an empty box.
   function queuePaletteSearch(query, root) {
     clearTimeout(paletteTimer);
     const run = ++paletteRun;
@@ -5191,7 +5199,7 @@
                   </div>
                 {:else}
                   <p class="home-empty">
-                    Open a note and it will stay within reach here.
+                    Edit a note and it will stay within reach here.
                   </p>
                 {/if}
               </article>
