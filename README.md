@@ -216,16 +216,16 @@ it cannot invent a path.
 Typing `/date` and pressing Tab writes `2026-08-21` into the note. Tab anywhere
 else still indents, so an unknown `/word` is left alone.
 
-| Snippet | Inserts |
-| --- | --- |
-| `/date` `/time` `/now` | `2026-08-21`, `14:30`, or both |
-| `/lastupdate` | `Last update: 2026-08-21` |
-| `/today` `/tomorrow` `/yesterday` | a link to that day's note |
-| `/task` | `- [ ] ` |
-| `/log` | `- **14:30** `, for a running log |
-| `/meeting` | date heading, Present, Notes, Actions |
-| `/table` `/code` `/details` | a skeleton, caret in the first field |
-| `/note` `/idea` `/warning` | the matching callout |
+| Snippet                           | Inserts                               |
+| --------------------------------- | ------------------------------------- |
+| `/date` `/time` `/now`            | `2026-08-21`, `14:30`, or both        |
+| `/lastupdate`                     | `Last update: 2026-08-21`             |
+| `/today` `/tomorrow` `/yesterday` | a link to that day's note             |
+| `/task`                           | `- [ ] `                              |
+| `/log`                            | `- **14:30** `, for a running log     |
+| `/meeting`                        | date heading, Present, Notes, Actions |
+| `/table` `/code` `/details`       | a skeleton, caret in the first field  |
+| `/note` `/idea` `/warning`        | the matching callout                  |
 
 Snippets expand to plain Markdown, once, at the moment you type them: nothing
 is re-evaluated when the note is rendered, so `Last update: 2026-08-21` keeps
@@ -374,7 +374,7 @@ theme, written into the note as a single line so a `>
 {{quote}}` template stays one blockquote. Three things keep it from repeating
 itself:
 
-* The theme rotates with the date, so consecutive days cannot land on the same
+- The theme rotates with the date, so consecutive days cannot land on the same
   subject, and the same day always asks for the same one. Set your own rotation
   with `QUOTE_THEMES` in the environment or `~/.webmd.conf`:
 
@@ -385,9 +385,10 @@ itself:
   Any comma-separated list works — `stoicism,music,physics` rotates over three
   days, a single theme asks for that one every day. Unset, it rotates over
   life, programming, and finance.
-* Every quote already used is stored in `.webmd/quotes.json` and sent back to
+
+- Every quote already used is stored in `.webmd/quotes.json` and sent back to
   the model as an exclusion list, along with the authors of the last twenty.
-* A reply that repeats one anyway is caught and asked again once.
+- A reply that repeats one anyway is caught and asked again once.
 
 Today's quote is written to that history, so reopening or recreating today's
 note reuses it instead of spending another model call. If no model is reachable
