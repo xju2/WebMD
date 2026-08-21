@@ -202,7 +202,8 @@
   let overviewStatus = 'Loading workspace...';
   let dailyQuote = '';
   let dailyQuoteKey = '';
-  let graphData = { nodes: [], edges: [], unresolved: 0 };
+  let graphData = { nodes: [], edges: [], unresolved: 0, broken: [] };
+  let brokenLinksOpen = false;
   let graphView = { nodes: [], edges: [] };
   let graphScope = 'wiki';
   let graphStatus = '';
@@ -1159,7 +1160,7 @@
     content = '';
     lastSaved = '';
     viewMode = readWorkspaceViewMode(root);
-    graphData = { nodes: [], edges: [], unresolved: 0 };
+    graphData = { nodes: [], edges: [], unresolved: 0, broken: [] };
     graphView = { nodes: [], edges: [] };
     status = '[Saved]';
     error = '';
@@ -3164,14 +3165,24 @@
       return;
     }
 
+    await revealSourceLine(line);
+  }
+
+  /**
+   * Puts a source line on screen in whichever pane is open: the preview scrolls
+   * to it and marks it, the editor drops the cursor on it ready to type.
+   */
+  async function revealSourceLine(line) {
     await tick();
     if (viewMode === 'preview') {
       revealPreviewLine(line);
       return;
     }
 
-    const docLine = editorView?.state.doc.line(line + 1);
-    if (!docLine) return;
+    const doc = editorView?.state.doc;
+    if (!doc) return;
+
+    const docLine = doc.line(Math.min(line + 1, doc.lines));
     editorView.dispatch({
       selection: { anchor: docLine.from },
       effects: EditorView.scrollIntoView(docLine.from, { y: 'center' })
@@ -3267,9 +3278,21 @@
 
   async function openBacklink(note, mention) {
     await openFile(note.path);
-    if (viewMode !== 'preview') return;
-    await tick();
-    revealPreviewLine(mention.line);
+    await revealSourceLine(mention.line);
+  }
+
+  /**
+   * Opens a dead link where it is written. The graph counts the mentions it
+   * cannot draw; this is how they get fixed — the note opens in the editor
+   * with the cursor already on the line the link sits on. The mode is not
+   * remembered, so it does not quietly replace however notes are usually read.
+   */
+  async function openBrokenLink(link) {
+    await openFile(link.path);
+    if (selectedPath !== link.path) return;
+
+    setViewMode('edit', { remember: false });
+    await revealSourceLine(link.line);
   }
 
   async function openNavigationState(event) {
@@ -5797,8 +5820,42 @@
               {/if}
             </div>
             {#if graphData.unresolved}
-              <footer>
-                {graphData.unresolved} unresolved wiki-link mentions are not drawn.
+              <footer class="graph-broken">
+                <button
+                  aria-expanded={brokenLinksOpen}
+                  class="graph-broken-toggle"
+                  type="button"
+                  on:click={() => (brokenLinksOpen = !brokenLinksOpen)}
+                >
+                  {brokenLinksOpen ? '▾' : '▸'}
+                  {graphData.unresolved} unresolved wiki-link {graphData.unresolved ===
+                  1
+                    ? 'mention is'
+                    : 'mentions are'} not drawn
+                </button>
+                {#if brokenLinksOpen}
+                  <ul class="graph-broken-list">
+                    {#each graphData.broken ?? [] as link}
+                      <li>
+                        <button
+                          type="button"
+                          on:click={() => openBrokenLink(link)}
+                          title={`${link.path}, line ${link.line + 1}`}
+                        >
+                          <span class="graph-broken-note">{link.name}</span>
+                          <span class="graph-broken-target"
+                            >[[{link.target}]]</span
+                          >
+                        </button>
+                      </li>
+                    {/each}
+                    {#if (graphData.broken?.length ?? 0) < graphData.unresolved}
+                      <li class="graph-broken-more">
+                        Showing the first {graphData.broken.length}.
+                      </li>
+                    {/if}
+                  </ul>
+                {/if}
               </footer>
             {/if}
           </section>

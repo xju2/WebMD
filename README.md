@@ -180,6 +180,12 @@ preview, since a dead link is usually a typo worth seeing while reading.
 Clicking one offers to create the note rather than opening an empty page that
 belongs to no file.
 
+The graph view counts the same dead links as the mentions it cannot draw, and
+its footer lists them: every unresolved link in the workspace, with the note it
+is written in. Clicking one opens that note in the editor with the cursor
+already on the line the link sits on. The list is capped at 200 entries and
+says so when there are more; the count above it is always the true total.
+
 The bottom of every note lists its **linked mentions** — the notes that link
 here, with the line each link sits on. Clicking a mention opens that note at
 that line. Mentions are resolved rather than string-matched, so `[[triton]]`,

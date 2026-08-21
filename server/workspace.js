@@ -11,6 +11,7 @@ import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_DOCUMENT_EVENTS = 1000;
+const MAX_BROKEN_LINKS = 200;
 const IMAGE_EXTENSIONS = new Set([
   '.avif',
   '.gif',
@@ -162,19 +163,32 @@ function buildWorkspaceGraph(corpus) {
   const paths = files.map((file) => file.path);
   const pathSet = new Set(paths);
   const edges = new Map();
+  const broken = [];
   let unresolved = 0;
 
   for (const file of files) {
-    for (const match of file.content.matchAll(/!?\[\[([^\]]+)\]\]/g)) {
-      const target = match[1].split('|')[0].trim();
-      const resolved = resolveWikiLinkPath(target, file.path, paths);
+    for (const mention of wikiLinkMentions(file.content)) {
+      const resolved = resolveWikiLinkPath(mention.target, file.path, paths);
       if (resolved && pathSet.has(resolved)) {
         edges.set(`${file.path}\0${resolved}`, {
           source: file.path,
           target: resolved
         });
-      } else if (!isMediaWikiTarget(target)) {
-        unresolved += 1;
+        continue;
+      }
+      if (isMediaWikiTarget(mention.target)) continue;
+
+      // The count is of every dead mention; the list is capped, since a
+      // workspace mid-reorganisation can hold thousands and the reader only
+      // fixes them a handful at a time.
+      unresolved += 1;
+      if (broken.length < MAX_BROKEN_LINKS) {
+        broken.push({
+          path: file.path,
+          name: noteName(file.path),
+          target: mention.target,
+          line: mention.line
+        });
       }
     }
   }
@@ -182,14 +196,37 @@ function buildWorkspaceGraph(corpus) {
   return {
     nodes: files.map((file) => ({
       path: file.path,
-      name: path.basename(file.path).replace(/\.(md|markdown)$/i, ''),
+      name: noteName(file.path),
       group: graphGroup(file.path)
     })),
     edges: [...edges.values()].sort((a, b) =>
       `${a.source}\0${a.target}`.localeCompare(`${b.source}\0${b.target}`)
     ),
-    unresolved
+    unresolved,
+    broken
   };
+}
+
+/**
+ * Every `[[link]]` in a note, as the target it names and the 0-based line it
+ * sits on — the numbering the rendered blocks and the editor both use, so a
+ * mention can be opened where it is written.
+ */
+function wikiLinkMentions(content) {
+  const mentions = [];
+  const lines = String(content).split('\n');
+
+  for (let index = 0; index < lines.length; index += 1) {
+    for (const match of lines[index].matchAll(/!?\[\[([^\]\n]+)\]\]/g)) {
+      mentions.push({ target: match[1].split('|')[0].trim(), line: index });
+    }
+  }
+
+  return mentions;
+}
+
+function noteName(filePath) {
+  return path.basename(filePath).replace(/\.(md|markdown)$/i, '');
 }
 
 /**
@@ -211,25 +248,20 @@ function collectBacklinks(corpus, filePath) {
   for (const file of files) {
     if (file.path === target) continue;
 
-    const mentions = [];
     const lines = file.content.split('\n');
-    for (let index = 0; index < lines.length; index += 1) {
-      for (const match of lines[index].matchAll(/!?\[\[([^\]\n]+)\]\]/g)) {
-        const wikiTarget = match[1].split('|')[0].trim();
-        if (resolveWikiLinkPath(wikiTarget, file.path, paths) !== target)
-          continue;
+    const mentions = [];
+    for (const mention of wikiLinkMentions(file.content)) {
+      if (resolveWikiLinkPath(mention.target, file.path, paths) !== target)
+        continue;
+      // One entry per line: two links to the same note in one sentence are one
+      // mention of it, not two.
+      if (mentions.at(-1)?.line === mention.line) continue;
 
-        mentions.push({ line: index, text: lines[index].trim() });
-        break;
-      }
+      mentions.push({ line: mention.line, text: lines[mention.line].trim() });
     }
 
     if (mentions.length) {
-      notes.push({
-        path: file.path,
-        name: path.basename(file.path).replace(/\.(md|markdown)$/i, ''),
-        mentions
-      });
+      notes.push({ path: file.path, name: noteName(file.path), mentions });
     }
   }
 

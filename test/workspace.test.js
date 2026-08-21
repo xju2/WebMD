@@ -175,11 +175,29 @@ test('indexes resolved wiki links and invalidates after saves', async () => {
       { source: '/a.md', target: '/wiki/b.md' },
       { source: '/wiki/b.md', target: '/a.md' }
     ],
-    unresolved: 1
+    unresolved: 1,
+    broken: [{ path: '/a.md', name: 'a', target: 'missing', line: 0 }]
   });
 
   await workspace.saveFile('/a.md', '# No links\n');
   assert.equal((await workspace.graph()).edges.length, 1);
+});
+
+test('lists the dead links behind the unresolved count', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(
+    path.join(root, 'a.md'),
+    '# A\n\nsee [[typo]]\n\n![[diagram.png]] and [[also-missing|Alias]]\n'
+  );
+  const workspace = await createWorkspace(root);
+  const { unresolved, broken } = await workspace.graph();
+
+  // The image is not a dead note link, so it is neither counted nor listed.
+  assert.equal(unresolved, 2);
+  assert.deepEqual(broken, [
+    { path: '/a.md', name: 'a', target: 'typo', line: 2 },
+    { path: '/a.md', name: 'a', target: 'also-missing', line: 4 }
+  ]);
 });
 
 test('collects backlinks by resolving links, not by matching text', async () => {
