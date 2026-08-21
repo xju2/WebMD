@@ -2465,6 +2465,7 @@ button {
 .preview-pane ol,
 .preview-pane blockquote,
 .preview-pane .callout,
+.preview-pane .note-embed,
 .preview-pane details,
 .preview-pane .code-block,
 .preview-pane pre,
@@ -2829,6 +2830,44 @@ button {
   border: 1px solid #dfe6ee;
   border-radius: 999px;
   background: #ffffff;
+}
+
+/* An embedded note is a quotation of another file, so it sits in its own frame
+   with the source named at the top: what you read inside is never editable
+   here, and the header is the way back to where it can be. */
+.preview-pane .note-embed {
+  margin: 0.9em 0;
+  border: 1px solid #dfe6ee;
+  border-left: 4px solid #9aa9bd;
+  border-radius: 6px;
+  background: #fafbfd;
+  overflow: hidden;
+}
+
+.preview-pane .note-embed-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #e8edf3;
+  background: #f1f4f9;
+  font-size: 0.85rem;
+}
+
+.preview-pane .note-embed-status {
+  color: #6b7686;
+}
+
+.preview-pane .note-embed-body {
+  padding: 2px 14px 10px;
+}
+
+.preview-pane .note-embed-body > :first-child {
+  margin-top: 0.5em;
+}
+
+.preview-pane .note-embed-body > :last-child {
+  margin-bottom: 0;
 }
 
 .preview-pane .callout {

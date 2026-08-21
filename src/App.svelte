@@ -36,6 +36,7 @@
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
+  import { sliceNoteSection, splitEmbedTarget } from './note-embed.js';
   import { renderMermaid } from './mermaid.js';
   import { noteDateEdits, stampNoteDates } from './note-dates.js';
   import {
@@ -76,7 +77,7 @@
     sanitizeSections
   } from './task-sections.js';
   import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
-  import { resolveWikiLinkPath } from './wiki-links.js';
+  import { resolveWikiLinkPath, wikiLinkLabel } from './wiki-links.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   const TASK_SECTIONS_KEY = 'webmd:task-sections';
@@ -297,6 +298,9 @@
   let updateSequence = 0;
   let copiedCode = null;
   let copiedCodeTimer;
+  // Read-only previews of embedded notes, keyed by root and path. Never joins
+  // the save queue or the collaboration stream.
+  let noteEmbedCache = {};
 
   $: workspaceTree = cleanTree(tree);
   $: workspaceFiles = collectFiles(workspaceTree);
@@ -395,6 +399,20 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: noteEmbedTargets = collectNoteEmbedTargets(renderedBlocks);
+  $: loadNoteEmbeds(
+    noteEmbedTargets,
+    selectedRoot,
+    selectedPath,
+    workspaceFiles
+  );
+  $: noteEmbedViews = buildNoteEmbedViews(
+    noteEmbedTargets,
+    noteEmbedCache,
+    selectedRoot,
+    selectedPath,
+    workspaceFiles
+  );
   // The filter box narrows the list once, before any of the three views slice
   // it, so switching between them keeps whatever you were looking for.
   $: dueFilteredTasks = taskDueFilter
@@ -1666,9 +1684,9 @@
 
   /** Scrolls a source line into view in the preview and marks it briefly. */
   function revealPreviewLine(line) {
-    const target = document.querySelector(
-      `.preview-pane [data-line="${line}"]`
-    );
+    const target = [
+      ...document.querySelectorAll(`.preview-pane [data-line="${line}"]`)
+    ].find((node) => !node.closest('.note-embed-body'));
     if (!target) return;
 
     target.scrollIntoView({ block: 'center' });
@@ -2900,6 +2918,106 @@
       : joinWorkspacePath(imageAssetFolder, filePath);
   }
 
+  function collectNoteEmbedTargets(blocks = []) {
+    const targets = [];
+
+    const walk = (list) => {
+      for (const block of list ?? []) {
+        if (block.type === 'noteEmbed') targets.push(block.target);
+        if (block.children) walk(block.children);
+      }
+    };
+    walk(blocks);
+
+    return [...new Set(targets)];
+  }
+
+  /**
+   * Fetches each embedded note once and keeps it. An embed is a preview, not a
+   * second copy of the note: it never edits, so a stale card costs nothing next
+   * to refetching every note on every keystroke.
+   */
+  async function loadNoteEmbeds(targets, root, currentPath, files) {
+    for (const target of targets) {
+      const path = embedNotePath(target, currentPath, files);
+      if (!path || path === currentPath) continue;
+
+      const key = rootPathKey(root, path);
+      if (noteEmbedCache[key]) continue;
+
+      noteEmbedCache = { ...noteEmbedCache, [key]: { status: 'loading' } };
+      let entry;
+      try {
+        const file = await requestJson(
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+        );
+        entry = { status: 'ready', content: file.content };
+      } catch (err) {
+        entry = {
+          status: 'error',
+          message: err.status === 404 ? 'Note not found.' : err.message
+        };
+      }
+      noteEmbedCache = { ...noteEmbedCache, [key]: entry };
+    }
+  }
+
+  function embedNotePath(target, currentPath, files) {
+    return resolveWikiLinkPath(
+      splitEmbedTarget(target).path,
+      currentPath,
+      files,
+      { dailyNoteFolder: activeDailyNoteFolder }
+    );
+  }
+
+  function buildNoteEmbedViews(targets, cache, root, currentPath, files) {
+    const views = {};
+
+    for (const target of targets ?? []) {
+      const { heading } = splitEmbedTarget(target);
+      const path = embedNotePath(target, currentPath, files);
+      const label = wikiLinkLabel(target);
+
+      if (!path) {
+        views[target] = { label, status: 'error', message: 'Invalid link.' };
+        continue;
+      }
+      if (path === currentPath) {
+        views[target] = {
+          label,
+          status: 'error',
+          message: 'This note embeds itself.'
+        };
+        continue;
+      }
+
+      const entry = cache[rootPathKey(root, path)];
+      if (!entry || entry.status !== 'ready') {
+        views[target] = { label, ...(entry ?? { status: 'loading' }) };
+        continue;
+      }
+
+      const section = sliceNoteSection(entry.content, heading);
+      if (heading && !section) {
+        views[target] = {
+          label,
+          status: 'error',
+          message: `No section named ${heading}.`
+        };
+        continue;
+      }
+
+      views[target] = {
+        label,
+        status: 'ready',
+        blocks: renderMarkdown(section)
+      };
+    }
+
+    return views;
+  }
+
   function wikiLinkPath(target) {
     return resolveWikiLinkPath(target, selectedPath, workspaceFiles, {
       dailyNoteFolder: activeDailyNoteFolder
@@ -3552,7 +3670,7 @@
     if (!editorView || !selectedIsMarkdown) return;
     if (
       event.target.closest(
-        'a, input, button, summary, .mermaid-block, .code-block-bar'
+        'a, input, button, summary, .mermaid-block, .code-block-bar, .note-embed-body'
       )
     )
       return;
@@ -3618,7 +3736,15 @@
           src={mediaUrl(imagePath)}
         />
       {:else}
-        {segment.text}
+        <!-- Nothing to embed mid-sentence, so it reads as the link it is
+             rather than as dead text. -->
+        <a
+          class="wiki-link"
+          href={wikiLinkHref(segment.target)}
+          title={wikiLinkHref(segment.target)}
+          on:click={(event) => openWikiLink(event, segment.target)}
+          >{segment.text}</a
+        >
       {/if}
     {:else if segment.type === 'tag'}
       <span class="tag-chip">#{segment.text}</span>
@@ -3636,7 +3762,7 @@
   {/each}
 {/snippet}
 
-{#snippet markdownBlocks(blocks, readOnly = false)}
+{#snippet markdownBlocks(blocks, readOnly = false, embedded = false)}
   {#each blocks as block}
     {#if block.type === 'frontmatter'}
       <dl class="frontmatter" data-line={block.line}>
@@ -3666,14 +3792,14 @@
         <p class="callout-title">{@render inline(block.title)}</p>
         {#if block.children.length}
           <div class="callout-body">
-            {@render markdownBlocks(block.children, readOnly)}
+            {@render markdownBlocks(block.children, readOnly, embedded)}
           </div>
         {/if}
       </aside>
     {:else if block.type === 'details'}
       <details data-line={block.line}>
         <summary>{@render inline(block.summary)}</summary>
-        {@render markdownBlocks(block.children, readOnly)}
+        {@render markdownBlocks(block.children, readOnly, embedded)}
       </details>
     {:else if block.type === 'rule'}
       <hr data-line={block.line} />
@@ -3756,6 +3882,47 @@
           </tbody>
         </table>
       </div>
+    {:else if block.type === 'noteEmbed'}
+      <!-- One level deep only: inside a card the same token is a link, so a
+           note that embeds a note that embeds it cannot spiral. -->
+      {#if embedded}
+        <p data-line={block.line}>
+          <a
+            class="wiki-link"
+            href={wikiLinkHref(block.target)}
+            title={wikiLinkHref(block.target)}
+            on:click={(event) => openWikiLink(event, block.target)}
+            >{block.text}</a
+          >
+        </p>
+      {:else}
+        {@const view = noteEmbedViews[block.target]}
+        <aside class="note-embed" data-line={block.line}>
+          <header class="note-embed-header">
+            <a
+              class="wiki-link"
+              href={wikiLinkHref(block.target)}
+              title={wikiLinkHref(block.target)}
+              on:click={(event) => openWikiLink(event, block.target)}
+              >{view?.label ?? block.text}</a
+            >
+            {#if view?.status === 'loading'}
+              <span class="note-embed-status">Loading...</span>
+            {/if}
+          </header>
+          <!-- Read-only, and marked so a double-click here never jumps the
+               editor: these lines number a different file. -->
+          <div class="note-embed-body">
+            {#if view?.status === 'error'}
+              <p class="preview-empty">{view.message}</p>
+            {:else if view?.blocks?.length}
+              {@render markdownBlocks(view.blocks, true, true)}
+            {:else if view?.status === 'ready'}
+              <p class="preview-empty">Nothing to preview</p>
+            {/if}
+          </div>
+        </aside>
+      {/if}
     {:else if block.type === 'list'}
       {@render markdownList(block, readOnly)}
     {/if}

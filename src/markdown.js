@@ -6,7 +6,7 @@ import {
   displayAssignee,
   parseTaskFields
 } from './tasks.js';
-import { parseWikiLinkValue } from './wiki-links.js';
+import { isMediaWikiTarget, parseWikiLinkValue } from './wiki-links.js';
 
 // ponytail: small safe preview renderer; swap for CommonMark when exact Markdown fidelity matters.
 // Blocks carry `line`, the 0-based source line they start on, so the preview can jump to the editor.
@@ -97,6 +97,13 @@ export function renderMarkdown(
         ...parseDetails(details, taskCounter, start + 1),
         line: start
       });
+      continue;
+    }
+
+    const embed = parseNoteEmbedLine(line);
+    if (embed) {
+      blocks.push({ ...embed, line: start });
+      index += 1;
       continue;
     }
 
@@ -407,6 +414,7 @@ function calloutTitle(variant) {
 function startsBlock(line, nextLine = '') {
   return (
     /^```/.test(line) ||
+    !!parseNoteEmbedLine(line) ||
     /^(#{1,6})\s+/.test(line) ||
     /^>\s?/.test(line) ||
     /^<details>\s*$/i.test(line.trim()) ||
@@ -414,6 +422,17 @@ function startsBlock(line, nextLine = '') {
     isTableStart(line, nextLine) ||
     !!parseListItem(line)
   );
+}
+
+// `![[note]]` alone on a line previews that note in place. Only a line of its
+// own becomes a card: mid-sentence the same token stays inline, and a media
+// target keeps embedding the picture rather than growing a card around it.
+function parseNoteEmbedLine(line = '') {
+  const match = line.trim().match(/^!\[\[([^\]\n]+)\]\]$/);
+  if (!match) return null;
+
+  const { target, text } = parseWikiLinkValue(match[1]);
+  return isMediaWikiTarget(target) ? null : { type: 'noteEmbed', target, text };
 }
 
 function safeHref(href) {
