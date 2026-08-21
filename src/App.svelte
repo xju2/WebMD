@@ -472,9 +472,12 @@
   // The views that take over the whole frame instead of showing the open file.
   $: workspacePaneOpen =
     viewMode === 'graph' || viewMode === 'calendar' || viewMode === 'tasks';
-  $: noteProgress = taskProgress(
-    selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : []
-  );
+  $: noteTasks =
+    selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : [];
+  $: noteProgress = taskProgress(noteTasks);
+  // What the progress bar jumps to: the first box still to be ticked, in the
+  // order the note writes them.
+  $: firstOpenTask = noteTasks.find((task) => !task.checked) ?? null;
   $: referenceBlocks =
     referenceOpen && referencePath && !referenceStatus
       ? renderMarkdown(referenceContent)
@@ -5868,9 +5871,18 @@
             on:dblclick={handlePreviewDoubleClick}
           >
             {#if noteProgress.total}
-              <div
-                aria-label={`${noteProgress.done} of ${noteProgress.total} tasks done`}
+              <!-- The bar doubles as the way into the work it is measuring:
+                   clicking it scrolls to the first box still to be ticked. With
+                   nothing left open there is nowhere to go, so it is inert. -->
+              <button
+                aria-label={firstOpenTask
+                  ? `${noteProgress.done} of ${noteProgress.total} tasks done. Go to the first unfinished task`
+                  : `${noteProgress.done} of ${noteProgress.total} tasks done`}
                 class="task-progress"
+                disabled={!firstOpenTask}
+                title={firstOpenTask ? 'Go to the first unfinished task' : ''}
+                type="button"
+                on:click={() => revealPreviewLine(firstOpenTask.line)}
               >
                 <div class="task-progress-track">
                   <div
@@ -5879,7 +5891,7 @@
                   ></div>
                 </div>
                 <span>{noteProgress.done}/{noteProgress.total} done</span>
-              </div>
+              </button>
             {/if}
             {#if renderedBlocks.length}
               {@render markdownBlocks(renderedBlocks)}

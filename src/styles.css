@@ -2808,11 +2808,30 @@ button {
 
 .task-progress {
   align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
   color: #667085;
+  cursor: pointer;
   display: flex;
+  font: inherit;
   font-size: 0.85rem;
   gap: 10px;
   margin-bottom: 18px;
+  padding: 4px 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.task-progress:hover:not(:disabled),
+.task-progress:focus-visible {
+  background: #eef1f5;
+  color: #3f4b5b;
+}
+
+/* Nothing left to jump to: the bar goes back to being a plain readout. */
+.task-progress:disabled {
+  cursor: default;
 }
 
 .task-progress-track {
