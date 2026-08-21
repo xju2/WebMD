@@ -99,7 +99,7 @@
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
-  const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   function renderMath(source) {
     return katex.renderToString(source, { throwOnError: false });

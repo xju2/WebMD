@@ -1,7 +1,7 @@
 export function calendarDays(month) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const start = new Date(first);
-  start.setDate(1 - ((first.getDay() + 6) % 7));
+  start.setDate(1 - first.getDay());
 
   return Array.from({ length: 42 }, (_, index) => {
     const date = new Date(start);
