@@ -127,20 +127,47 @@ export function parseQuote(reply) {
       const quote = cleanQuote(parsed?.quote);
       if (quote) return { text: quote, author: cleanAuthor(parsed?.author) };
     } catch {
-      // Fall through to the plain-text reading below.
+      // Smart quotes, a trailing comma, or an unescaped quotation mark inside
+      // the words are enough to break JSON.parse. Read the fields out by hand
+      // rather than letting the whole blob fall through as the quote itself.
+      const fields = readJsonFields(json);
+      if (fields) return fields;
     }
   }
 
   const line = text.split('\n').find((candidate) => candidate.trim()) ?? '';
   const split = line.match(/^(.*?)\s+[—–-]{1,2}\s*([^—–]+)$/);
   const quote = cleanQuote(split ? split[1] : line);
-  return quote ? { text: quote, author: cleanAuthor(split?.[2]) } : null;
+  if (!quote || looksLikeJson(quote)) return null;
+  return { text: quote, author: cleanAuthor(split?.[2]) };
 }
 
-/** One line, so a `> {{quote}}` template stays a single blockquote. */
-export function formatQuote(quote) {
+/** Last resort for a JSON-shaped reply that will not parse. */
+function readJsonFields(json) {
+  const match = json.match(
+    /["“”]quote["“”]\s*:\s*["“”]([\s\S]*?)["“”]\s*(?:,\s*["“”]author|\})/
+  );
+  const quote = cleanQuote(match?.[1]);
+  if (!quote || looksLikeJson(quote)) return null;
+  const author = json.match(/["“”]author["“”]\s*:\s*["“”]([\s\S]*?)["“”]\s*\}?/)?.[1];
+  return { text: quote, author: cleanAuthor(author) };
+}
+
+/** A quote is words, never the envelope we asked the model to put them in. */
+function looksLikeJson(value) {
+  return /^\{/.test(value) || /["“”]quote["“”]\s*:/.test(value);
+}
+
+/**
+ * Always `{quote} -- {author} ({date})`, on one line so a `> {{quote}}`
+ * template stays a single blockquote. The shape is fixed on purpose: a note
+ * written today should line up with one written a year ago, so a missing
+ * author becomes "Unknown" rather than a differently-shaped line.
+ */
+export function formatQuote(quote, date = quote?.date) {
   if (!quote?.text) return '';
-  return quote.author ? `“${quote.text}” — ${quote.author}` : `“${quote.text}”`;
+  const line = `${quote.text} -- ${quote.author || 'Unknown'}`;
+  return date ? `${line} (${date})` : line;
 }
 
 export function quoteKey(text) {

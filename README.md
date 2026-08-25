@@ -377,8 +377,10 @@ heading.
 
 `{{quote}}` asks the configured model for one attributable quote on the day's
 theme, written into the note as a single line so a `>
-{{quote}}` template stays one blockquote. Three things keep it from repeating
-itself:
+{{quote}}` template stays one blockquote. The line always reads
+`{quote} -- {author} ({date})` — an unattributed quote becomes `Unknown` rather
+than a differently-shaped line — so notes from different days line up. Three
+things keep it from repeating itself:
 
 - The theme rotates with the date, so consecutive days cannot land on the same
   subject, and the same day always asks for the same one. Set your own rotation

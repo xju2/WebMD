@@ -68,11 +68,33 @@ test('reads the JSON reply, and a plain attributed line too', () => {
   assert.equal(parseQuote('   '), null);
 });
 
-test('renders the quote on one line so a blockquote template survives', () => {
-  const line = formatQuote({ text: 'Price is what you pay.', author: 'Warren Buffett' });
-  assert.equal(line, '“Price is what you pay.” — Warren Buffett');
+test('reads the fields out of JSON that will not parse, rather than quoting the blob', () => {
+  assert.deepEqual(
+    parseQuote('{“quote”: “The universe is comprehensible.”, “author”: “Albert Einstein”}'),
+    { text: 'The universe is comprehensible.', author: 'Albert Einstein' }
+  );
+  assert.deepEqual(
+    parseQuote('{"quote": "Talk is cheap.", "author": "Linus Torvalds",}'),
+    { text: 'Talk is cheap.', author: 'Linus Torvalds' }
+  );
+  assert.equal(parseQuote('{"quote": }'), null);
+});
+
+test('renders one line in the fixed {quote} -- {author} ({date}) shape', () => {
+  const line = formatQuote(
+    { text: 'Price is what you pay.', author: 'Warren Buffett' },
+    '2026-08-25'
+  );
+  assert.equal(line, 'Price is what you pay. -- Warren Buffett (2026-08-25)');
   assert.equal(line.includes('\n'), false);
-  assert.equal(formatQuote({ text: 'No name here.' }), '“No name here.”');
+  assert.equal(
+    formatQuote({ text: 'No name here.', date: '2026-08-25' }),
+    'No name here. -- Unknown (2026-08-25)'
+  );
+  assert.equal(
+    formatQuote({ text: 'No date here.', author: 'Ada Lovelace' }),
+    'No date here. -- Ada Lovelace'
+  );
   assert.equal(formatQuote(null), '');
 });
 

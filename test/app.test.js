@@ -843,13 +843,14 @@ test('writes a quote of the day once, then serves it from history', async () => 
     }).then((response) => response.json());
 
   try {
-    assert.equal(
-      (await ask()).quote,
-      '\u201cTalk is cheap. Show me the code.\u201d \u2014 Linus Torvalds'
-    );
+    const expected =
+      'Talk is cheap. Show me the code. -- Linus Torvalds (2026-08-18)';
+    assert.equal((await ask()).quote, expected);
 
-    // The same day reuses the stored quote instead of paying for another call.
+    // The same day reuses the stored quote instead of paying for another call,
+    // and the cached line is formatted exactly like the fresh one.
     const again = await ask();
+    assert.equal(again.quote, expected);
     assert.equal(again.cached, true);
     assert.equal(calls, 1);
 
