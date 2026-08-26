@@ -4622,8 +4622,12 @@
                   <span aria-hidden="true" class="ai-typing"
                     ><span></span><span></span><span></span></span
                   >
-                {:else}
+                {:else if message.role === 'user'}
                   <p>{message.text}</p>
+                {:else}
+                  <div class="ai-markdown">
+                    {@render markdownBlocks(renderMarkdown(message.text), true)}
+                  </div>
                 {/if}
               </div>
             </article>
