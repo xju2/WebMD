@@ -124,6 +124,32 @@ test('searches visible paths and markdown content from an index', async () => {
   ]);
 });
 
+test('ranks markdown notes and recent edits above matching assets', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'assets'), { recursive: true });
+  await fs.writeFile(path.join(root, 'assets', 'chart-01.png'), 'png');
+  await fs.writeFile(path.join(root, 'chart-01-notes.md'), 'Fresh\n');
+  await fs.writeFile(path.join(root, 'chart-01-archive.md'), 'Older\n');
+  await fs.writeFile(
+    path.join(root, 'owner.md'),
+    'See ![[assets/chart-01.png]]\n'
+  );
+  const stale = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000);
+  await fs.utimes(path.join(root, 'chart-01-archive.md'), stale, stale);
+
+  const workspace = await createWorkspace(root);
+
+  assert.deepEqual(
+    (await workspace.searchFiles('chart-01')).map((result) => result.path),
+    [
+      '/chart-01-notes.md',
+      '/chart-01-archive.md',
+      '/owner.md',
+      '/assets/chart-01.png'
+    ]
+  );
+});
+
 test('queries OKF frontmatter fields', async () => {
   const root = await tempRoot();
   await fs.writeFile(

@@ -882,6 +882,12 @@ function parseVersion(value) {
   return version;
 }
 
+/**
+ * Matches are collected across the whole corpus and then ranked, rather than
+ * returned in walk order: a note that owns an asset should outrank the asset
+ * itself, and the note touched this morning should outrank the one filed a
+ * year ago.
+ */
 function buildSearchIndex(files) {
   return {
     search(query, { limit = 50 } = {}) {
@@ -891,10 +897,9 @@ function buildSearchIndex(files) {
 
       const results = [];
       const maxResults = Math.max(1, Math.min(Number(limit) || 50, 100));
+      const now = newestModified(files);
 
       for (const file of files) {
-        if (results.length >= maxResults) break;
-
         if (metadataQuery) {
           const match = findMetadataMatch(file, metadataQuery);
           if (match)
@@ -912,9 +917,82 @@ function buildSearchIndex(files) {
         if (match) results.push({ ...searchResult(file, 'content'), ...match });
       }
 
-      return results;
+      return rankSearchResults(results, files, needle, now).slice(
+        0,
+        maxResults
+      );
     }
   };
+}
+
+const SEARCH_MATCH_SCORES = {
+  nameExact: 120,
+  namePrefix: 90,
+  name: 70,
+  path: 40,
+  metadata: 70,
+  content: 30
+};
+// Big enough that a note mentioning `chart-01.png` outranks the image itself,
+// which is the jump the reader nearly always wants.
+const MARKDOWN_BONUS = 100;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const RECENCY_STEPS = [
+  [1, 25],
+  [7, 18],
+  [30, 12],
+  [90, 6]
+];
+
+function rankSearchResults(results, files, needle, now) {
+  const byPath = new Map(files.map((file) => [file.path, file]));
+
+  return results
+    .map((result) => {
+      const file = byPath.get(result.path);
+      return { result, file, score: searchScore(result, file, needle, now) };
+    })
+    .sort(
+      (left, right) =>
+        right.score - left.score ||
+        (right.file?.mtimeMs ?? 0) - (left.file?.mtimeMs ?? 0) ||
+        left.result.path.localeCompare(right.result.path)
+    )
+    .map((entry) => entry.result);
+}
+
+function searchScore(result, file, needle, now) {
+  const kindScore =
+    result.kind === 'path'
+      ? pathMatchScore(result.name, needle)
+      : SEARCH_MATCH_SCORES[result.kind] || 0;
+  const markdown = result.fileKind === 'markdown' ? MARKDOWN_BONUS : 0;
+
+  return kindScore + markdown + recencyScore(file?.mtimeMs, now);
+}
+
+function pathMatchScore(name, needle) {
+  const stem = name.toLowerCase().replace(/\.[^.]+$/, '');
+  if (stem === needle) return SEARCH_MATCH_SCORES.nameExact;
+  if (stem.startsWith(needle)) return SEARCH_MATCH_SCORES.namePrefix;
+  if (stem.includes(needle)) return SEARCH_MATCH_SCORES.name;
+  return SEARCH_MATCH_SCORES.path;
+}
+
+/**
+ * Recency is measured against the freshest file in the workspace, not the
+ * clock, so an archive nobody has touched for a year still ranks its own
+ * newest notes first.
+ */
+function recencyScore(mtimeMs, now) {
+  if (!mtimeMs || !now) return 0;
+  const age = (now - mtimeMs) / DAY_MS;
+  for (const [days, score] of RECENCY_STEPS) if (age <= days) return score;
+  return 0;
+}
+
+function newestModified(files) {
+  return files.reduce((newest, file) => Math.max(newest, file.mtimeMs || 0), 0);
 }
 
 async function readSearchFiles(root, dir, prefix = '') {
@@ -935,12 +1013,14 @@ async function readSearchFiles(root, dir, prefix = '') {
       const fileKind = fileKindForPath(entry.name);
       if (!fileKind) continue;
 
+      const stats = await statOrNull(real);
       const file = {
         name: entry.name,
         type: 'file',
         path: nodePath,
         fileKind,
-        lowerPath: nodePath.toLowerCase()
+        lowerPath: nodePath.toLowerCase(),
+        mtimeMs: stats ? stats.mtimeMs : 0
       };
 
       if (fileKind === 'markdown') {
@@ -1177,6 +1257,14 @@ function sortEntries(a, b) {
 async function realpathOrNull(filePath) {
   try {
     return await fs.realpath(filePath);
+  } catch {
+    return null;
+  }
+}
+
+async function statOrNull(filePath) {
+  try {
+    return await fs.stat(filePath);
   } catch {
     return null;
   }
