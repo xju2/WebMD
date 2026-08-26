@@ -4315,6 +4315,7 @@
   bind:this={appShell}
   class:markdown-hidden={markdownViewsCollapsed}
   class:sidebar-hidden={!sidebarVisible}
+  class:chat-open={sidebarVisible && sidebarView === 'chat'}
   class="app-shell"
 >
   <nav class="global-bar" aria-label="Global actions">
@@ -4649,8 +4650,10 @@
           {/if}
         </div>
         {#if presetGroups.length}
-          <div class="ai-preset">
-            <span class="ai-preset-label" id="ai-preset-heading">Prompts</span>
+          <details class="ai-preset">
+            <summary class="ai-preset-label" id="ai-preset-heading"
+              >Prompts</summary
+            >
             <div class="ai-preset-picker">
               <div
                 aria-labelledby="ai-preset-heading"
@@ -4692,7 +4695,7 @@
                 {/each}
               </div>
             </div>
-          </div>
+          </details>
         {/if}
         {#if aiPresetWarning}
           <p class="ai-preset-warning">{aiPresetWarning}</p>

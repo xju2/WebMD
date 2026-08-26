@@ -60,6 +60,11 @@ button {
   grid-template-columns: 68px minmax(0, 1fr);
 }
 
+/* Chat needs a readable measure; the file tree does not. */
+.app-shell.chat-open:not(.sidebar-hidden):not(.markdown-hidden) {
+  grid-template-columns: 68px minmax(340px, 30vw) minmax(0, 1fr);
+}
+
 /* The AI panel takes the freed column when the Markdown views are hidden. */
 .app-shell.markdown-hidden {
   grid-template-columns: 68px minmax(0, 1fr);
@@ -597,27 +602,39 @@ button {
   font-size: 0.8rem;
 }
 
-/* Own row inside the flex-wrapped composer, above the prompt textarea. */
+/* Own row inside the flex-wrapped composer, above the prompt textarea.
+   Collapsed by default so the composer keeps the vertical space. */
 .ai-preset {
-  display: grid;
-  gap: 4px;
   flex: 1 0 100%;
   padding: 2px 6px 6px 0;
+}
+
+.ai-preset[open] {
   border-bottom: 1px solid #edf1f6;
 }
 
 .ai-preset-label {
+  padding: 2px 0;
   color: #657286;
+  cursor: pointer;
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
+.ai-preset-label:hover {
+  color: #174b82;
+}
+
+.ai-preset[open] .ai-preset-label {
+  margin-bottom: 4px;
+}
+
 .ai-preset-picker {
   display: grid;
-  grid-template-columns: minmax(72px, 34%) 1fr;
-  max-height: 156px;
+  grid-template-columns: minmax(72px, 30%) 1fr;
+  max-height: 180px;
   border: 1px solid #cbd4df;
   border-radius: 8px;
   background: #ffffff;
