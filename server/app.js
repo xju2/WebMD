@@ -418,7 +418,7 @@ export async function createApp({
         workspace,
         appendQuoteHistory(history, { date: day, ...quote })
       );
-      res.json({ quote: formatQuote(quote, day), theme });
+      res.json({ quote: formatQuote(quote), theme });
     })
   );
 

@@ -33,6 +33,7 @@ const MAX_HISTORY = 120;
 const EXCLUDED_QUOTES = 60;
 const EXCLUDED_AUTHORS = 20;
 const MAX_QUOTE_CHARS = 240;
+const MAX_SAID_CHARS = 20;
 
 /**
  * The theme rotates with the calendar day rather than at random so that two
@@ -78,7 +79,8 @@ Rules:
 - Quote real words by a real, named person. Never invent a quotation or an attribution. If you are unsure the wording is right, choose a different quote you are sure of.
 - Avoid the exhausted canon: no "stay hungry, stay foolish", no "be the change", no fortune-cookie Confucius, no misattributed Einstein or Twain.
 - Keep it under ${MAX_QUOTE_CHARS} characters, on a single line, with no line breaks.
-- Return only JSON, with no prose and no code fences: {"quote": "<the words>", "author": "<name>"}
+- Say when the words were said or published, as a year ("1974"), or a fuller date if you are sure of one ("1974-05-08"). This is the date of the quote itself, never today's date. Leave it empty rather than guessing.
+- Return only JSON, with no prose and no code fences: {"quote": "<the words>", "author": "<name>", "said": "<when>"}
 - The quote field holds the words alone: no surrounding quotation marks, no attribution, no source title.`;
 
   const lines = [
@@ -125,7 +127,12 @@ export function parseQuote(reply) {
     try {
       const parsed = JSON.parse(json);
       const quote = cleanQuote(parsed?.quote);
-      if (quote) return { text: quote, author: cleanAuthor(parsed?.author) };
+      if (quote)
+        return {
+          text: quote,
+          author: cleanAuthor(parsed?.author),
+          said: cleanSaid(parsed?.said)
+        };
     } catch {
       // Smart quotes, a trailing comma, or an unescaped quotation mark inside
       // the words are enough to break JSON.parse. Read the fields out by hand
@@ -139,7 +146,14 @@ export function parseQuote(reply) {
   const split = line.match(/^(.*?)\s+[—–-]{1,2}\s*([^—–]+)$/);
   const quote = cleanQuote(split ? split[1] : line);
   if (!quote || looksLikeJson(quote)) return null;
-  return { text: quote, author: cleanAuthor(split?.[2]) };
+  // `words -- Author (1974)` carries the date in the tail, not in the name.
+  const tail = String(split?.[2] ?? '');
+  const dated = tail.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  return {
+    text: quote,
+    author: cleanAuthor(dated ? dated[1] : tail),
+    said: cleanSaid(dated?.[2])
+  };
 }
 
 /** Last resort for a JSON-shaped reply that will not parse. */
@@ -149,8 +163,9 @@ function readJsonFields(json) {
   );
   const quote = cleanQuote(match?.[1]);
   if (!quote || looksLikeJson(quote)) return null;
-  const author = json.match(/["“”]author["“”]\s*:\s*["“”]([\s\S]*?)["“”]\s*\}?/)?.[1];
-  return { text: quote, author: cleanAuthor(author) };
+  const author = json.match(/["“”]author["“”]\s*:\s*["“”]([\s\S]*?)["“”]\s*[,\}]?/)?.[1];
+  const said = json.match(/["“”]said["“”]\s*:\s*["“”]([\s\S]*?)["“”]\s*[,\}]?/)?.[1];
+  return { text: quote, author: cleanAuthor(author), said: cleanSaid(said) };
 }
 
 /** A quote is words, never the envelope we asked the model to put them in. */
@@ -163,11 +178,15 @@ function looksLikeJson(value) {
  * template stays a single blockquote. The shape is fixed on purpose: a note
  * written today should line up with one written a year ago, so a missing
  * author becomes "Unknown" rather than a differently-shaped line.
+ *
+ * The date is when the quote was said, not the day the note was written —
+ * knowing a line is from 1974 is what places it; repeating today's date on
+ * every note says nothing.
  */
-export function formatQuote(quote, date = quote?.date) {
+export function formatQuote(quote, said = quote?.said) {
   if (!quote?.text) return '';
   const line = `${quote.text} -- ${quote.author || 'Unknown'}`;
-  return date ? `${line} (${date})` : line;
+  return said ? `${line} (${said})` : line;
 }
 
 export function quoteKey(text) {
@@ -210,7 +229,8 @@ export async function readQuoteHistory(workspace) {
       .map((entry) => ({
         date: String(entry.date ?? ''),
         text: entry.text,
-        author: typeof entry.author === 'string' ? entry.author : ''
+        author: typeof entry.author === 'string' ? entry.author : '',
+        said: typeof entry.said === 'string' ? entry.said : ''
       }));
   } catch {
     // A corrupt history costs us de-duplication, not the quote itself.
@@ -233,6 +253,17 @@ function cleanQuote(value) {
     .replace(/^["“”'']+|["“”'']+$/g, '')
     .trim()
     .slice(0, MAX_QUOTE_CHARS);
+}
+
+/** When the words were said: a year, or a date, never prose about a source. */
+function cleanSaid(value) {
+  const said = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^[(\[]|[)\]]$/g, '')
+    .trim()
+    .slice(0, MAX_SAID_CHARS);
+  return /\d{3,4}/.test(said) ? said : '';
 }
 
 function cleanAuthor(value) {

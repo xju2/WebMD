@@ -822,7 +822,7 @@ test('writes a quote of the day once, then serves it from history', async () => 
                   `${JSON.stringify({
                     message: {
                       content:
-                        '{"quote": "Talk is cheap. Show me the code.", "author": "Linus Torvalds"}'
+                        '{"quote": "Talk is cheap. Show me the code.", "author": "Linus Torvalds", "said": "2000"}'
                     }
                   })}\n`
                 )
@@ -843,8 +843,8 @@ test('writes a quote of the day once, then serves it from history', async () => 
     }).then((response) => response.json());
 
   try {
-    const expected =
-      'Talk is cheap. Show me the code. -- Linus Torvalds (2026-08-18)';
+    // Dated by when Torvalds said it, not by the day of the note.
+    const expected = 'Talk is cheap. Show me the code. -- Linus Torvalds (2000)';
     assert.equal((await ask()).quote, expected);
 
     // The same day reuses the stored quote instead of paying for another call,
@@ -861,7 +861,8 @@ test('writes a quote of the day once, then serves it from history', async () => 
       {
         date: '2026-08-18',
         text: 'Talk is cheap. Show me the code.',
-        author: 'Linus Torvalds'
+        author: 'Linus Torvalds',
+        said: '2000'
       }
     ]);
   } finally {

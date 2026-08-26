@@ -54,42 +54,59 @@ test('sends every used quote back as an exclusion list', () => {
 
 test('reads the JSON reply, and a plain attributed line too', () => {
   assert.deepEqual(
-    parseQuote('{"quote": "Simplicity is prerequisite for reliability.", "author": "Edsger W. Dijkstra"}'),
-    { text: 'Simplicity is prerequisite for reliability.', author: 'Edsger W. Dijkstra' }
+    parseQuote(
+      '{"quote": "Simplicity is prerequisite for reliability.", "author": "Edsger W. Dijkstra", "said": "1970"}'
+    ),
+    {
+      text: 'Simplicity is prerequisite for reliability.',
+      author: 'Edsger W. Dijkstra',
+      said: '1970'
+    }
   );
   assert.deepEqual(
     parseQuote('```json\n{"quote": "\\"Compound interest is the eighth wonder.\\"", "author": "Anonymous."}\n```'),
-    { text: 'Compound interest is the eighth wonder.', author: 'Anonymous' }
+    { text: 'Compound interest is the eighth wonder.', author: 'Anonymous', said: '' }
   );
   assert.deepEqual(parseQuote('“Price is what you pay.” — Warren Buffett'), {
     text: 'Price is what you pay.',
-    author: 'Warren Buffett'
+    author: 'Warren Buffett',
+    said: ''
+  });
+  // The tail carries the date of the quote, so it must not end up in the name.
+  assert.deepEqual(parseQuote('“Price is what you pay.” — Warren Buffett (2008)'), {
+    text: 'Price is what you pay.',
+    author: 'Warren Buffett',
+    said: '2008'
   });
   assert.equal(parseQuote('   '), null);
 });
 
 test('reads the fields out of JSON that will not parse, rather than quoting the blob', () => {
   assert.deepEqual(
-    parseQuote('{“quote”: “The universe is comprehensible.”, “author”: “Albert Einstein”}'),
-    { text: 'The universe is comprehensible.', author: 'Albert Einstein' }
+    parseQuote(
+      '{“quote”: “The universe is comprehensible.”, “author”: “Albert Einstein”, “said”: “1936”}'
+    ),
+    { text: 'The universe is comprehensible.', author: 'Albert Einstein', said: '1936' }
   );
   assert.deepEqual(
     parseQuote('{"quote": "Talk is cheap.", "author": "Linus Torvalds",}'),
-    { text: 'Talk is cheap.', author: 'Linus Torvalds' }
+    { text: 'Talk is cheap.', author: 'Linus Torvalds', said: '' }
   );
   assert.equal(parseQuote('{"quote": }'), null);
 });
 
-test('renders one line in the fixed {quote} -- {author} ({date}) shape', () => {
-  const line = formatQuote(
-    { text: 'Price is what you pay.', author: 'Warren Buffett' },
-    '2026-08-25'
-  );
-  assert.equal(line, 'Price is what you pay. -- Warren Buffett (2026-08-25)');
+test('dates the line by when the quote was said, not by today', () => {
+  const line = formatQuote({
+    text: 'Price is what you pay.',
+    author: 'Warren Buffett',
+    said: '2008'
+  });
+  assert.equal(line, 'Price is what you pay. -- Warren Buffett (2008)');
   assert.equal(line.includes('\n'), false);
+  // The day the note was written is not the date the format asks for.
   assert.equal(
-    formatQuote({ text: 'No name here.', date: '2026-08-25' }),
-    'No name here. -- Unknown (2026-08-25)'
+    formatQuote({ text: 'No name here.', date: '2026-08-25', said: '1843' }),
+    'No name here. -- Unknown (1843)'
   );
   assert.equal(
     formatQuote({ text: 'No date here.', author: 'Ada Lovelace' }),
