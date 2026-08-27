@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
-import { readDailyBrief } from './daily-brief.js';
 import {
   appendQuoteHistory,
   buildQuoteMessages,
@@ -135,13 +134,6 @@ export async function createApp({
     '/api/workspace/diff',
     asyncHandler(async (req, res) => {
       res.json(await workspaces.get(req.query.root).diffFile(req.query.path));
-    })
-  );
-
-  app.get(
-    '/api/workspace/daily-brief',
-    asyncHandler(async (req, res) => {
-      res.json(await readDailyBrief(workspaces.get(req.query.root)));
     })
   );
 

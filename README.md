@@ -422,17 +422,6 @@ Notes written before this carry `↩ [[origin]]` links from the old carry-over
 behaviour. Nothing writes them any more, but they are still parsed and shown as
 backlinks, so those notes keep reading the way they did.
 
-## Daily brief integration
-
-WebMD displays today's Codex-generated daily brief from:
-
-```text
-raw/dailybrief/YYYY-MM-DD.md
-```
-
-For example, on 2026-07-17 it reads `raw/dailybrief/2026-07-17.md`.
-`raw/dailybrief/latest.md` is still supported as a fallback.
-
 ## Note dates
 
 Saving a note stamps its frontmatter with `creation-date` and
@@ -462,31 +451,6 @@ YAML frontmatter. Preview renders the Markdown body, and workspace search can
 filter any field with `field:value`, for example `type:Playbook`, `tags:oncall`,
 or `timestamp:2026-07`. Tag matching is exact; other fields support partial,
 case-insensitive matching.
-
-Recommended Markdown shape:
-
-```markdown
-# Daily Brief - 2026-07-16
-
-_Generated: 2026-07-16 07:30 America/Los_Angeles_
-
-## Focus
-
-- ...
-
-## Updates
-
-- ...
-
-## Follow-ups
-
-- [ ] ...
-
-## Sources
-
-- raw/dailynotes/2026-07-16.md
-- raw/projects/example.md
-```
 
 ## Scripts
 
