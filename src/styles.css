@@ -2981,6 +2981,15 @@ button {
   color: #4f5d70;
 }
 
+/* Paragraphs inside a quote keep the block's own spacing, not their own. */
+.preview-pane blockquote p:first-child {
+  margin-top: 0;
+}
+
+.preview-pane blockquote p:last-child {
+  margin-bottom: 0;
+}
+
 .preview-pane .frontmatter {
   display: grid;
   grid-template-columns: max-content 1fr;

@@ -380,7 +380,9 @@ function parseQuote(lines, taskCounter, start = 0) {
   const marker = lines[0]?.match(
     /^\[!(note|tldr|deadline|info|idea|warning|error|code|prompt)\]\s*(.*)$/i
   );
-  if (!marker) return { type: 'quote', children: parseInline(lines.join(' ')) };
+  // A bare `>` line is a blank line inside the blockquote: it ends one
+  // paragraph and starts the next, so the two must not run together.
+  if (!marker) return { type: 'quote', paragraphs: quoteParagraphs(lines, start) };
 
   const variant = marker[1].toLowerCase();
   const title = marker[2].trim() || calloutTitle(variant);
@@ -390,6 +392,25 @@ function parseQuote(lines, taskCounter, start = 0) {
     title: parseInline(title),
     children: renderMarkdown(lines.slice(1).join('\n'), taskCounter, start + 1)
   };
+}
+
+function quoteParagraphs(lines, start) {
+  const paragraphs = [];
+  let index = 0;
+  while (index < lines.length) {
+    if (!lines[index].trim()) {
+      index += 1;
+      continue;
+    }
+    const first = index;
+    const group = [];
+    while (index < lines.length && lines[index].trim()) {
+      group.push(lines[index]);
+      index += 1;
+    }
+    paragraphs.push({ children: parseInline(group.join(' ')), line: start + first });
+  }
+  return paragraphs;
 }
 
 function parseDetails(lines, taskCounter, start = 0) {

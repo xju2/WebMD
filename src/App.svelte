@@ -4053,7 +4053,9 @@
       <p data-line={block.line}>{@render inline(block.children)}</p>
     {:else if block.type === 'quote'}
       <blockquote data-line={block.line}>
-        {@render inline(block.children)}
+        {#each block.paragraphs as paragraph}
+          <p data-line={paragraph.line}>{@render inline(paragraph.children)}</p>
+        {/each}
       </blockquote>
     {:else if block.type === 'callout'}
       <aside class={`callout callout-${block.variant}`} data-line={block.line}>

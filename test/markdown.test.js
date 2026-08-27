@@ -256,6 +256,27 @@ test('renders pipe tables with alignment and inline cells', () => {
   assert.equal(blocks[1].rows[1][2][0].href, '/wiki/q2c');
 });
 
+test('a blank line inside a blockquote starts a new paragraph', () => {
+  const [block] = renderMarkdown(`> "First quote" -- Someone (1997)
+>
+> "Second quote"
+`);
+
+  assert.equal(block.type, 'quote');
+  assert.equal(block.paragraphs.length, 2);
+  assert.equal(block.paragraphs[0].children[0].text, '"First quote" -- Someone (1997)');
+  assert.equal(block.paragraphs[0].line, 0);
+  assert.equal(block.paragraphs[1].children[0].text, '"Second quote"');
+  assert.equal(block.paragraphs[1].line, 2);
+});
+
+test('wrapped lines inside a blockquote stay one paragraph', () => {
+  const [block] = renderMarkdown('> one\n> two\n');
+
+  assert.equal(block.paragraphs.length, 1);
+  assert.equal(block.paragraphs[0].children[0].text, 'one two');
+});
+
 test('renders supported callout blockquotes', () => {
   const blocks = renderMarkdown(`> [!note] My Note
 > Body with **detail**.
