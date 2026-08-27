@@ -186,7 +186,7 @@ function looksLikeJson(value) {
 export function formatQuote(quote, said = quote?.said) {
   if (!quote?.text) return '';
   const line = `${quote.text} -- ${quote.author || 'Unknown'}`;
-  return said ? `${line} (${said})` : line;
+  return said ? `"${line}" (${said})` : line;
 }
 
 export function quoteKey(text) {
