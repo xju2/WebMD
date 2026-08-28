@@ -54,6 +54,13 @@ export function renderMarkdown(
       continue;
     }
 
+    const math = parseMathBlock(lines, index);
+    if (math) {
+      blocks.push({ ...math.block, line: start });
+      index = math.nextIndex;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,6})\s+(.+)$/);
     if (heading) {
       blocks.push({
@@ -165,6 +172,35 @@ function parseCodeBlock({ lang, title }, text) {
   return files.length
     ? { type: 'diff', lang, text, files }
     : { type: 'code', lang, title, text };
+}
+
+// `$$` opens display math. On a line of its own it fences until a closing `$$`,
+// the way a code fence does — an unclosed one runs to the end of the note — and
+// `$$ x = y $$` on a single line is the same block written short.
+function parseMathBlock(lines, index) {
+  const open = lines[index].trim().match(/^\$\$(.*)$/);
+  if (!open) return null;
+
+  const rest = open[1].trim();
+  if (rest.endsWith('$$')) {
+    return {
+      block: { type: 'mathBlock', text: rest.slice(0, -2).trim() },
+      nextIndex: index + 1
+    };
+  }
+
+  const body = rest ? [rest] : [];
+  let cursor = index + 1;
+  while (cursor < lines.length && !/^\$\$\s*$/.test(lines[cursor].trim())) {
+    body.push(lines[cursor]);
+    cursor += 1;
+  }
+  if (cursor < lines.length) cursor += 1;
+
+  return {
+    block: { type: 'mathBlock', text: body.join('\n').trim() },
+    nextIndex: cursor
+  };
 }
 
 // A bare URL is matched before the `#tag` alternative can see it, so a fragment
@@ -382,7 +418,8 @@ function parseQuote(lines, taskCounter, start = 0) {
   );
   // A bare `>` line is a blank line inside the blockquote: it ends one
   // paragraph and starts the next, so the two must not run together.
-  if (!marker) return { type: 'quote', paragraphs: quoteParagraphs(lines, start) };
+  if (!marker)
+    return { type: 'quote', paragraphs: quoteParagraphs(lines, start) };
 
   const variant = marker[1].toLowerCase();
   const title = marker[2].trim() || calloutTitle(variant);
@@ -408,7 +445,10 @@ function quoteParagraphs(lines, start) {
       group.push(lines[index]);
       index += 1;
     }
-    paragraphs.push({ children: parseInline(group.join(' ')), line: start + first });
+    paragraphs.push({
+      children: parseInline(group.join(' ')),
+      line: start + first
+    });
   }
   return paragraphs;
 }
@@ -435,6 +475,7 @@ function calloutTitle(variant) {
 function startsBlock(line, nextLine = '') {
   return (
     /^```/.test(line) ||
+    /^\$\$/.test(line.trim()) ||
     !!parseNoteEmbedLine(line) ||
     /^(#{1,6})\s+/.test(line) ||
     /^>\s?/.test(line) ||

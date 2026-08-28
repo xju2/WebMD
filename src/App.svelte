@@ -114,8 +114,8 @@
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
   const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  function renderMath(source) {
-    return katex.renderToString(source, { throwOnError: false });
+  function renderMath(source, displayMode = false) {
+    return katex.renderToString(source, { throwOnError: false, displayMode });
   }
 
   const MERMAID_REDRAW_DELAY = 250;
@@ -4071,6 +4071,10 @@
         <summary>{@render inline(block.summary)}</summary>
         {@render markdownBlocks(block.children, readOnly, embedded)}
       </details>
+    {:else if block.type === 'mathBlock'}
+      <div class="math-block" data-line={block.line}>
+        {@html renderMath(block.text, true)}
+      </div>
     {:else if block.type === 'rule'}
       <hr data-line={block.line} />
     {:else if block.type === 'mermaid'}

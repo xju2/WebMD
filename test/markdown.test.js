@@ -264,7 +264,10 @@ test('a blank line inside a blockquote starts a new paragraph', () => {
 
   assert.equal(block.type, 'quote');
   assert.equal(block.paragraphs.length, 2);
-  assert.equal(block.paragraphs[0].children[0].text, '"First quote" -- Someone (1997)');
+  assert.equal(
+    block.paragraphs[0].children[0].text,
+    '"First quote" -- Someone (1997)'
+  );
   assert.equal(block.paragraphs[0].line, 0);
   assert.equal(block.paragraphs[1].children[0].text, '"Second quote"');
   assert.equal(block.paragraphs[1].line, 2);
@@ -563,4 +566,51 @@ test('numbers sub-tasks in source order and keeps their lines', () => {
   );
   assert.equal(blocks[0].items[0].list[0].items[0].line, 1);
   assert.equal(blocks[0].items[0].list[0].items[0].checked, true);
+});
+
+test('renders a fenced $$ block as display math', () => {
+  const blocks = renderMarkdown(
+    'Before\n\n$$\nQK^\\top \\quad\\text{and}\\quad V\n$$\n\nAfter'
+  );
+
+  assert.deepEqual(
+    blocks.map((block) => block.type),
+    ['paragraph', 'mathBlock', 'paragraph']
+  );
+  assert.equal(blocks[1].text, 'QK^\\top \\quad\\text{and}\\quad V');
+  assert.equal(blocks[1].line, 2);
+});
+
+test('keeps multi-line display math together', () => {
+  const [block] = renderMarkdown('$$\na = b\n\\\\\nc = d\n$$');
+
+  assert.equal(block.type, 'mathBlock');
+  assert.equal(block.text, 'a = b\n\\\\\nc = d');
+});
+
+test('renders single-line $$ math as its own block', () => {
+  const blocks = renderMarkdown('Text\n$$E = mc^2$$\nMore text');
+
+  assert.deepEqual(
+    blocks.map((block) => block.type),
+    ['paragraph', 'mathBlock', 'paragraph']
+  );
+  assert.equal(blocks[1].text, 'E = mc^2');
+});
+
+test('an unclosed $$ block runs to the end of the note', () => {
+  const [block] = renderMarkdown('$$\na = b\nc = d');
+
+  assert.equal(block.type, 'mathBlock');
+  assert.equal(block.text, 'a = b\nc = d');
+});
+
+test('leaves inline $ math to the inline parser', () => {
+  const [block] = renderMarkdown('The width is $C$ per site.');
+
+  assert.equal(block.type, 'paragraph');
+  assert.deepEqual(
+    block.children.map((segment) => segment.type),
+    ['text', 'math', 'text']
+  );
 });

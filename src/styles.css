@@ -2828,6 +2828,18 @@ button {
   line-height: inherit;
 }
 
+/* A long equation scrolls inside its own block rather than widening the note. */
+.math-block {
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0;
+}
+
+.math-block .katex-display {
+  margin: 0;
+}
+
 /* Below this the rail would squeeze the sentence into a column of two words, so
    it folds under the text instead. Alignment is worth less than a readable
    measure. */
