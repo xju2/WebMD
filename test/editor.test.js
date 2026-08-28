@@ -6,7 +6,9 @@ import {
   arxivPasteId,
   mathPasteText,
   quotedBlockPaste,
-  sourceColumnForWord
+  pastedFromCode,
+  sourceColumnForWord,
+  tidyPasteText
 } from '../src/editor.js';
 
 const ABS_LINK = '[arXiv:2608.00146](https://arxiv.org/abs/2608.00146)';
@@ -86,8 +88,14 @@ test('leaves an arXiv link bare inside markdown link or autolink syntax', () => 
 });
 
 test('reports the identifier a pasted arXiv link carries', () => {
-  assert.equal(arxivPasteId('https://arxiv.org/pdf/2608.00146v2'), '2608.00146v2');
-  assert.equal(arxivPasteId('https://arxiv.org/abs/hep-th/9901001'), 'hep-th/9901001');
+  assert.equal(
+    arxivPasteId('https://arxiv.org/pdf/2608.00146v2'),
+    '2608.00146v2'
+  );
+  assert.equal(
+    arxivPasteId('https://arxiv.org/abs/hep-th/9901001'),
+    'hep-th/9901001'
+  );
   assert.equal(arxivPasteId('arxiv.org/pdf/2511.15684'), '2511.15684');
   assert.equal(arxivPasteId('www.arxiv.org/abs/2608.00146'), '2608.00146');
   assert.equal(arxivPasteId('arXiv:2511.15684'), '2511.15684');
@@ -200,10 +208,13 @@ test('skips math conversion inside an open math span', () => {
 });
 
 test('locates a double-clicked word on its source line', () => {
-  assert.deepEqual(sourceColumnForWord('We measured the decay rate.', 'decay'), {
-    from: 16,
-    to: 21
-  });
+  assert.deepEqual(
+    sourceColumnForWord('We measured the decay rate.', 'decay'),
+    {
+      from: 16,
+      to: 21
+    }
+  );
 });
 
 test('locates the first occurrence of a repeated word', () => {
@@ -218,3 +229,91 @@ test('reports no column when the word is absent or empty', () => {
   assert.equal(sourceColumnForWord('# Heading', '  \n'), null);
   assert.equal(sourceColumnForWord(), null);
 });
+
+test('strips trailing spaces, CRLF, and runs of blank lines from a paste', () => {
+  const pasted = 'first line  \r\nsecond\ttab \r\n\r\n\r\n\r\nlast\r\n\r\n';
+  assert.equal(tidyPasteText(pasted), 'first line\nsecond\ttab\n\nlast');
+});
+
+test('turns non-breaking and typographic spaces into ordinary ones', () => {
+  assert.equal(tidyPasteText('one two three　four'), 'one two three four');
+});
+
+test('leaves already-clean text to the browser', () => {
+  assert.equal(tidyPasteText('one\ntwo'), null);
+  assert.equal(tidyPasteText(''), null);
+});
+
+test('drops the indentation a page wraps around copied prose', () => {
+  const pasted = '    A paragraph.\n\n    Another one.';
+  assert.equal(
+    tidyPasteText(pasted, { dedent: true }),
+    'A paragraph.\n\nAnother one.'
+  );
+});
+
+test('keeps relative indentation when dedenting', () => {
+  const pasted = '  def run():\n      return 1\n  # done';
+  assert.equal(
+    tidyPasteText(pasted, { dedent: true }),
+    'def run():\n    return 1\n# done'
+  );
+});
+
+test('only dedents when asked', () => {
+  assert.equal(tidyPasteText('    indented', { dedent: false }), null);
+});
+
+test('leaves indentation alone when the clipboard says it is code', () => {
+  withDomParser(() => {
+    const pasted = '    def run():\n        return 1';
+    assert.equal(
+      tidyPasteText(pasted, {
+        dedent: true,
+        html: '<pre><code>    def run():\n        return 1</code></pre>'
+      }),
+      null
+    );
+  });
+});
+
+test('reads a code block out of the clipboard html', () => {
+  withDomParser(() => {
+    assert.equal(pastedFromCode('<pre>x = 1</pre>'), true);
+    assert.equal(pastedFromCode('<code>x = 1</code>'), true);
+    assert.equal(pastedFromCode('<p>run <code>x</code> first</p>'), false);
+    assert.equal(pastedFromCode('<p>plain prose</p>'), false);
+    assert.equal(pastedFromCode(''), false);
+  });
+});
+
+/**
+ * A stand-in for the browser parser, big enough for the queries
+ * `pastedFromCode` makes: `<pre>` anywhere, and `<code>` against the text of
+ * the whole fragment.
+ */
+function withDomParser(run) {
+  const original = globalThis.DOMParser;
+  globalThis.DOMParser = class {
+    parseFromString(html) {
+      const text = (value) => value.replace(/<[^>]*>/g, '');
+      const tags = (name) =>
+        [
+          ...html.matchAll(
+            new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`, 'g')
+          )
+        ].map((match) => ({ textContent: text(match[1]) }));
+      return {
+        body: { textContent: text(html) },
+        querySelector: (name) => tags(name)[0] || null,
+        querySelectorAll: (name) => tags(name)
+      };
+    }
+  };
+
+  try {
+    run();
+  } finally {
+    globalThis.DOMParser = original;
+  }
+}

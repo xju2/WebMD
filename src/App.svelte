@@ -1,5 +1,5 @@
 <script>
-  import { indentWithTab } from '@codemirror/commands';
+  import { indentWithTab, isolateHistory } from '@codemirror/commands';
   import { markdown } from '@codemirror/lang-markdown';
   import { yamlFrontmatter } from '@codemirror/lang-yaml';
   import { EditorState, Transaction } from '@codemirror/state';
@@ -31,7 +31,8 @@
     arxivPasteId,
     mathPasteText,
     quotedBlockPaste,
-    sourceColumnForWord
+    sourceColumnForWord,
+    tidyPasteText
   } from './editor.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
@@ -1809,15 +1810,19 @@
       if (!sources.length) {
         const text = event.clipboardData?.getData('text/plain') || '';
         const beforeCursor = textBeforeCursor(view.state);
-        const arxivId = arxivPasteId(text, { beforeCursor });
-        const insert = arxivId
-          ? arxivCitation({ id: arxivId })
-          : mathPaste(view.state, text, beforeCursor);
+        const tidied = tidyPaste(view.state, event.clipboardData, beforeCursor);
+        const source = tidied ?? text;
+        const arxivId = arxivPasteId(source, { beforeCursor });
+        const insert =
+          (arxivId
+            ? arxivCitation({ id: arxivId })
+            : mathPaste(view.state, source, beforeCursor)) ?? tidied;
         if (insert === null) return false;
 
         event.preventDefault();
         const from = view.state.selection.main.from;
-        insertText(view, insert);
+        insertText(view, text);
+        rewritePastedText(view, from, from + text.length, insert);
         // The bare link lands now; author and title arrive when arXiv answers.
         if (arxivId) {
           upgradeArxivCitation(arxivId, insert, {
@@ -1880,6 +1885,44 @@
     const selection = state.selection.main;
     const line = state.doc.lineAt(selection.from);
     return line.text.slice(0, selection.from - line.from);
+  }
+
+  /**
+   * Whitespace cleanup for a paste, skipped inside a fenced block where the
+   * text is code and every space counts. Wrapper indentation only comes off
+   * when the paste starts its own line, so an indent the cursor already sits
+   * in is never second-guessed.
+   */
+  function tidyPaste(state, clipboardData, beforeCursor) {
+    if (insideCodeFence(state)) return null;
+
+    return tidyPasteText(clipboardData?.getData('text/plain') || '', {
+      html: clipboardData?.getData('text/html') || '',
+      dedent: beforeCursor === ''
+    });
+  }
+
+  /** Fences before the cursor pair up; an odd count leaves it inside one. */
+  function insideCodeFence(state) {
+    const line = state.doc.lineAt(state.selection.main.from);
+    let fences = 0;
+    for (let number = 1; number < line.number; number += 1) {
+      if (/^ {0,3}(```|~~~)/.test(state.doc.line(number).text)) fences += 1;
+    }
+    return fences % 2 === 1;
+  }
+
+  /**
+   * The clipboard text lands first and the rewrite follows in its own history
+   * entry, so one undo brings back exactly what was pasted instead of undoing
+   * the paste altogether.
+   */
+  function rewritePastedText(view, from, to, insert) {
+    view.dispatch({
+      changes: { from, to, insert },
+      selection: { anchor: from + insert.length },
+      annotations: isolateHistory.of('full')
+    });
   }
 
   /** Unicode powers become inline math, on top of any quote prefixes added. */
