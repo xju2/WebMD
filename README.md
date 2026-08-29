@@ -343,16 +343,19 @@ both group a note's tasks under the note — except in a daily note, where they
 group under the `##` they sit beneath, so a project's work reads as one pile
 across the week rather than one per day.
 
-A term matches three things, so notes can be organised whichever way reads best:
+A term matches four things, so notes can be organised whichever way reads best:
 
 | Source      | Example                           | Matches                                  |
 | ----------- | --------------------------------- | ---------------------------------------- |
 | Inline tag  | `- [ ] Read the GNN paper #paper` | `paper`                                  |
 | Frontmatter | `tags: [paper, reading]`          | every task in the note                   |
 | Heading     | `## Interesting papers`           | the whole heading, and each of its words |
+| arXiv       | `- [ ] arxiv.org/abs/2608.00146`  | `paper`, tagged or not                   |
 
 Singular and plural are the same term, and a leading `#` is optional, so `paper`
-finds `#papers` and `## Papers` alike. **Edit sections** renames a section,
+finds `#papers` and `## Papers` alike. A task that mentions arXiv anywhere on
+the line counts as `#paper`, since pasting a link in is how a paper usually
+arrives. **Edit sections** renames a section,
 changes its terms, sets whether it shows open, done, or all tasks, marks it as
 **Shelf**, and reorders or adds sections; the layout, the chosen view, and any
 folded lanes are remembered in the browser. **Completed** loads

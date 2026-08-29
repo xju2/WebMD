@@ -87,10 +87,15 @@ function termsMatch(left, right) {
   return left === right || left === `${right}s` || right === `${left}s`;
 }
 
+// An arXiv link is a paper whether or not anybody tagged it, and pasting one
+// in is how a paper usually arrives, so mentioning arXiv counts as `#paper`.
+const ARXIV_MENTION = /arxiv/i;
+
 /**
  * Everything a task can be filed under: its inline tags, its note's tags, and
  * its enclosing headings. A heading also contributes its individual words, so
- * "Interesting papers" files under `paper` without being renamed.
+ * "Interesting papers" files under `paper` without being renamed. A line that
+ * mentions arXiv also counts as `paper`, tagged or not.
  */
 export function taskTerms(task = {}) {
   const terms = [];
@@ -105,6 +110,9 @@ export function taskTerms(task = {}) {
     add(heading);
     normalizeTerm(heading).split(' ').forEach(add);
   });
+  if (ARXIV_MENTION.test(`${task.text || ''} ${task.displayText || ''}`)) {
+    add('paper');
+  }
 
   return terms;
 }

@@ -56,6 +56,20 @@ test('matches a section on singular or plural', () => {
   assert.ok(!taskMatchesSection(task({ tags: ['idea'] }), papers));
 });
 
+test('files a task that mentions arXiv under paper', () => {
+  const papers = { include: ['paper'] };
+  assert.ok(
+    taskMatchesSection(
+      task({ text: 'Read https://arxiv.org/abs/2608.00146' }),
+      papers
+    )
+  );
+  assert.ok(
+    taskMatchesSection(task({ text: 'Skim arXiv:2608.00146' }), papers)
+  );
+  assert.ok(!taskMatchesSection(task({ text: 'Write the report' }), papers));
+});
+
 test('does not mistake a word ending in s for a plural', () => {
   assert.ok(
     taskMatchesSection(task({ tags: ['atlas'] }), { include: ['atlas'] })
