@@ -174,7 +174,7 @@ function looksLikeJson(value) {
 }
 
 /**
- * Always `{quote} -- {author} ({date})`, on one line so a `> {{quote}}`
+ * Always `"{quote}" -- {author} ({date})`, on one line so a `> {{quote}}`
  * template stays a single blockquote. The shape is fixed on purpose: a note
  * written today should line up with one written a year ago, so a missing
  * author becomes "Unknown" rather than a differently-shaped line.
@@ -185,8 +185,8 @@ function looksLikeJson(value) {
  */
 export function formatQuote(quote, said = quote?.said) {
   if (!quote?.text) return '';
-  const line = `${quote.text} -- ${quote.author || 'Unknown'}`;
-  return said ? `"${line}" (${said})` : line;
+  const line = `"${quote.text}" -- ${quote.author || 'Unknown'}`;
+  return said ? `${line} (${said})` : line;
 }
 
 export function quoteKey(text) {

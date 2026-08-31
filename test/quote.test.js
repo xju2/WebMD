@@ -101,16 +101,16 @@ test('dates the line by when the quote was said, not by today', () => {
     author: 'Warren Buffett',
     said: '2008'
   });
-  assert.equal(line, 'Price is what you pay. -- Warren Buffett (2008)');
+  assert.equal(line, '"Price is what you pay." -- Warren Buffett (2008)');
   assert.equal(line.includes('\n'), false);
   // The day the note was written is not the date the format asks for.
   assert.equal(
     formatQuote({ text: 'No name here.', date: '2026-08-25', said: '1843' }),
-    'No name here. -- Unknown (1843)'
+    '"No name here." -- Unknown (1843)'
   );
   assert.equal(
     formatQuote({ text: 'No date here.', author: 'Ada Lovelace' }),
-    'No date here. -- Ada Lovelace'
+    '"No date here." -- Ada Lovelace'
   );
   assert.equal(formatQuote(null), '');
 });

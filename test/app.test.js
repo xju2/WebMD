@@ -844,7 +844,7 @@ test('writes a quote of the day once, then serves it from history', async () => 
 
   try {
     // Dated by when Torvalds said it, not by the day of the note.
-    const expected = 'Talk is cheap. Show me the code. -- Linus Torvalds (2000)';
+    const expected = '"Talk is cheap. Show me the code." -- Linus Torvalds (2000)';
     assert.equal((await ask()).quote, expected);
 
     // The same day reuses the stored quote instead of paying for another call,
