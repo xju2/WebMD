@@ -421,8 +421,9 @@ async function readTree(root, dir, prefix = '') {
 async function loadFile(root, documents, filePath) {
   const normalized = normalizeWorkspacePath(filePath);
   assertMarkdown(normalized);
-  const document = documents.get(normalized);
-  if (document) {
+  const cached = documents.get(normalized);
+  if (cached) {
+    const document = await syncDocumentWithDisk(root, cached);
     return {
       path: normalized,
       content: document.content,
@@ -783,6 +784,7 @@ async function applyDocumentUpdates(
 
     const nextContent = applyChangeSets(document.content, updates);
     await saveFile(root, document.path, nextContent);
+    document.diskStamp = await currentDiskStamp(root, document.path);
 
     const events = updates.map((update, index) => ({
       path: document.path,
@@ -833,7 +835,7 @@ async function getDocument(root, documents, filePath) {
   assertMarkdown(normalized);
 
   let document = documents.get(normalized);
-  if (document) return document;
+  if (document) return syncDocumentWithDisk(root, document);
 
   const absolute = await resolvePath(root, normalized);
   const stat = await fs.stat(absolute);
@@ -842,12 +844,91 @@ async function getDocument(root, documents, filePath) {
     content: await fs.readFile(absolute, 'utf8'),
     version: 0,
     created: fileCreated(stat),
+    diskStamp: diskStamp(stat),
     events: [],
     listeners: new Set(),
     pendingWrite: Promise.resolve()
   };
   documents.set(normalized, document);
   return document;
+}
+
+/**
+ * What the file looked like the last time WebMD read or wrote it, so an edit
+ * made by anything else - another editor, a git checkout, a file sync - can be
+ * told apart from WebMD's own last write.
+ */
+function diskStamp(stat) {
+  return `${stat.mtimeMs}:${stat.size}`;
+}
+
+async function currentDiskStamp(root, filePath) {
+  try {
+    const absolute = await resolvePath(root, filePath);
+    return diskStamp(await fs.stat(absolute));
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * A cached document is the only copy WebMD ever reads, so a note changed on
+ * disk behind its back would stay invisible until the server restarts. Every
+ * read of a cached document first checks the file underneath it and folds an
+ * outside edit in as an ordinary version, which lets open editors rebase onto
+ * it instead of quietly overwriting it on their next keystroke.
+ */
+async function syncDocumentWithDisk(root, document) {
+  let stat;
+  let content;
+  try {
+    const absolute = await resolvePath(root, document.path);
+    stat = await fs.stat(absolute);
+    if (diskStamp(stat) === document.diskStamp) return document;
+    content = await fs.readFile(absolute, 'utf8');
+  } catch {
+    // A file deleted or made unreadable outside WebMD leaves the in-memory
+    // copy as the last word rather than failing the read.
+    return document;
+  }
+
+  return enqueueDocumentWrite(document, () => {
+    document.diskStamp = diskStamp(stat);
+    document.created = fileCreated(stat);
+    if (content === document.content) return document;
+
+    const event = {
+      path: document.path,
+      version: document.version + 1,
+      updates: [
+        {
+          id: randomUUID(),
+          // Not any connected editor's id, so every client treats the change
+          // as remote and rebases its own unsent edits onto it.
+          clientID: 'disk',
+          changes: ChangeSet.of(
+            [{ from: 0, to: document.content.length, insert: content }],
+            document.content.length
+          ).toJSON()
+        }
+      ]
+    };
+
+    document.content = content;
+    document.version = event.version;
+    document.events.push(event);
+    while (document.events.length > MAX_DOCUMENT_EVENTS)
+      document.events.shift();
+    for (const listener of document.listeners) {
+      try {
+        listener(event);
+      } catch {
+        document.listeners.delete(listener);
+      }
+    }
+
+    return document;
+  });
 }
 
 function enqueueDocumentWrite(document, write) {

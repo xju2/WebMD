@@ -643,3 +643,39 @@ test('a renamed note keeps its collaborative document', async () => {
   subscription.unsubscribe();
   assert.equal((await workspace.loadFile('/renamed.md')).content, 'new');
 });
+
+test('picks up a note edited outside WebMD', async () => {
+  const root = await tempRoot();
+  const file = path.join(root, 'note.md');
+  await fs.writeFile(file, 'old\n');
+
+  const workspace = await createWorkspace(root);
+  await workspace.applyUpdates('/note.md', 0, [
+    updateFor('old\n', { from: 0, to: 3, insert: 'mine' })
+  ]);
+
+  const pushed = [];
+  const live = await workspace.subscribeEvents('/note.md', 1, (event) =>
+    pushed.push(event)
+  );
+
+  // Another app writes the file while WebMD holds it in memory.
+  await fs.writeFile(file, 'theirs\n');
+
+  const loaded = await workspace.loadFile('/note.md');
+  assert.equal(loaded.content, 'theirs\n');
+  assert.equal(loaded.version, 2);
+
+  // Open editors are told, so their next keystroke rebases instead of
+  // overwriting the outside edit.
+  assert.deepEqual(
+    pushed.map((event) => event.version),
+    [2]
+  );
+  assert.equal(pushed[0].updates[0].clientID, 'disk');
+  live.unsubscribe();
+
+  // An unchanged file is not republished as a new version.
+  assert.equal((await workspace.loadFile('/note.md')).version, 2);
+  assert.equal(pushed.length, 1);
+});
