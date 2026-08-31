@@ -1340,7 +1340,7 @@
   }
 
   async function createMarkdownNote() {
-    const entered = prompt('New note path', defaultNewNotePath());
+    const entered = await askPrompt('New note path', defaultNewNotePath());
     if (entered === null) return;
 
     const path = normalizeMarkdownPath(entered);
@@ -2100,9 +2100,12 @@
   }
 
   async function deleteSelectedFile() {
+    if (!selectedPath) return;
     if (
-      !selectedPath ||
-      !confirm(`Delete ${selectedPath}? This cannot be undone.`)
+      !(await askConfirm(
+        `Delete ${selectedPath}? This cannot be undone.`,
+        'Delete'
+      ))
     )
       return;
 
@@ -3173,8 +3176,11 @@
     // Opening a note that is not there would show an empty page belonging to no
     // file, so the missing note is offered instead of silently loaded.
     if (!exists) {
-      if (!confirm(`No note named ${splitWikiTarget(target).path}. Create it?`))
-        return;
+      const create = await askConfirm(
+        `No note named ${splitWikiTarget(target).path}. Create it?`,
+        'Create'
+      );
+      if (!create) return;
       await createNoteAt(path);
       return;
     }
@@ -3718,6 +3724,71 @@
     rememberSearch(searchQuery);
     if (result.fileKind === 'markdown') setViewMode('preview');
     await openFile(result.path);
+  }
+
+  // A native confirm()/prompt() is modal to the whole window, and in the
+  // standalone app window that dialog never paints: the page just stops
+  // answering clicks and keys. Asking inside the page keeps the window alive.
+  let askRequest = null;
+  let askValue = '';
+  let askInput = null;
+  let askConfirmButton = null;
+  let askResolve = null;
+
+  async function ask(request) {
+    // A second question replaces the first rather than stranding whoever is
+    // still awaiting it, which would leave that caller hung on a dead promise.
+    cancelAsk();
+    askRequest = request;
+    askValue = request.value ?? '';
+    const answer = new Promise((resolve) => {
+      askResolve = resolve;
+    });
+    await tick();
+    if (request.kind === 'prompt') {
+      askInput?.focus();
+      askInput?.select();
+    } else {
+      askConfirmButton?.focus();
+    }
+
+    return answer;
+  }
+
+  /** Resolves true when confirmed, false when dismissed. */
+  function askConfirm(message, confirmLabel = 'OK') {
+    return ask({ kind: 'confirm', message, confirmLabel });
+  }
+
+  /** Resolves the entered text, or null when dismissed. */
+  function askPrompt(message, value = '', confirmLabel = 'Create') {
+    return ask({ kind: 'prompt', message, confirmLabel, value });
+  }
+
+  function closeAsk(answer) {
+    const resolve = askResolve;
+    askRequest = null;
+    askResolve = null;
+    askValue = '';
+    resolve?.(answer);
+  }
+
+  function submitAsk() {
+    closeAsk(askRequest?.kind === 'prompt' ? askValue.trim() : true);
+  }
+
+  function cancelAsk() {
+    closeAsk(askRequest?.kind === 'prompt' ? null : false);
+  }
+
+  function handleAskKeydown(event) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      submitAsk();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelAsk();
+    }
   }
 
   async function openPalette() {
@@ -5177,6 +5248,43 @@
               </dd>
             </div>
           </dl>
+        </dialog>
+      </div>
+    {/if}
+
+    {#if askRequest}
+      <div class="ask-layer">
+        <button
+          aria-label="Cancel"
+          class="ask-backdrop"
+          type="button"
+          on:click={cancelAsk}
+        ></button>
+        <dialog aria-label={askRequest.message} class="ask" open>
+          <p>{askRequest.message}</p>
+          {#if askRequest.kind === 'prompt'}
+            <input
+              bind:this={askInput}
+              bind:value={askValue}
+              aria-label={askRequest.message}
+              type="text"
+              on:keydown={handleAskKeydown}
+            />
+          {/if}
+          <footer>
+            <button
+              type="button"
+              on:click={cancelAsk}
+              on:keydown={handleAskKeydown}>Cancel</button
+            >
+            <button
+              bind:this={askConfirmButton}
+              class="primary"
+              type="button"
+              on:click={submitAsk}
+              on:keydown={handleAskKeydown}>{askRequest.confirmLabel}</button
+            >
+          </footer>
         </dialog>
       </div>
     {/if}
