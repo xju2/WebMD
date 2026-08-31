@@ -61,7 +61,10 @@ export function renderMarkdown(
       continue;
     }
 
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    // The title may be empty: `## ` on its own is a heading a writer has not
+    // named yet. It has to match here, because startsBlock() already counts
+    // it as a heading, and a line no branch consumes stalls the loop below.
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
       blocks.push({
         type: 'heading',
@@ -134,6 +137,13 @@ export function renderMarkdown(
       lines[index].trim() &&
       !startsBlock(lines[index], lines[index + 1])
     ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    // A line startsBlock() claims but no branch above consumed would leave
+    // index where it was and spin this loop forever. Taking it as paragraph
+    // text costs one odd-looking line and keeps the parser moving.
+    if (!paragraph.length) {
       paragraph.push(lines[index].trim());
       index += 1;
     }

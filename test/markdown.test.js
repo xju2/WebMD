@@ -614,3 +614,25 @@ test('leaves inline $ math to the inline parser', () => {
     ['text', 'math', 'text']
   );
 });
+
+// `## ` used to match startsBlock() but not the heading branch, so the
+// paragraph loop consumed nothing, the index never moved, and renderMarkdown
+// filled memory with empty paragraphs until the tab died.
+test('an unnamed heading is a heading, not an endless loop', () => {
+  const blocks = renderMarkdown('## ');
+  assert.deepEqual(blocks, [
+    { type: 'heading', level: 2, children: [], line: 0 }
+  ]);
+
+  assert.equal(renderMarkdown('#  ')[0].level, 1);
+  assert.equal(renderMarkdown('###### ')[0].level, 6);
+  assert.deepEqual(
+    renderMarkdown('## \n\nAfter').map((block) => block.type),
+    ['heading', 'paragraph']
+  );
+});
+
+test('hashes without a space stay paragraph text', () => {
+  assert.equal(renderMarkdown('##')[0].type, 'paragraph');
+  assert.equal(renderMarkdown('#tag')[0].type, 'paragraph');
+});
