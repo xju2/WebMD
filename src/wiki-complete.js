@@ -6,7 +6,6 @@
 // CodeMirror: each function takes the text before the cursor and returns what
 // should replace it.
 
-import { shortestWikiTarget } from './related-links.js';
 import { noteHeadings } from './note-headings.js';
 
 const MARKDOWN_PATTERN = /\.(md|markdown)$/i;
@@ -44,9 +43,8 @@ export function wikiCompletionQuery(beforeCursor = '') {
 /**
  * The notes a half-typed name could mean, best match first.
  *
- * Each option carries the `target` to insert — the shortest form that still
- * resolves back to that note, so a completed link stays readable and can never
- * be ambiguous — alongside the folder it lives in as `detail`.
+ * Each option carries the `target` to insert — the note's full path, aliased
+ * to its name — alongside the folder it lives in as `detail`.
  */
 export function noteCompletions(query, files = [], currentPath = '') {
   const paths = markdownPaths(files);
@@ -62,7 +60,7 @@ export function noteCompletions(query, files = [], currentPath = '') {
       label: noteName(path),
       detail: folderOf(path),
       path,
-      target: shortestWikiTarget(path, currentPath, paths) || path
+      target: linkTarget(path)
     }));
 }
 
@@ -116,6 +114,15 @@ function markdownPaths(files) {
   return (Array.isArray(files) ? files : [])
     .map((file) => (typeof file === 'string' ? file : file?.path))
     .filter((path) => typeof path === 'string' && MARKDOWN_PATTERN.test(path));
+}
+
+// The full path, aliased to the note's name. A shortened target resolves only
+// while that name stays unique in the workspace: add a second note by the same
+// name later and every link written the short way quietly stops resolving,
+// with no edit to the notes that broke. The alias keeps the source reading as
+// the name the writer meant, and the preview shows the alias either way.
+function linkTarget(path) {
+  return `${path.replace(MARKDOWN_PATTERN, '')}|${noteName(path)}`;
 }
 
 function noteName(path) {

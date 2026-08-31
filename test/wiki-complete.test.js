@@ -5,6 +5,7 @@ import {
   noteCompletions,
   wikiCompletionQuery
 } from '../src/wiki-complete.js';
+import { parseWikiLinkValue, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const PATHS = [
   '/raw/dailynotes/2026-07-08.md',
@@ -51,7 +52,7 @@ test('only the line at the cursor counts', () => {
   assert.equal(wikiCompletionQuery('[[triton]]\nnext line'), null);
 });
 
-test('completes note names, shortest unambiguous target first', () => {
+test('completes note names to the full path, aliased to the name', () => {
   const options = noteCompletions(
     'trit',
     PATHS,
@@ -62,21 +63,40 @@ test('completes note names, shortest unambiguous target first', () => {
       label: 'triton',
       detail: '/raw/projects/iaas',
       path: '/raw/projects/iaas/triton.md',
-      target: 'triton'
+      target: '/raw/projects/iaas/triton|triton'
     }
   ]);
 });
 
-test('a repeated basename completes to a target that still resolves', () => {
+test('a repeated basename stays distinct, since each target is a full path', () => {
   const targets = noteCompletions(
     'hybrid',
     PATHS,
     '/raw/dailynotes/2026-07-08.md'
   ).map((option) => option.target);
   assert.deepEqual(targets.sort(), [
-    'concepts/hybrid-search',
-    'topics/hybrid-search'
+    '/wiki/concepts/hybrid-search|hybrid-search',
+    '/wiki/topics/hybrid-search|hybrid-search'
   ]);
+});
+
+// The point of the full path: the inserted link keeps pointing at the note it
+// was completed from, even once another note takes the same name.
+test('every completed target resolves back to the note it came from', () => {
+  const laterPaths = [...PATHS, '/wiki/archive/triton.md'];
+
+  for (const option of noteCompletions('', PATHS, '')) {
+    const { target } = parseWikiLinkValue(option.target);
+    assert.equal(resolveWikiLinkPath(target, '', laterPaths), option.path);
+  }
+});
+
+test('the alias is the note name, so the preview reads the same as before', () => {
+  const [option] = noteCompletions('trit', PATHS, '');
+  assert.deepEqual(parseWikiLinkValue(option.target), {
+    target: '/raw/projects/iaas/triton',
+    text: 'triton'
+  });
 });
 
 test('matches a folder as well as a name, and never the open note or media', () => {
