@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   fetchIndicoTitle,
+  indicoTokens,
   isIndicoUrl,
   parseIndicoPage,
   resetIndicoCache
@@ -108,4 +109,122 @@ test('rejects a link that is not an Indico page', async () => {
       }),
     /is not an Indico link/
   );
+});
+
+const LOGIN = '<html><head><title>Sign in to CERN</title></head></html>';
+
+function html(body) {
+  return new Response(body, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html' }
+  });
+}
+
+test('reads Indico tokens per host, defaulting to CERN', () => {
+  assert.deepEqual(
+    [...indicoTokens({ INDICO_TOKEN: 'abc123' })],
+    [['indico.cern.ch', 'abc123']]
+  );
+  assert.deepEqual(
+    [
+      ...indicoTokens({
+        INDICO_TOKEN: 'indico.cern.ch=abc, indico.fnal.gov=def'
+      })
+    ],
+    [
+      ['indico.cern.ch', 'abc'],
+      ['indico.fnal.gov', 'def']
+    ]
+  );
+  assert.deepEqual([...indicoTokens({})], []);
+});
+
+test('sends the token only to the host it was written for', async () => {
+  const seen = [];
+  const fetchImpl = async (target, options) => {
+    seen.push([target, options?.headers?.Authorization]);
+    return html(page(`${EVENT} (1 May 2026): Tracking`));
+  };
+  const tokens = new Map([['indico.cern.ch', 'abc123']]);
+
+  await fetchIndicoTitle('https://indico.cern.ch/event/1/', {
+    fetchImpl,
+    tokens
+  });
+  await fetchIndicoTitle('https://indico.fnal.gov/event/2/', {
+    fetchImpl,
+    tokens
+  });
+
+  assert.deepEqual(seen, [
+    ['https://indico.cern.ch/event/1/', 'Bearer abc123'],
+    ['https://indico.fnal.gov/event/2/', undefined]
+  ]);
+});
+
+test('falls back to the export API for a page the token opens', async () => {
+  const requested = [];
+  const fetchImpl = async (target) => {
+    requested.push(target);
+    if (target.includes('/export/')) {
+      return new Response(
+        JSON.stringify({
+          results: [
+            {
+              title: 'ATLAS Weekly',
+              contributions: [
+                {
+                  url: 'https://indico.cern.ch/event/7/contributions/55/',
+                  title: 'Tracking status'
+                }
+              ]
+            }
+          ]
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return html(LOGIN);
+  };
+
+  const metadata = await fetchIndicoTitle(
+    'https://indico.cern.ch/event/7/contributions/55/',
+    { fetchImpl, tokens: new Map([['indico.cern.ch', 'abc123']]) }
+  );
+
+  assert.deepEqual(metadata, {
+    url: 'https://indico.cern.ch/event/7/contributions/55/',
+    title: 'Tracking status',
+    event: 'ATLAS Weekly'
+  });
+  assert.deepEqual(requested, [
+    'https://indico.cern.ch/event/7/contributions/55/',
+    'https://indico.cern.ch/export/event/7.json?detail=contributions&occ=no'
+  ]);
+});
+
+test('says so when Indico refuses the token', async () => {
+  await assert.rejects(
+    () =>
+      fetchIndicoTitle('https://indico.cern.ch/event/3/', {
+        fetchImpl: async () => new Response('no', { status: 403 }),
+        tokens: new Map([['indico.cern.ch', 'stale']])
+      }),
+    /INDICO_TOKEN/
+  );
+});
+
+test('keeps the placeholder when there is no token to try', async () => {
+  const requested = [];
+  await assert.rejects(
+    () =>
+      fetchIndicoTitle('https://indico.cern.ch/event/4/', {
+        fetchImpl: async (target) => {
+          requested.push(target);
+          return html(LOGIN);
+        }
+      }),
+    /may need a login/
+  );
+  assert.equal(requested.length, 1);
 });

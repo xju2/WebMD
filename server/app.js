@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
-import { fetchIndicoTitle, isIndicoUrl } from './indico.js';
+import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -244,7 +244,12 @@ export async function createApp({
       if (!isIndicoUrl(url)) {
         throw new WorkspaceError(400, 'An Indico event link is required.');
       }
-      res.json(await fetchIndicoTitle(url.trim(), { fetchImpl: indicoFetch }));
+      res.json(
+        await fetchIndicoTitle(url.trim(), {
+          fetchImpl: indicoFetch,
+          tokens: indicoTokens(env)
+        })
+      );
     })
   );
 

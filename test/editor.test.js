@@ -6,6 +6,8 @@ import {
   arxivPasteId,
   mathPasteText,
   quotedBlockPaste,
+  indicoLabel,
+  indicoReference,
   pastedFromCode,
   shortLinkPaste,
   sourceColumnForWord,
@@ -439,4 +441,48 @@ test('reads a Stack Exchange question title out of its slug', () => {
   const long =
     'https://stackoverflow.com/questions/9/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array';
   assert.equal(shortLinkPaste(long), `[Stack Overflow](${long})`);
+});
+
+test('gives an Indico link a placeholder to be filled in later', () => {
+  const event = 'https://indico.cern.ch/event/1338689/';
+  assert.equal(shortLinkPaste(event), `[Indico event 1338689](${event})`);
+
+  const talk = 'https://indico.cern.ch/event/1338689/contributions/6081535/';
+  assert.equal(shortLinkPaste(talk), `[Indico contribution 6081535](${talk})`);
+
+  const session = 'https://indico.fnal.gov/event/12/sessions/3';
+  assert.equal(shortLinkPaste(session), `[Indico session 3](${session})`);
+});
+
+test('only sends event, contribution and session links to Indico', () => {
+  assert.equal(
+    indicoReference('https://indico.cern.ch/event/9/contributions/8').url,
+    'https://indico.cern.ch/event/9/contributions/8/'
+  );
+  assert.equal(
+    indicoReference('https://indico.cern.ch/event/9/timetable/'),
+    null
+  );
+  assert.equal(indicoReference('https://indico.cern.ch/category/12/'), null);
+  assert.equal(indicoReference('https://example.com/event/9/'), null);
+  assert.equal(indicoReference('not a url'), null);
+});
+
+test('names a talk after itself, with the meeting when it fits', () => {
+  assert.equal(
+    indicoLabel({ title: 'Welcome', event: 'CHEP 2024' }),
+    'Welcome (CHEP 2024)'
+  );
+  assert.equal(
+    indicoLabel({ title: 'CHEP 2024', event: 'CHEP 2024' }),
+    'CHEP 2024'
+  );
+  assert.equal(
+    indicoLabel({
+      title: 'Welcome',
+      event: 'Conference on Computing in High Energy and Nuclear Physics'
+    }),
+    'Welcome'
+  );
+  assert.equal(indicoLabel({}), '');
 });

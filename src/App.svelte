@@ -1911,7 +1911,11 @@
       metadata = await requestJson(
         `/api/indico?url=${encodeURIComponent(reference.url)}`
       );
-    } catch {
+    } catch (err) {
+      // A 404 is a page the server cannot see, which the placeholder already
+      // says; anything else — a rejected token, a dead network — is worth
+      // reporting.
+      if (err.status !== 404 && root === selectedRoot) error = err.message;
       return;
     }
 

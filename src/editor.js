@@ -322,14 +322,22 @@ export function indicoReference(url) {
   if (!path) return null;
 
   const [, event, kind, id] = path;
+  const host = parsed.hostname;
   // Rebuilt rather than passed through, so only this shape reaches the server.
-  const canonical = `https://${parsed.hostname}/event/${event}/${
+  const canonical = `https://${host}/event/${event}/${
     kind ? `${kind}/${id}/` : ''
   }`;
   const label = kind
     ? `Indico ${kind === 'contributions' ? 'contribution' : 'session'} ${id}`
     : `Indico event ${event}`;
-  return { url: canonical, label };
+  return {
+    url: canonical,
+    host,
+    event,
+    kind: kind || null,
+    id: id || null,
+    label
+  };
 }
 
 /** `Talk title (Meeting)`, dropping the meeting when that runs long. */
