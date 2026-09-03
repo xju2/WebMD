@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
+import { fetchCitationBibtex } from './citations.js';
 import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
@@ -39,6 +40,7 @@ export async function createApp({
   aiEnv = process.env,
   aiFetch = fetch,
   arxivFetch = fetch,
+  citationFetch = fetch,
   indicoFetch = fetch,
   env = process.env
 }) {
@@ -74,6 +76,25 @@ export async function createApp({
     '/api/workspace/graph',
     asyncHandler(async (req, res) => {
       res.json(await workspaces.get(req.query.root).graph());
+    })
+  );
+
+  app.get(
+    '/api/workspace/references',
+    asyncHandler(async (req, res) => {
+      res.json({ entries: await workspaces.get(req.query.root).references() });
+    })
+  );
+
+  app.post(
+    '/api/workspace/citations',
+    asyncHandler(async (req, res) => {
+      const citation = await fetchCitationBibtex(req.body?.source, {
+        fetchImpl: citationFetch
+      });
+      res.json(
+        await workspaces.get(req.body?.root).addReference(citation.bibtex)
+      );
     })
   );
 

@@ -64,6 +64,14 @@ test('marks inline tags in ordinary prose', () => {
   });
 });
 
+test('marks Pandoc citations in ordinary prose', () => {
+  assert.deepEqual(parseInline('Built on [@Ju:2026abc].')[1], {
+    type: 'citation',
+    key: 'Ju:2026abc',
+    text: '[@Ju:2026abc]'
+  });
+});
+
 test('marks who: names in place, keeping the sentence readable', () => {
   const blocks = renderMarkdown(
     '- [ ] who:Julien and who:jack will implement this 📅 2026-08-20'

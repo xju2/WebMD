@@ -219,7 +219,7 @@ function parseMathBlock(lines, index) {
 // the tag rules live in one place — `\x60` is the backtick a raw template
 // cannot hold.
 const INLINE_TOKEN = new RegExp(
-  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY}|(?<=^|\s)who:${ASSIGNEE_BODY})`,
+  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[@[^\s\[\],@;]+\]|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY}|(?<=^|\s)who:${ASSIGNEE_BODY})`,
   'gu'
 );
 
@@ -246,6 +246,10 @@ function parseInlineToken(token) {
   if (token.startsWith('`')) return { type: 'code', text: token.slice(1, -1) };
 
   if (token.startsWith('$')) return { type: 'math', text: token.slice(1, -1) };
+
+  if (token.startsWith('[@')) {
+    return { type: 'citation', key: token.slice(2, -1), text: token };
+  }
 
   const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
   if (link) {

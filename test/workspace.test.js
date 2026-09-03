@@ -7,6 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { createWorkspace } from '../server/workspace.js';
+import { parseBibtex } from '../src/citations.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -207,6 +208,43 @@ test('indexes resolved wiki links and invalidates after saves', async () => {
 
   await workspace.saveFile('/a.md', '# No links\n');
   assert.equal((await workspace.graph()).edges.length, 1);
+});
+
+test('indexes BibTeX papers and note citations', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'See [@Ju:2026abc].\n');
+  await fs.writeFile(
+    path.join(root, 'references.bib'),
+    '@article{Ju:2026abc, title={Graph Paper}, author={Ju, Xiangyang}, year={2026}, doi={10.1234/example}}\n'
+  );
+  const workspace = await createWorkspace(root);
+  const graph = await workspace.graph();
+
+  assert.deepEqual(graph.edges, [
+    { source: '/note.md', target: '@Ju:2026abc' }
+  ]);
+  assert.deepEqual(graph.nodes[1], {
+    path: '@Ju:2026abc',
+    name: 'Graph Paper',
+    group: 'citation',
+    kind: 'citation',
+    href: 'https://doi.org/10.1234/example',
+    summary: 'Ju, Xiangyang — Graph Paper — 2026'
+  });
+});
+
+test('appends each BibTeX key once at the workspace root', async () => {
+  const root = await tempRoot();
+  const workspace = await createWorkspace(root);
+  const bibtex = '@article{Ju:2026abc, title={Graph Paper}}';
+
+  assert.equal((await workspace.addReference(bibtex)).added, true);
+  assert.equal((await workspace.addReference(bibtex)).added, false);
+  assert.equal(
+    parseBibtex(await fs.readFile(path.join(root, 'references.bib'), 'utf8'))
+      .length,
+    1
+  );
 });
 
 test('lists the dead links behind the unresolved count', async () => {

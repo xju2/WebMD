@@ -27,8 +27,6 @@
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import {
-    arxivCitation,
-    arxivPasteId,
     indicoLabel,
     indicoReference,
     mathPasteText,
@@ -37,6 +35,15 @@
     sourceColumnForWord,
     tidyPasteText
   } from './editor.js';
+  import {
+    citationCompletionQuery,
+    citationCompletions,
+    citationKeys,
+    citationLabel,
+    citationPasteSource,
+    citationSummary,
+    citationUrl
+  } from './citations.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
@@ -207,6 +214,7 @@
   let dailyQuote = '';
   let dailyQuoteKey = '';
   let graphData = { nodes: [], edges: [], unresolved: 0, broken: [] };
+  let bibliography = [];
   let brokenLinksOpen = false;
   let graphView = { nodes: [], edges: [] };
   let graphScope = 'wiki';
@@ -430,6 +438,12 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  $: bibliographyByKey = new Map(
+    bibliography.map((entry) => [entry.key, entry])
+  );
+  $: citedReferences = [
+    ...new Set(selectedIsMarkdown ? citationKeys(content) : [])
+  ].map((key) => ({ key, entry: bibliographyByKey.get(key) }));
   $: noteEmbedTargets = collectNoteEmbedTargets(renderedBlocks);
   $: loadNoteEmbeds(
     noteEmbedTargets,
@@ -558,7 +572,9 @@
         // `[[` completes note names, and `#` after one completes that note's
         // headings. Registered as language data so it joins the autocompletion
         // basicSetup already runs rather than replacing it.
-        EditorState.languageData.of(() => [{ autocomplete: completeWikiLink }]),
+        EditorState.languageData.of(() => [
+          { autocomplete: completeReference }
+        ]),
         EditorView.lineWrapping,
         EditorView.domEventHandlers({
           dragover: handleEditorDragOver,
@@ -1073,6 +1089,7 @@
       editedPaths = readEditedFiles(selectedRoot);
       loadAiPresets(selectedRoot);
       await loadTree(selectedRoot);
+      await loadReferences(selectedRoot);
       reconcileDailyNoteFolder();
       await loadOverview(selectedRoot);
       const path = navigationPathFromLocation();
@@ -1156,6 +1173,17 @@
     }
   }
 
+  async function loadReferences(root = selectedRoot) {
+    try {
+      const result = await requestJson(
+        `/api/workspace/references?root=${encodeURIComponent(root)}`
+      );
+      if (root === selectedRoot) bibliography = result.entries ?? [];
+    } catch {
+      if (root === selectedRoot) bibliography = [];
+    }
+  }
+
   async function switchWorkspace(root) {
     if (root === selectedRoot) return;
     if (selectedPath && hasUnsavedChanges()) await saveNow();
@@ -1171,6 +1199,7 @@
     viewMode = readWorkspaceViewMode(root);
     graphData = { nodes: [], edges: [], unresolved: 0, broken: [] };
     graphView = { nodes: [], edges: [] };
+    bibliography = [];
     status = '[Saved]';
     error = '';
     clearInlineEdit();
@@ -1190,6 +1219,7 @@
     dailyQuote = '';
     dailyQuoteKey = '';
     await loadTree();
+    await loadReferences(root);
     reconcileDailyNoteFolder();
     await loadOverview();
     loadDailyQuote(root);
@@ -1815,10 +1845,10 @@
         const beforeCursor = textBeforeCursor(view.state);
         const tidied = tidyPaste(view.state, event.clipboardData, beforeCursor);
         const source = tidied ?? text;
-        const arxivId = arxivPasteId(source, { beforeCursor });
+        const pastedCitation = citationPasteSource(source, { beforeCursor });
         const insert =
-          (arxivId
-            ? arxivCitation({ id: arxivId })
+          (pastedCitation
+            ? pastedCitation
             : (shortLink(view.state, source, beforeCursor) ??
               mathPaste(view.state, source, beforeCursor))) ?? tidied;
         if (insert === null) return false;
@@ -1827,10 +1857,10 @@
         const from = view.state.selection.main.from;
         insertText(view, text);
         rewritePastedText(view, from, from + text.length, insert);
-        // The bare link lands now; author and title arrive when arXiv answers.
+        // The source lands now; its stable cite key arrives with the BibTeX.
         const range = { from, to: from + insert.length };
-        if (arxivId) {
-          upgradeArxivCitation(arxivId, insert, range);
+        if (pastedCitation) {
+          upgradeCitation(pastedCitation, insert, range);
         } else {
           upgradeIndicoLink(source, insert, range);
         }
@@ -1852,13 +1882,17 @@
    * un-awaited, so everything it touches may have moved on: the guards below
    * drop the upgrade rather than risk rewriting text the user has since edited.
    */
-  async function upgradeArxivCitation(id, placeholder, range) {
+  async function upgradeCitation(source, placeholder, range) {
     const root = selectedRoot;
     const path = selectedPath;
 
     let metadata;
     try {
-      metadata = await requestJson(`/api/arxiv?id=${encodeURIComponent(id)}`);
+      metadata = await requestJson('/api/workspace/citations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, source })
+      });
     } catch (err) {
       if (root === selectedRoot) error = err.message;
       return;
@@ -1868,7 +1902,8 @@
       return;
     }
 
-    replacePastedLink(placeholder, arxivCitation(metadata), range);
+    bibliography = metadata.entries ?? bibliography;
+    replacePastedLink(placeholder, `[@${metadata.entry.key}]`, range);
   }
 
   /**
@@ -2835,6 +2870,11 @@
   }
 
   async function openGraphNode(node) {
+    if (node.kind === 'citation') {
+      if (/^https?:\/\//i.test(node.href || ''))
+        window.open(node.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
     await openFile(node.path);
   }
 
@@ -3308,11 +3348,21 @@
    * is already in memory, so the list opens without a round trip; headings
    * need the target note, which is fetched once and kept.
    */
-  async function completeWikiLink(context) {
+  async function completeReference(context) {
     const line = context.state.doc.lineAt(context.pos);
-    const query = wikiCompletionQuery(
-      line.text.slice(0, context.pos - line.from)
-    );
+    const beforeCursor = line.text.slice(0, context.pos - line.from);
+    const citation = citationCompletionQuery(beforeCursor);
+    if (citation) {
+      return {
+        from: context.pos - citation.length,
+        filter: false,
+        options: citationCompletions(citation.query, bibliography).map(
+          toCompletion
+        )
+      };
+    }
+
+    const query = wikiCompletionQuery(beforeCursor);
     if (!query) return null;
 
     const from = context.pos - query.length;
@@ -4152,6 +4202,27 @@
       <span class="math-inline">{@html renderMath(segment.text)}</span>
     {:else if segment.type === 'link' && segment.href}
       <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a>
+    {:else if segment.type === 'citation'}
+      {@const entry = bibliographyByKey.get(segment.key)}
+      {@const href = citationUrl(entry)}
+      {#if entry && href}
+        <a
+          class="citation"
+          data-card={citationSummary(entry)}
+          {href}
+          rel="noreferrer"
+          target="_blank">({citationLabel(entry)})</a
+        >
+      {:else if entry}
+        <span class="citation" data-card={citationSummary(entry)}
+          >({citationLabel(entry)})</span
+        >
+      {:else}
+        <span
+          class="citation citation-missing"
+          title={`Missing BibTeX key ${segment.key}`}>{segment.text}</span
+        >
+      {/if}
     {:else if segment.type === 'wikiLink'}
       <a
         class="wiki-link"
@@ -5959,7 +6030,7 @@
               <div>
                 <strong>Knowledge graph</strong>
                 <span
-                  >{graphView.nodes.length} notes · {graphView.edges.length} links</span
+                  >{graphView.nodes.length} nodes · {graphView.edges.length} links</span
                 >
               </div>
               <div class="graph-controls">
@@ -6040,7 +6111,7 @@
                         {#if node.degree >= 20 || hoveredGraphPath === node.path || node.path === selectedPath}
                           <text x={node.radius + 5} y="4">{node.name}</text>
                         {/if}
-                        <title>{node.path}</title>
+                        <title>{node.summary || node.path}</title>
                       </g>
                     {/each}
                   </g>
@@ -6122,6 +6193,36 @@
               {@render markdownBlocks(renderedBlocks)}
             {:else}
               <p class="preview-empty">Empty file</p>
+            {/if}
+            {#if citedReferences.length}
+              <section class="references" aria-label="References">
+                <h2>References</h2>
+                <ol>
+                  {#each citedReferences as reference}
+                    <li id={`reference-${reference.key}`}>
+                      {#if reference.entry}
+                        {@const href = citationUrl(reference.entry)}
+                        {#if href}
+                          <a {href} rel="noreferrer" target="_blank"
+                            >{reference.entry.title || reference.key}</a
+                          >
+                        {:else}
+                          <span>{reference.entry.title || reference.key}</span>
+                        {/if}
+                        <small
+                          >{[reference.entry.author, reference.entry.year]
+                            .filter(Boolean)
+                            .join(' · ')}</small
+                        >
+                      {:else}
+                        <span class="citation-missing"
+                          >Missing BibTeX key: {reference.key}</span
+                        >
+                      {/if}
+                    </li>
+                  {/each}
+                </ol>
+              </section>
             {/if}
             {#if backlinksStatus}
               <p class="backlinks-status">{backlinksStatus}</p>

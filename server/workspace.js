@@ -4,6 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import {
+  citationKeys,
+  citationSummary,
+  citationUrl,
+  parseBibtex
+} from '../src/citations.js';
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
 import { shortestWikiTarget } from '../src/related-links.js';
 import { collectTasks } from '../src/tasks.js';
@@ -50,6 +56,8 @@ export async function createWorkspace(workspaceRoot) {
   let filesIndex;
   let searchIndex;
   let graphIndex;
+  let referencesIndex;
+  let referenceWrite = Promise.resolve();
   const documents = new Map();
 
   // One walk of the workspace feeds search, the link graph, and related-note
@@ -59,11 +67,23 @@ export async function createWorkspace(workspaceRoot) {
     filesIndex = null;
     searchIndex = null;
     graphIndex = null;
+    referencesIndex = null;
   };
+  const references = async () =>
+    (referencesIndex ??= await readReferences(root));
 
   return {
     root,
-    graph: async () => (graphIndex ??= buildWorkspaceGraph(await files())),
+    graph: async () =>
+      (graphIndex ??= buildWorkspaceGraph(await files(), await references())),
+    references,
+    addReference: async (bibtex) => {
+      const write = referenceWrite.then(() => appendReference(root, bibtex));
+      referenceWrite = write.catch(() => {});
+      const result = await write;
+      invalidate();
+      return result;
+    },
     // Rides the same cached corpus as the graph, so asking every note what it
     // links to costs no extra walk of the workspace.
     backlinks: async (filePath) => collectBacklinks(await files(), filePath),
@@ -156,7 +176,7 @@ function listTasks(corpus, { includeDone = false, limit = TASK_LIMIT } = {}) {
   return { tasks: tasks.slice(0, cap), total: tasks.length };
 }
 
-function buildWorkspaceGraph(corpus) {
+function buildWorkspaceGraph(corpus, references = []) {
   const files = corpus
     .filter((file) => file.fileKind === 'markdown')
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -191,20 +211,81 @@ function buildWorkspaceGraph(corpus) {
         });
       }
     }
+    for (const key of new Set(citationKeys(file.content))) {
+      if (references.some((entry) => entry.key === key)) {
+        edges.set(`${file.path}\0@${key}`, {
+          source: file.path,
+          target: `@${key}`
+        });
+      }
+    }
   }
 
   return {
-    nodes: files.map((file) => ({
-      path: file.path,
-      name: noteName(file.path),
-      group: graphGroup(file.path)
-    })),
+    nodes: [
+      ...files.map((file) => ({
+        path: file.path,
+        name: noteName(file.path),
+        group: graphGroup(file.path)
+      })),
+      ...references.map((entry) => ({
+        path: `@${entry.key}`,
+        name: entry.title || entry.key,
+        group: 'citation',
+        kind: 'citation',
+        href: citationUrl(entry),
+        summary: citationSummary(entry)
+      }))
+    ],
     edges: [...edges.values()].sort((a, b) =>
       `${a.source}\0${a.target}`.localeCompare(`${b.source}\0${b.target}`)
     ),
     unresolved,
     broken
   };
+}
+
+async function readReferences(root) {
+  try {
+    const entries = parseBibtex(
+      await fs.readFile(path.join(root, 'references.bib'), 'utf8')
+    );
+    return [...new Map(entries.map((entry) => [entry.key, entry])).values()];
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+async function appendReference(root, bibtex) {
+  if (typeof bibtex !== 'string') {
+    throw new WorkspaceError(400, 'BibTeX content is required.');
+  }
+  const entry = parseBibtex(bibtex)[0];
+  if (!entry)
+    throw new WorkspaceError(400, 'A valid BibTeX entry is required.');
+
+  const target = path.join(root, 'references.bib');
+  let content = '';
+  try {
+    content = await fs.readFile(target, 'utf8');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const entries = parseBibtex(content);
+  const existing = entries.find((item) => item.key === entry.key);
+  if (existing) return { entry: existing, entries, added: false };
+
+  const next = `${content.trimEnd()}${content.trim() ? '\n\n' : ''}${bibtex.trim()}\n`;
+  const temp = path.join(root, `.references.${randomUUID()}.tmp`);
+  try {
+    await fs.writeFile(temp, next, { encoding: 'utf8', flag: 'wx' });
+    await fs.rename(temp, target);
+  } catch (error) {
+    await fs.rm(temp, { force: true });
+    throw error;
+  }
+  return { entry, entries: [...entries, entry], added: true };
 }
 
 /**

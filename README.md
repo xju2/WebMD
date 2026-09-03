@@ -199,6 +199,17 @@ that line. Mentions are resolved rather than string-matched, so `[[triton]]`,
 `[[iaas/triton]]` and `[[/raw/projects/iaas/triton|Triton]]` all count as the
 same link.
 
+## Citations
+
+Keep bibliography entries in `references.bib` at the workspace root and cite
+them with Pandoc syntax such as `[@Ju:2026abc]`. Typing `@` completes known
+BibTeX keys. Preview shows inline citations, hover metadata, and a generated
+References section; the graph connects notes to the papers they cite.
+
+Pasting an arXiv, DOI, or INSPIRE literature link imports its BibTeX entry and
+replaces the link with its `[@key]` citation. DOI metadata comes from doi.org;
+arXiv and INSPIRE metadata comes from INSPIRE-HEP.
+
 ## Connect notes
 
 **Connect notes** in the AI panel links the open note to notes you already have.

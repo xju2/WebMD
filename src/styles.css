@@ -2490,6 +2490,9 @@ button {
 .graph-node-meta circle {
   fill: #5f6b7c;
 }
+.graph-node-citation circle {
+  fill: #b24f5b;
+}
 
 .graph-node text {
   fill: #273246;
@@ -2510,6 +2513,49 @@ button {
   place-items: center;
   margin: 0;
   color: #778296;
+}
+
+.citation {
+  position: relative;
+  white-space: nowrap;
+}
+
+.citation[data-card]:hover::after,
+.citation[data-card]:focus::after {
+  background: #1f2937;
+  border-radius: 6px;
+  bottom: calc(100% + 6px);
+  color: #fff;
+  content: attr(data-card);
+  font-size: 0.78rem;
+  font-weight: 400;
+  left: 0;
+  line-height: 1.35;
+  max-width: 28rem;
+  padding: 0.55rem 0.65rem;
+  position: absolute;
+  white-space: normal;
+  width: max-content;
+  z-index: 10;
+}
+
+.citation-missing {
+  color: #b42318;
+}
+
+.references {
+  border-top: 1px solid #d9e0e8;
+  margin-top: 2rem;
+  padding-top: 0.5rem;
+}
+
+.references li + li {
+  margin-top: 0.65rem;
+}
+
+.references small {
+  display: block;
+  margin-top: 0.12rem;
 }
 
 .graph-pane footer {

@@ -712,6 +712,47 @@ test('rejects an arXiv lookup without a valid identifier', async () => {
   }
 });
 
+test('imports a citation into the selected workspace bibliography', async () => {
+  const root = await tempRoot();
+  const requested = [];
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      citationFetch: async (target) => {
+        requested.push(target);
+        return new Response(
+          '@article{Ju:2026abc, title={Graph Paper}, author={Ju, Xiangyang}, year={2026}}'
+        );
+      }
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/workspace/citations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        root: '0',
+        source: 'https://inspirehep.net/literature/12345'
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).entry.key, 'Ju:2026abc');
+    assert.match(
+      await fs.readFile(path.join(root, 'references.bib'), 'utf8'),
+      /Ju:2026abc/
+    );
+    assert.match(requested[0], /api\/literature\/12345\?format=bibtex/);
+
+    const references = await (
+      await fetch(`${url}/api/workspace/references?root=0`)
+    ).json();
+    assert.equal(references.entries[0].title, 'Graph Paper');
+  } finally {
+    server.close();
+  }
+});
+
 test('lists open tasks across the workspace', async () => {
   const root = await tempRoot();
   await fs.writeFile(
