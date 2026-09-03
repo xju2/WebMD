@@ -29,6 +29,8 @@
   import {
     arxivCitation,
     arxivPasteId,
+    indicoLabel,
+    indicoReference,
     mathPasteText,
     quotedBlockPaste,
     shortLinkPaste,
@@ -1826,11 +1828,11 @@
         insertText(view, text);
         rewritePastedText(view, from, from + text.length, insert);
         // The bare link lands now; author and title arrive when arXiv answers.
+        const range = { from, to: from + insert.length };
         if (arxivId) {
-          upgradeArxivCitation(arxivId, insert, {
-            from,
-            to: from + insert.length
-          });
+          upgradeArxivCitation(arxivId, insert, range);
+        } else {
+          upgradeIndicoLink(source, insert, range);
         }
         return true;
       }
@@ -1866,8 +1868,15 @@
       return;
     }
 
-    const citation = arxivCitation(metadata);
-    if (citation === placeholder) return;
+    replacePastedLink(placeholder, arxivCitation(metadata), range);
+  }
+
+  /**
+   * Swaps the placeholder a paste left behind for the text a lookup returned,
+   * as long as it is still there untouched.
+   */
+  function replacePastedLink(placeholder, replacement, range) {
+    if (replacement === placeholder) return;
 
     const length = editorView.state.doc.length;
     const from = Math.min(range.from, length);
@@ -1878,9 +1887,40 @@
     const cursor = editorView.state.selection.main;
     const followCursor = cursor.empty && cursor.head === to;
     editorView.dispatch({
-      changes: { from, to, insert: citation },
-      ...(followCursor ? { selection: { anchor: from + citation.length } } : {})
+      changes: { from, to, insert: replacement },
+      ...(followCursor
+        ? { selection: { anchor: from + replacement.length } }
+        : {})
     });
+  }
+
+  /**
+   * Trades the `Indico event 1338689` placeholder for the meeting's real name.
+   * Like the arXiv upgrade, it runs un-awaited and drops out when the note or
+   * the pasted text has moved on, and quietly when the page needs a login.
+   */
+  async function upgradeIndicoLink(source, placeholder, range) {
+    const reference = indicoReference(source.trim());
+    if (!reference) return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+
+    let metadata;
+    try {
+      metadata = await requestJson(
+        `/api/indico?url=${encodeURIComponent(reference.url)}`
+      );
+    } catch {
+      return;
+    }
+
+    const label = indicoLabel(metadata);
+    if (!label) return;
+    if (root !== selectedRoot || path !== selectedPath || !selectedIsMarkdown) {
+      return;
+    }
+    replacePastedLink(placeholder, `[${label}](${reference.url})`, range);
   }
 
   function textBeforeCursor(state) {

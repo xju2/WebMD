@@ -298,7 +298,47 @@ export function shortLinkLabel(url) {
   if (/(^|\.)gitlab\./.test(host) || segments.includes('-')) {
     return gitlabLabel(segments);
   }
-  return null;
+  return indicoReference(url)?.label ?? null;
+}
+
+/**
+ * An Indico event, contribution or session, as `{ url, label }`. Nothing in
+ * the URL says what the meeting is called, so the label is a placeholder the
+ * caller can trade for the real title — see `/api/indico`.
+ */
+export function indicoReference(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  if (!/^indico\./i.test(parsed.hostname)) return null;
+
+  const path = /^\/event\/(\d+)(?:\/(contributions|sessions)\/(\d+))?\/?$/.exec(
+    parsed.pathname
+  );
+  if (!path) return null;
+
+  const [, event, kind, id] = path;
+  // Rebuilt rather than passed through, so only this shape reaches the server.
+  const canonical = `https://${parsed.hostname}/event/${event}/${
+    kind ? `${kind}/${id}/` : ''
+  }`;
+  const label = kind
+    ? `Indico ${kind === 'contributions' ? 'contribution' : 'session'} ${id}`
+    : `Indico event ${event}`;
+  return { url: canonical, label };
+}
+
+/** `Talk title (Meeting)`, dropping the meeting when that runs long. */
+export function indicoLabel({ title = '', event = '' } = {}) {
+  const name = collapseSpaces(title);
+  const meeting = collapseSpaces(event);
+  if (!name) return meeting || '';
+
+  return meeting && meeting !== name ? withSuffix(name, ` (${meeting})`) : name;
 }
 
 /** `PROJ-42`, wherever the Jira lives — cloud, or a self-hosted `/jira/browse`. */

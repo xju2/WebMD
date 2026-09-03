@@ -7,6 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { createApp, createWorkspaceRegistry } from '../server/app.js';
 import { resetArxivCache } from '../server/arxiv.js';
+import { resetIndicoCache } from '../server/indico.js';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
@@ -844,7 +845,8 @@ test('writes a quote of the day once, then serves it from history', async () => 
 
   try {
     // Dated by when Torvalds said it, not by the day of the note.
-    const expected = '"Talk is cheap. Show me the code." -- Linus Torvalds (2000)';
+    const expected =
+      '"Talk is cheap. Show me the code." -- Linus Torvalds (2000)';
     assert.equal((await ask()).quote, expected);
 
     // The same day reuses the stored quote instead of paying for another call,
@@ -865,6 +867,66 @@ test('writes a quote of the day once, then serves it from history', async () => 
         said: '2000'
       }
     ]);
+  } finally {
+    server.close();
+  }
+});
+
+test('serves the title of an Indico page', async () => {
+  resetIndicoCache();
+  const root = await tempRoot();
+  const requested = [];
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      indicoFetch: async (target) => {
+        requested.push(target);
+        return new Response(
+          '<html><head><title>CHEP 2024 (19 October 2024): Welcome · Indico' +
+            '</title><meta property="og:title" content="CHEP 2024"></head></html>'
+        );
+      }
+    })
+  );
+
+  try {
+    const link = 'https://indico.cern.ch/event/1338689/contributions/6081535/';
+    const response = await fetch(
+      `${url}/api/indico?url=${encodeURIComponent(link)}`
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      url: link,
+      title: 'Welcome',
+      event: 'CHEP 2024'
+    });
+    assert.deepEqual(requested, [link]);
+  } finally {
+    server.close();
+  }
+});
+
+test('refuses to fetch a link that is not an Indico page', async () => {
+  resetIndicoCache();
+  const root = await tempRoot();
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      indicoFetch: async () => {
+        throw new Error('should not be called');
+      }
+    })
+  );
+
+  try {
+    for (const query of ['', '?url=', '?url=https://example.com/event/1/']) {
+      const response = await fetch(`${url}/api/indico${query}`);
+      assert.equal(response.status, 400, query);
+      assert.match(
+        (await response.json()).error,
+        /Indico event link is required/
+      );
+    }
   } finally {
     server.close();
   }

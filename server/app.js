@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
+import { fetchIndicoTitle, isIndicoUrl } from './indico.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -38,6 +39,7 @@ export async function createApp({
   aiEnv = process.env,
   aiFetch = fetch,
   arxivFetch = fetch,
+  indicoFetch = fetch,
   env = process.env
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
@@ -230,6 +232,19 @@ export async function createApp({
         throw new WorkspaceError(400, 'An arXiv identifier is required.');
       }
       res.json(await fetchArxivMetadata(id.trim(), { fetchImpl: arxivFetch }));
+    })
+  );
+
+  // Proxied for the same reasons as arXiv: no CORS headers on indico.cern.ch,
+  // and one shared cache for pages every tab pastes.
+  app.get(
+    '/api/indico',
+    asyncHandler(async (req, res) => {
+      const url = req.query.url;
+      if (!isIndicoUrl(url)) {
+        throw new WorkspaceError(400, 'An Indico event link is required.');
+      }
+      res.json(await fetchIndicoTitle(url.trim(), { fetchImpl: indicoFetch }));
     })
   );
 
