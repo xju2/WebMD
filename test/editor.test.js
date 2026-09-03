@@ -380,3 +380,63 @@ test('falls back to the project when the file path is longer than the link', () 
     'https://github.com/a/b/blob/main/very/deeply/nested/directory/tree/with/a/long/name/file.py';
   assert.equal(shortLinkPaste(url), `[a/b](${url})`);
 });
+
+test('shortens a Jira link to the ticket key, wherever the Jira lives', () => {
+  const cern = 'https://its.cern.ch/jira/browse/ATLASRECTS-7645';
+  assert.equal(shortLinkPaste(cern), `[ATLASRECTS-7645](${cern})`);
+
+  const cloud = 'https://acme.atlassian.net/browse/PROJ-42';
+  assert.equal(shortLinkPaste(cloud), `[PROJ-42](${cloud})`);
+
+  const board =
+    'https://acme.atlassian.net/jira/software/projects/PROJ/boards/1?selectedIssue=PROJ-99';
+  assert.equal(shortLinkPaste(board), `[PROJ-99](${board})`);
+
+  assert.equal(shortLinkPaste('https://its.cern.ch/jira/browse/notakey'), null);
+});
+
+test('names an X post after the account that posted it', () => {
+  const post = 'https://x.com/ATLASexperiment/status/1790000000000000000';
+  assert.equal(shortLinkPaste(post), `[@ATLASexperiment on X](${post})`);
+
+  const profile = 'https://twitter.com/ATLASexperiment';
+  assert.equal(shortLinkPaste(profile), `[@ATLASexperiment](${profile})`);
+
+  assert.equal(shortLinkPaste('https://x.com/i/status/1790'), null);
+  assert.equal(shortLinkPaste('https://x.com/home'), null);
+});
+
+test('shortens DOI, Wikipedia and Hugging Face links', () => {
+  const doi = 'https://doi.org/10.1103/PhysRevD.100.012345';
+  assert.equal(
+    shortLinkPaste(doi),
+    `[doi:10.1103/PhysRevD.100.012345](${doi})`
+  );
+
+  const wiki = 'https://en.wikipedia.org/wiki/Kalman_filter';
+  assert.equal(shortLinkPaste(wiki), `[Kalman filter (Wikipedia)](${wiki})`);
+
+  const model = 'https://huggingface.co/openai/whisper-large-v3';
+  assert.equal(shortLinkPaste(model), `[openai/whisper-large-v3](${model})`);
+
+  const dataset = 'https://huggingface.co/datasets/cern/atlas';
+  assert.equal(shortLinkPaste(dataset), `[cern/atlas (dataset)](${dataset})`);
+});
+
+test('reads a Stack Exchange question title out of its slug', () => {
+  const url = 'https://stackoverflow.com/questions/12345/how-to-flatten-a-list';
+  assert.equal(
+    shortLinkPaste(url),
+    `[How to flatten a list (Stack Overflow)](${url})`
+  );
+
+  const physics = 'https://physics.stackexchange.com/questions/1/why-sky-blue';
+  assert.equal(
+    shortLinkPaste(physics),
+    `[Why sky blue (Physics Stack Exchange)](${physics})`
+  );
+
+  const long =
+    'https://stackoverflow.com/questions/9/why-is-processing-a-sorted-array-faster-than-processing-an-unsorted-array';
+  assert.equal(shortLinkPaste(long), `[Stack Overflow](${long})`);
+});

@@ -264,7 +264,7 @@ export function shortLinkPaste(text, { beforeCursor = '' } = {}) {
   return label ? `[${label}](${url})` : null;
 }
 
-/** The label a forge would print for the thing the URL points at. */
+/** The name the site itself would print for the thing the URL points at. */
 export function shortLinkLabel(url) {
   let parsed;
   try {
@@ -278,13 +278,96 @@ export function shortLinkLabel(url) {
     .split('/')
     .filter(Boolean)
     .map(decodeSegment);
+
+  // A ticket key can also ride along in the query, so Jira comes before the
+  // empty-path check.
+  const ticket = jiraLabel(segments, parsed);
+  if (ticket) return ticket;
   if (!segments.length) return null;
 
   if (host === 'github.com') return githubLabel(segments);
+  if (host === 'x.com' || host === 'twitter.com') return xLabel(segments);
+  if (host === 'doi.org' || host === 'dx.doi.org') {
+    return `doi:${segments.join('/')}`;
+  }
+  if (/\.wikipedia\.org$/.test(host)) return wikipediaLabel(segments);
+  if (host === 'huggingface.co') return huggingFaceLabel(segments);
+  if (host === 'stackoverflow.com' || /(^|\.)stackexchange\.com$/.test(host)) {
+    return stackExchangeLabel(segments, host);
+  }
   if (/(^|\.)gitlab\./.test(host) || segments.includes('-')) {
     return gitlabLabel(segments);
   }
   return null;
+}
+
+/** `PROJ-42`, wherever the Jira lives — cloud, or a self-hosted `/jira/browse`. */
+const JIRA_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
+
+function jiraLabel(segments, parsed) {
+  const browsed = segments[segments.indexOf('browse') + 1];
+  if (segments.includes('browse') && JIRA_KEY.test(browsed || '')) {
+    return browsed;
+  }
+
+  // Board and backlog links carry the open ticket in the query instead.
+  const selected = parsed.searchParams.get('selectedIssue') || '';
+  return JIRA_KEY.test(selected) ? selected : null;
+}
+
+/** Paths that look like a handle but are the site's own. */
+const X_RESERVED = new Set(['i', 'home', 'search', 'explore', 'settings']);
+
+/** `@handle on X` for a post, the handle alone for a profile. */
+function xLabel(segments) {
+  const [handle, kind] = segments;
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle) || X_RESERVED.has(handle)) {
+    return null;
+  }
+
+  if (!kind) return `@${handle}`;
+  return kind === 'status' ? `@${handle} on X` : null;
+}
+
+function wikipediaLabel(segments) {
+  const [wiki, title] = segments;
+  if (wiki !== 'wiki' || !title) return null;
+
+  return `${title.replace(/_/g, ' ')} (Wikipedia)`;
+}
+
+/** Models keep their `owner/name`; datasets and spaces say which they are. */
+function huggingFaceLabel(segments) {
+  const kinds = { datasets: 'dataset', spaces: 'space' };
+  const kind = kinds[segments[0]];
+  const project = projectName(
+    (kind ? segments.slice(1) : segments).slice(0, 2)
+  );
+  if (!project) return null;
+
+  return kind ? `${project} (${kind})` : project;
+}
+
+/** The question's own slug, which is its title with the spaces knocked out. */
+function stackExchangeLabel(segments, host) {
+  const site =
+    host === 'stackoverflow.com'
+      ? 'Stack Overflow'
+      : `${capitalize(host.split('.')[0])} Stack Exchange`;
+  if (segments[0] !== 'questions' || !/^\d+$/.test(segments[1] || '')) {
+    return null;
+  }
+
+  const slug = segments.length === 3 ? segments[2] : '';
+  if (!slug) return site;
+
+  const title = capitalize(slug.replace(/-/g, ' '));
+  const label = `${title} (${site})`;
+  return label.length <= 60 ? label : site;
+}
+
+function capitalize(text) {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
 }
 
 function githubLabel(segments) {
@@ -307,10 +390,13 @@ function gitlabLabel(segments) {
   return withSuffix(project, referenceSuffix(segments.slice(marker + 1), '!'));
 }
 
-/** A deep file path stops being shorter than the link it replaces. */
-function withSuffix(project, suffix) {
-  const label = `${project}${suffix}`;
-  return label.length <= 60 ? label : project;
+/**
+ * A deep file path stops being shorter than the
+ * link it replaces, so past 60 characters the path comes off again.
+ */
+function withSuffix(base, suffix) {
+  const label = `${base}${suffix}`;
+  return label.length <= 60 ? label : base;
 }
 
 function referenceSuffix([kind, ...rest], mergeRequestMark) {
