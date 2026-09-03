@@ -31,6 +31,7 @@
     arxivPasteId,
     mathPasteText,
     quotedBlockPaste,
+    shortLinkPaste,
     sourceColumnForWord,
     tidyPasteText
   } from './editor.js';
@@ -1816,7 +1817,8 @@
         const insert =
           (arxivId
             ? arxivCitation({ id: arxivId })
-            : mathPaste(view.state, source, beforeCursor)) ?? tidied;
+            : (shortLink(view.state, source, beforeCursor) ??
+              mathPaste(view.state, source, beforeCursor))) ?? tidied;
         if (insert === null) return false;
 
         event.preventDefault();
@@ -1923,6 +1925,13 @@
       selection: { anchor: from + insert.length },
       annotations: isolateHistory.of('full')
     });
+  }
+
+  /** A forge URL becomes a markdown link named the way the forge names it. */
+  function shortLink(state, text, beforeCursor) {
+    if (insideCodeFence(state)) return null;
+
+    return shortLinkPaste(text, { beforeCursor });
   }
 
   /** Unicode powers become inline math, on top of any quote prefixes added. */

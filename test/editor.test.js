@@ -7,6 +7,7 @@ import {
   mathPasteText,
   quotedBlockPaste,
   pastedFromCode,
+  shortLinkPaste,
   sourceColumnForWord,
   tidyPasteText
 } from '../src/editor.js';
@@ -317,3 +318,65 @@ function withDomParser(run) {
     globalThis.DOMParser = original;
   }
 }
+
+const MR_URL =
+  'https://gitlab.cern.ch/atlas/atlasexternals/-/merge_requests/1436';
+
+test('shortens a pasted GitLab merge request to its reference', () => {
+  assert.equal(
+    shortLinkPaste(MR_URL),
+    `[atlas/atlasexternals!1436](${MR_URL})`
+  );
+});
+
+test('keeps the nested group path of a GitLab project', () => {
+  const url = 'https://gitlab.cern.ch/atlas/athena/sub/-/issues/42';
+  assert.equal(shortLinkPaste(url), `[atlas/athena/sub#42](${url})`);
+});
+
+test('names a GitHub tree link after the repository and path', () => {
+  const url =
+    'https://github.com/milescb/traccc-aaS/tree/main/backend/traccc-gpu';
+  assert.equal(
+    shortLinkPaste(url),
+    `[milescb/traccc-aaS/backend/traccc-gpu](${url})`
+  );
+});
+
+test('names a bare GitHub repository link after the repository', () => {
+  const url = 'https://github.com/milescb/traccc-aaS';
+  assert.equal(shortLinkPaste(url), `[milescb/traccc-aaS](${url})`);
+  assert.equal(
+    shortLinkPaste('https://github.com/milescb/traccc-aaS/tree/main'),
+    '[milescb/traccc-aaS](https://github.com/milescb/traccc-aaS/tree/main)'
+  );
+});
+
+test('shortens GitHub pull requests, issues and commits', () => {
+  const pull = 'https://github.com/a/b/pull/12#issuecomment-9';
+  assert.equal(shortLinkPaste(pull), `[a/b#12](${pull})`);
+
+  const issue = 'https://github.com/a/b/issues/7';
+  assert.equal(shortLinkPaste(issue), `[a/b#7](${issue})`);
+
+  const commit = 'https://github.com/a/b/commit/0123456789abcdef';
+  assert.equal(shortLinkPaste(commit), `[a/b@0123456](${commit})`);
+});
+
+test('leaves links alone when there is nothing shorter to say', () => {
+  assert.equal(shortLinkPaste('https://example.com/some/page'), null);
+  assert.equal(shortLinkPaste('https://github.com/milescb'), null);
+  assert.equal(shortLinkPaste('not a url'), null);
+  assert.equal(shortLinkPaste(`see ${MR_URL} for it`), null);
+});
+
+test('skips shortening a link pasted into markdown link syntax', () => {
+  assert.equal(shortLinkPaste(MR_URL, { beforeCursor: '[mr](' }), null);
+  assert.equal(shortLinkPaste(MR_URL, { beforeCursor: '<' }), null);
+});
+
+test('falls back to the project when the file path is longer than the link', () => {
+  const url =
+    'https://github.com/a/b/blob/main/very/deeply/nested/directory/tree/with/a/long/name/file.py';
+  assert.equal(shortLinkPaste(url), `[a/b](${url})`);
+});

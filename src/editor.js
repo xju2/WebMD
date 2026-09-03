@@ -247,3 +247,101 @@ export function pastedFromCode(html) {
     (node) => node.textContent.trim() === text
   );
 }
+
+/**
+ * A bare URL pasted on its own becomes a markdown link with a short, readable
+ * label — `atlas/atlasexternals!1436` rather than the whole GitLab path.
+ * Returns null for anything we have no better name for, so the plain URL is
+ * pasted as-is.
+ */
+export function shortLinkPaste(text, { beforeCursor = '' } = {}) {
+  if (/[(<[]$/.test(beforeCursor)) return null;
+
+  const url = typeof text === 'string' ? text.trim() : '';
+  if (!/^https?:\/\/[^\s<>]+$/i.test(url)) return null;
+
+  const label = shortLinkLabel(url);
+  return label ? `[${label}](${url})` : null;
+}
+
+/** The label a forge would print for the thing the URL points at. */
+export function shortLinkLabel(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const host = parsed.hostname.replace(/^www\./, '');
+  const segments = parsed.pathname
+    .split('/')
+    .filter(Boolean)
+    .map(decodeSegment);
+  if (!segments.length) return null;
+
+  if (host === 'github.com') return githubLabel(segments);
+  if (/(^|\.)gitlab\./.test(host) || segments.includes('-')) {
+    return gitlabLabel(segments);
+  }
+  return null;
+}
+
+function githubLabel(segments) {
+  const project = projectName(segments.slice(0, 2));
+  if (!project) return null;
+
+  return withSuffix(project, referenceSuffix(segments.slice(2), '#'));
+}
+
+/** GitLab nests groups, so the project is everything before the `/-/` marker. */
+function gitlabLabel(segments) {
+  const marker = segments.indexOf('-');
+  const project = projectName(
+    marker === -1 ? segments : segments.slice(0, marker)
+  );
+  if (!project) return null;
+
+  if (marker === -1) return project;
+
+  return withSuffix(project, referenceSuffix(segments.slice(marker + 1), '!'));
+}
+
+/** A deep file path stops being shorter than the link it replaces. */
+function withSuffix(project, suffix) {
+  const label = `${project}${suffix}`;
+  return label.length <= 60 ? label : project;
+}
+
+function referenceSuffix([kind, ...rest], mergeRequestMark) {
+  const [first, ...path] = rest;
+  if (!kind || !first) return '';
+
+  if (kind === 'merge_requests' || kind === 'pull') {
+    return /^\d+$/.test(first) ? `${mergeRequestMark}${first}` : '';
+  }
+  if (kind === 'issues') return /^\d+$/.test(first) ? `#${first}` : '';
+  if (kind === 'commit') return `@${shortSha(first)}`;
+  // `first` is the branch or tag the path is read at, which the label drops.
+  if (kind === 'tree' || kind === 'blob') {
+    return path.length ? `/${path.join('/')}` : '';
+  }
+  return '';
+}
+
+function projectName(parts) {
+  if (parts.length < 2 || parts.some((part) => !part)) return null;
+  return parts.join('/').replace(/\.git$/, '');
+}
+
+function shortSha(revision) {
+  return /^[0-9a-f]{7,40}$/i.test(revision) ? revision.slice(0, 7) : revision;
+}
+
+function decodeSegment(segment) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
