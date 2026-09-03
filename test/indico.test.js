@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   fetchIndicoTitle,
+  indicoSite,
   indicoTokens,
   isIndicoUrl,
   parseIndicoPage,
@@ -120,32 +121,40 @@ function html(body) {
   });
 }
 
-test('reads Indico tokens per host, defaulting to CERN', () => {
-  assert.deepEqual(
-    [...indicoTokens({ INDICO_TOKEN: 'abc123' })],
-    [['indico.cern.ch', 'abc123']]
-  );
+test('reads one token per Indico from its own variable', () => {
   assert.deepEqual(
     [
       ...indicoTokens({
-        INDICO_TOKEN: 'indico.cern.ch=abc, indico.fnal.gov=def'
+        INDICO_CERN_TOKEN: 'abc',
+        INDICO_FNAL_TOKEN: ' def ',
+        INDICO_GLOBAL_TOKEN: 'ghi',
+        INDICO_DESY_TOKEN: '',
+        OPENAI_API_KEY: 'unrelated'
       })
     ],
     [
-      ['indico.cern.ch', 'abc'],
-      ['indico.fnal.gov', 'def']
+      ['cern', 'abc'],
+      ['fnal', 'def'],
+      ['global', 'ghi']
     ]
   );
   assert.deepEqual([...indicoTokens({})], []);
 });
 
-test('sends the token only to the host it was written for', async () => {
+test('names an Indico after the word in its hostname', () => {
+  assert.equal(indicoSite('indico.cern.ch'), 'cern');
+  assert.equal(indicoSite('indico.fnal.gov'), 'fnal');
+  assert.equal(indicoSite('indico.global'), 'global');
+  assert.equal(indicoSite(''), '');
+});
+
+test('sends the token only to the Indico it was named for', async () => {
   const seen = [];
   const fetchImpl = async (target, options) => {
     seen.push([target, options?.headers?.Authorization]);
     return html(page(`${EVENT} (1 May 2026): Tracking`));
   };
-  const tokens = new Map([['indico.cern.ch', 'abc123']]);
+  const tokens = new Map([['cern', 'abc123']]);
 
   await fetchIndicoTitle('https://indico.cern.ch/event/1/', {
     fetchImpl,
@@ -189,7 +198,7 @@ test('falls back to the export API for a page the token opens', async () => {
 
   const metadata = await fetchIndicoTitle(
     'https://indico.cern.ch/event/7/contributions/55/',
-    { fetchImpl, tokens: new Map([['indico.cern.ch', 'abc123']]) }
+    { fetchImpl, tokens: new Map([['cern', 'abc123']]) }
   );
 
   assert.deepEqual(metadata, {
@@ -208,9 +217,9 @@ test('says so when Indico refuses the token', async () => {
     () =>
       fetchIndicoTitle('https://indico.cern.ch/event/3/', {
         fetchImpl: async () => new Response('no', { status: 403 }),
-        tokens: new Map([['indico.cern.ch', 'stale']])
+        tokens: new Map([['cern', 'stale']])
       }),
-    /INDICO_TOKEN/
+    /INDICO_CERN_TOKEN/
   );
 });
 

@@ -91,13 +91,13 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `OLLAMA_BASE_URL`: optional Ollama URL, defaults to `http://127.0.0.1:11434`.
 - `OPENAI_API_KEY`: required for `AI_PROVIDER=openai`; never sent to the browser.
 - `OPENAI_BASE_URL`: optional OpenAI-compatible base URL, defaults to `https://api.openai.com/v1`.
-- `INDICO_TOKEN`: optional Indico personal access token, so pasted Indico links
-  that need a login still get named after the meeting or talk. A bare token is
-  used for `indico.cern.ch`; for other servers, or several at once, write
-  `host=token` pairs separated by commas: `indico.cern.ch=abc,indico.fnal.gov=def`.
-  Create one under **My Profile → Settings → API tokens** with the
-  `Everything (read only)` scope. It never leaves the backend, and is only sent
-  to the host it is written next to.
+- `INDICO_<SITE>_TOKEN`: optional Indico personal access token, so pasted Indico
+  links that need a login still get named after the meeting or talk. `<SITE>` is
+  the site's own word in its hostname: `INDICO_CERN_TOKEN` for indico.cern.ch,
+  `INDICO_FNAL_TOKEN` for indico.fnal.gov, `INDICO_GLOBAL_TOKEN` for
+  indico.global. Create one under **My Profile → Settings → API tokens** with
+  the `Everything (read only)` scope. A token never leaves the backend, and is
+  only sent to the Indico it is named after.
 
 ## Prompt presets
 

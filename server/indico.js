@@ -9,26 +9,29 @@ export function isIndicoUrl(value) {
 }
 
 /**
- * Personal access tokens by host, from `INDICO_TOKEN`: either a bare token for
- * indico.cern.ch, or `host=token` pairs separated by commas or whitespace. A
- * token only ever travels to the host it was written next to.
+ * Personal access tokens, one environment variable per Indico: the site's own
+ * word in its hostname, as `INDICO_CERN_TOKEN` for indico.cern.ch,
+ * `INDICO_FNAL_TOKEN` for indico.fnal.gov, `INDICO_GLOBAL_TOKEN` for
+ * indico.global. A token only ever travels to the site it is named after.
  */
 export function indicoTokens(env = process.env) {
-  const setting = (env.INDICO_TOKEN || '').trim();
-  if (!setting) return new Map();
+  const tokens = new Map();
+  for (const [key, value] of Object.entries(env)) {
+    const site = /^INDICO_([A-Z0-9]+)_TOKEN$/.exec(key)?.[1];
+    const token = typeof value === 'string' ? value.trim() : '';
+    if (site && token) tokens.set(site.toLowerCase(), token);
+  }
+  return tokens;
+}
 
-  const entries = setting
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .map((entry) => {
-      const at = entry.indexOf('=');
-      return at === -1
-        ? ['indico.cern.ch', entry]
-        : [entry.slice(0, at).trim().toLowerCase(), entry.slice(at + 1).trim()];
-    })
-    .filter(([host, token]) => host && token);
+/** `indico.cern.ch` is the CERN one, `indico.global` the global one. */
+export function indicoSite(host) {
+  return (host || '').toLowerCase().split('.')[1] || '';
+}
 
-  return new Map(entries);
+/** The variable a given Indico reads its token from, for error messages. */
+export function indicoTokenName(host) {
+  return `INDICO_${indicoSite(host).toUpperCase()}_TOKEN`;
 }
 
 /**
@@ -53,7 +56,7 @@ export async function fetchIndicoTitle(
   const pending = inFlight.get(key);
   if (pending) return await pending;
 
-  const token = tokens.get(reference.host.toLowerCase()) || '';
+  const token = tokens.get(indicoSite(reference.host)) || '';
   const request = requestIndico(reference, fetchImpl, token).finally(() =>
     inFlight.delete(key)
   );
@@ -65,7 +68,12 @@ export async function fetchIndicoTitle(
 }
 
 async function requestIndico(reference, fetchImpl, token) {
-  const page = await requestIndicoText(reference.url, fetchImpl, token);
+  const page = await requestIndicoText(
+    reference,
+    reference.url,
+    fetchImpl,
+    token
+  );
   try {
     return parseIndicoPage(page, reference.url);
   } catch (error) {
@@ -75,7 +83,7 @@ async function requestIndico(reference, fetchImpl, token) {
   }
 }
 
-async function requestIndicoText(url, fetchImpl, token) {
+async function requestIndicoText(reference, url, fetchImpl, token) {
   let response;
   try {
     response = await fetchImpl(url, {
@@ -95,7 +103,7 @@ async function requestIndicoText(url, fetchImpl, token) {
   if (response.status === 401 || response.status === 403) {
     throw new WorkspaceError(
       502,
-      `Indico refused the request with ${response.status}. Check INDICO_TOKEN in the environment or ~/.webmd.conf, and that its scope includes reading events.`
+      `Indico refused the request with ${response.status}. Check ${indicoTokenName(reference.host)} in the environment or ~/.webmd.conf, and that its scope includes reading events.`
     );
   }
   if (!response.ok) {
@@ -117,7 +125,7 @@ async function exportedTitle(reference, fetchImpl, token) {
     `https://${reference.host}/export/event/${reference.event}.json` +
     (contribution ? '?detail=contributions&occ=no' : '');
 
-  const body = await requestIndicoText(url, fetchImpl, token);
+  const body = await requestIndicoText(reference, url, fetchImpl, token);
   let exported;
   try {
     exported = JSON.parse(body);
