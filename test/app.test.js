@@ -959,9 +959,8 @@ test('serves the author and words of an X post', async () => {
         requested.push(target);
         return new Response(
           JSON.stringify({
-            author_name: 'eric provencher',
-            author_url: 'https://x.com/pvncher',
-            html: '<blockquote><p lang="en" dir="ltr">Ship it</p></blockquote>'
+            text: 'Ship it',
+            user: { name: 'eric provencher', screen_name: 'pvncher' }
           }),
           { headers: { 'Content-Type': 'application/json' } }
         );
@@ -971,7 +970,9 @@ test('serves the author and words of an X post', async () => {
 
   try {
     const link = 'https://x.com/pvncher/status/2095991462416490862';
-    const response = await fetch(`${url}/api/x?url=${encodeURIComponent(link)}`);
+    const response = await fetch(
+      `${url}/api/x?url=${encodeURIComponent(link)}`
+    );
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       url: link,
@@ -980,7 +981,9 @@ test('serves the author and words of an X post', async () => {
       text: 'Ship it'
     });
     assert.equal(requested.length, 1);
-    assert.ok(requested[0].startsWith('https://publish.x.com/oembed?'));
+    assert.ok(
+      requested[0].startsWith('https://cdn.syndication.twimg.com/tweet-result?')
+    );
 
     const profile = await fetch(`${url}/api/x?url=https://x.com/pvncher`);
     assert.equal(profile.status, 400);

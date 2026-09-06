@@ -37,39 +37,100 @@ export async function fetchXPost(url, { fetchImpl = fetch } = {}) {
 }
 
 async function requestXPost(reference, fetchImpl) {
-  const endpoint =
-    'https://publish.x.com/oembed?omit_script=1&url=' +
-    encodeURIComponent(reference.url);
+  // The syndication endpoint — what an embedded post loads itself from — is
+  // the only public place that names an X Article, whose post body is just a
+  // link to it. oEmbed answers when it will not.
+  const syndicated = await requestJson(syndicationUrl(reference), fetchImpl);
+  if (syndicated) {
+    const post = parseSyndicatedPost(syndicated, reference);
+    if (post) return post;
+  }
 
+  const embed = await requestJson(oembedUrl(reference), fetchImpl, {
+    required: true
+  });
+  return parseXOembed(embed, reference);
+}
+
+function syndicationUrl({ id }) {
+  // The token is a function of the id, the way an embedded post derives it.
+  const token = ((Number(id) / 1e15) * Math.PI)
+    .toString(36)
+    .replace(/(0+|\.)/g, '');
+  return `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
+}
+
+function oembedUrl({ url }) {
+  return `https://publish.x.com/oembed?omit_script=1&url=${encodeURIComponent(url)}`;
+}
+
+/**
+ * Fetches JSON, returning null for anything short of an answer unless the
+ * caller has no fallback left — then the failure is the user's to hear about.
+ */
+async function requestJson(endpoint, fetchImpl, { required = false } = {}) {
   let response;
   try {
     response = await fetchImpl(endpoint, { redirect: 'follow' });
   } catch (error) {
+    if (!required) return null;
     throw new WorkspaceError(
       502,
       `Could not reach X: ${error.message}. Check that this host has outbound network access.`
     );
   }
 
-  if (!response) throw new WorkspaceError(502, 'No response from X.');
-  // A post that is deleted, protected or from a suspended account is one X
-  // will not quote; the placeholder label already says as much as we know.
-  if (response.status === 403 || response.status === 404) {
-    throw new WorkspaceError(404, 'X gave nothing for that post.');
-  }
-  if (!response.ok) {
+  if (!response?.ok) {
+    if (!required) return null;
+    // A post that is deleted, protected or from a suspended account is one X
+    // will not hand over; the placeholder label already says what we know.
+    if (!response) throw new WorkspaceError(502, 'No response from X.');
+    if (response.status === 403 || response.status === 404) {
+      throw new WorkspaceError(404, 'X gave nothing for that post.');
+    }
     const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
     throw new WorkspaceError(502, `X failed with ${status}.`);
   }
 
-  let payload;
   try {
-    payload = await response.json();
+    return await response.json();
   } catch {
+    if (!required) return null;
     throw new WorkspaceError(502, 'X returned something other than JSON.');
   }
+}
 
-  return parseXOembed(payload, reference);
+/**
+ * The syndicated post carries the account, the post's own words, and — when
+ * the post is a link to an X Article — the article's title, which is the name
+ * the post goes by everywhere it is seen.
+ */
+export function parseSyndicatedPost(payload, reference) {
+  const user = payload?.user;
+  const author = collapse(typeof user?.name === 'string' ? user.name : '');
+  const handle = collapse(
+    typeof user?.screen_name === 'string' ? user.screen_name : ''
+  );
+  if (!author && !handle) return null;
+
+  const article = collapse(
+    typeof payload?.article?.title === 'string' ? payload.article.title : ''
+  );
+  const words = collapse(
+    stripLinks(typeof payload?.text === 'string' ? payload.text : '')
+  );
+
+  return {
+    url: reference.url,
+    author,
+    handle: handle || reference.handle,
+    text: article || words
+  };
+}
+
+/** `t.co` stands in for media and links alike, and reads as noise in a label. */
+function stripLinks(text) {
+  return text.replace(/https?:\/\/t\.co\/\S+/g, ' ');
 }
 
 /**
@@ -81,11 +142,8 @@ export function parseXOembed(payload, reference) {
   const html = typeof payload?.html === 'string' ? payload.html : '';
   const paragraph = /<p[^>]*>([\s\S]*?)<\/p>/i.exec(html)?.[1] || '';
   const text = collapse(
-    decodeHtml(
-      paragraph
-        .replace(/<br\s*\/?>/gi, ' ')
-        .replace(/<[^>]+>/g, '')
-        .replace(/https?:\/\/t\.co\/\S+/g, ' ')
+    stripLinks(
+      decodeHtml(paragraph.replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ''))
     )
   );
 
