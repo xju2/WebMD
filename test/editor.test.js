@@ -401,10 +401,13 @@ test('shortens a Jira link to the ticket key, wherever the Jira lives', () => {
 
 test('names an X post after the account that posted it', () => {
   const post = 'https://x.com/ATLASexperiment/status/1790000000000000000';
-  assert.equal(shortLinkPaste(post), `[@ATLASexperiment on X](${post})`);
+  assert.equal(shortLinkPaste(post), `[ATLASexperiment on X](${post})`);
 
   const profile = 'https://twitter.com/ATLASexperiment';
-  assert.equal(shortLinkPaste(profile), `[@ATLASexperiment](${profile})`);
+  assert.equal(shortLinkPaste(profile), `[ATLASexperiment on X](${profile})`);
+
+  // `[@name](url)` is the citation syntax; a label must not open with it.
+  assert.ok(!shortLinkPaste(post).startsWith('[@'));
 
   assert.equal(shortLinkPaste('https://x.com/i/status/1790'), null);
   assert.equal(shortLinkPaste('https://x.com/home'), null);
@@ -431,16 +434,23 @@ test('reads the account and post out of an X link', () => {
 
 test('names an X post after its author and its words', () => {
   assert.equal(
-    xPostLabel({ author: 'eric provencher', handle: 'pvncher', text: 'Ship it' }),
-    'eric provencher (@pvncher): Ship it'
+    xPostLabel({
+      author: 'eric provencher',
+      handle: 'pvncher',
+      text: 'Ship it'
+    }),
+    'eric provencher on X: Ship it'
   );
 
   // A photo- or video-only post has nothing to quote.
   assert.equal(
     xPostLabel({ author: 'eric provencher', handle: 'pvncher', text: '' }),
-    'eric provencher (@pvncher) on X'
+    'eric provencher on X'
   );
-  assert.equal(xPostLabel({ handle: 'pvncher', text: 'Ship it' }), '@pvncher: Ship it');
+  assert.equal(
+    xPostLabel({ handle: 'pvncher', text: 'Ship it' }),
+    'pvncher on X: Ship it'
+  );
   assert.equal(xPostLabel({}), '');
 
   const long = xPostLabel({

@@ -390,18 +390,16 @@ export function xPostReference(url) {
 }
 
 /**
- * `author (@handle): what they wrote`, cut at a word once it runs long. A post
- * that is all photo or video says nothing to quote, so it keeps the account's
- * name and the `on X` the placeholder already had.
+ * `author on X: what they wrote`, cut at a word once it runs long. A post that
+ * is all photo or video says nothing to quote, so it keeps just the byline the
+ * placeholder already had. No `@` here either, for the reason `xLabel` gives.
  */
 export function xPostLabel({ author = '', handle = '', text = '' } = {}) {
-  const name = collapseSpaces(author);
-  const account = handle ? `@${handle}` : '';
-  const who = name && account ? `${name} (${account})` : name || account;
+  const who = collapseSpaces(author) || collapseSpaces(handle);
   if (!who) return '';
 
   const words = shorten(collapseSpaces(text), 90);
-  return words ? `${who}: ${words}` : `${who} on X`;
+  return words ? `${who} on X: ${words}` : `${who} on X`;
 }
 
 /** Cuts at the last whole word that fits, so a label never ends mid-word. */
@@ -416,15 +414,19 @@ function shorten(text, limit) {
 /** Paths that look like a handle but are the site's own. */
 const X_RESERVED = new Set(['i', 'home', 'search', 'explore', 'settings']);
 
-/** `@handle on X` for a post, the handle alone for a profile. */
+/**
+ * `handle on X`, for a post as much as for the profile it came from. The `@`
+ * the site writes stays off: `[@handle](url)` is the citation syntax, and a
+ * label wearing it sends WebMD looking for a bibliography entry.
+ */
 function xLabel(segments) {
   const [handle, kind] = segments;
   if (!/^[A-Za-z0-9_]{1,15}$/.test(handle) || X_RESERVED.has(handle)) {
     return null;
   }
 
-  if (!kind) return `@${handle}`;
-  return kind === 'status' ? `@${handle} on X` : null;
+  if (kind && kind !== 'status') return null;
+  return `${handle} on X`;
 }
 
 function wikipediaLabel(segments) {
