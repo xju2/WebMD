@@ -363,6 +363,56 @@ function jiraLabel(segments, parsed) {
   return JIRA_KEY.test(selected) ? selected : null;
 }
 
+/**
+ * An X post, as `{ url, handle, id }`. The URL says who posted but not what
+ * they said, so the label starts at `@handle on X` and a lookup trades it for
+ * the post's own words — see `/api/x`.
+ */
+export function xPostReference(url) {
+  let parsed;
+  try {
+    parsed = new URL(typeof url === 'string' ? url.trim() : '');
+  } catch {
+    return null;
+  }
+
+  const host = parsed.hostname.replace(/^(www|mobile)\./, '');
+  if (host !== 'x.com' && host !== 'twitter.com') return null;
+
+  const path = /^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)\/?$/.exec(
+    parsed.pathname
+  );
+  if (!path || X_RESERVED.has(path[1])) return null;
+
+  const [, handle, id] = path;
+  // Rebuilt rather than passed through, so only this shape reaches the server.
+  return { url: `https://x.com/${handle}/status/${id}`, handle, id };
+}
+
+/**
+ * `author (@handle): what they wrote`, cut at a word once it runs long. A post
+ * that is all photo or video says nothing to quote, so it keeps the account's
+ * name and the `on X` the placeholder already had.
+ */
+export function xPostLabel({ author = '', handle = '', text = '' } = {}) {
+  const name = collapseSpaces(author);
+  const account = handle ? `@${handle}` : '';
+  const who = name && account ? `${name} (${account})` : name || account;
+  if (!who) return '';
+
+  const words = shorten(collapseSpaces(text), 90);
+  return words ? `${who}: ${words}` : `${who} on X`;
+}
+
+/** Cuts at the last whole word that fits, so a label never ends mid-word. */
+function shorten(text, limit) {
+  if (text.length <= limit) return text;
+
+  const head = text.slice(0, limit);
+  const cut = head.slice(0, head.lastIndexOf(' '));
+  return `${(cut || head).replace(/[\s,.;:—-]+$/, '')}…`;
+}
+
 /** Paths that look like a handle but are the site's own. */
 const X_RESERVED = new Set(['i', 'home', 'search', 'explore', 'settings']);
 

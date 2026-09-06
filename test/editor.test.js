@@ -11,7 +11,9 @@ import {
   pastedFromCode,
   shortLinkPaste,
   sourceColumnForWord,
-  tidyPasteText
+  tidyPasteText,
+  xPostLabel,
+  xPostReference
 } from '../src/editor.js';
 
 const ABS_LINK = '[arXiv:2608.00146](https://arxiv.org/abs/2608.00146)';
@@ -406,6 +408,49 @@ test('names an X post after the account that posted it', () => {
 
   assert.equal(shortLinkPaste('https://x.com/i/status/1790'), null);
   assert.equal(shortLinkPaste('https://x.com/home'), null);
+});
+
+test('reads the account and post out of an X link', () => {
+  assert.deepEqual(
+    xPostReference('https://x.com/pvncher/status/2095991462416490862'),
+    {
+      url: 'https://x.com/pvncher/status/2095991462416490862',
+      handle: 'pvncher',
+      id: '2095991462416490862'
+    }
+  );
+  assert.equal(
+    xPostReference('https://mobile.twitter.com/pvncher/status/20?s=46').url,
+    'https://x.com/pvncher/status/20'
+  );
+
+  assert.equal(xPostReference('https://x.com/pvncher'), null);
+  assert.equal(xPostReference('https://x.com/i/status/20'), null);
+  assert.equal(xPostReference('https://example.com/a/status/20'), null);
+});
+
+test('names an X post after its author and its words', () => {
+  assert.equal(
+    xPostLabel({ author: 'eric provencher', handle: 'pvncher', text: 'Ship it' }),
+    'eric provencher (@pvncher): Ship it'
+  );
+
+  // A photo- or video-only post has nothing to quote.
+  assert.equal(
+    xPostLabel({ author: 'eric provencher', handle: 'pvncher', text: '' }),
+    'eric provencher (@pvncher) on X'
+  );
+  assert.equal(xPostLabel({ handle: 'pvncher', text: 'Ship it' }), '@pvncher: Ship it');
+  assert.equal(xPostLabel({}), '');
+
+  const long = xPostLabel({
+    author: 'A',
+    handle: 'a',
+    text: `${'word '.repeat(30)}end`
+  });
+  assert.ok(long.endsWith('…'));
+  assert.ok(long.length <= 100);
+  assert.ok(!/\s…$/.test(long));
 });
 
 test('shortens DOI, Wikipedia and Hugging Face links', () => {

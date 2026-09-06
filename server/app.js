@@ -6,6 +6,7 @@ import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { fetchCitationBibtex } from './citations.js';
 import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
+import { fetchXPost, isXPostUrl } from './x.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -42,6 +43,7 @@ export async function createApp({
   arxivFetch = fetch,
   citationFetch = fetch,
   indicoFetch = fetch,
+  xFetch = fetch,
   env = process.env
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
@@ -271,6 +273,19 @@ export async function createApp({
           tokens: indicoTokens(env)
         })
       );
+    })
+  );
+
+  // Proxied because publish.x.com sends no CORS headers, and so one cache
+  // answers for every tab that pastes the same post.
+  app.get(
+    '/api/x',
+    asyncHandler(async (req, res) => {
+      const url = req.query.url;
+      if (!isXPostUrl(url)) {
+        throw new WorkspaceError(400, 'An X post link is required.');
+      }
+      res.json(await fetchXPost(url.trim(), { fetchImpl: xFetch }));
     })
   );
 

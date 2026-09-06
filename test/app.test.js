@@ -8,6 +8,7 @@ import test from 'node:test';
 import { createApp, createWorkspaceRegistry } from '../server/app.js';
 import { resetArxivCache } from '../server/arxiv.js';
 import { resetIndicoCache } from '../server/indico.js';
+import { resetXCache } from '../server/x.js';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
@@ -942,6 +943,48 @@ test('serves the title of an Indico page', async () => {
       event: 'CHEP 2024'
     });
     assert.deepEqual(requested, [link]);
+  } finally {
+    server.close();
+  }
+});
+
+test('serves the author and words of an X post', async () => {
+  resetXCache();
+  const root = await tempRoot();
+  const requested = [];
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      xFetch: async (target) => {
+        requested.push(target);
+        return new Response(
+          JSON.stringify({
+            author_name: 'eric provencher',
+            author_url: 'https://x.com/pvncher',
+            html: '<blockquote><p lang="en" dir="ltr">Ship it</p></blockquote>'
+          }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+    })
+  );
+
+  try {
+    const link = 'https://x.com/pvncher/status/2095991462416490862';
+    const response = await fetch(`${url}/api/x?url=${encodeURIComponent(link)}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      url: link,
+      author: 'eric provencher',
+      handle: 'pvncher',
+      text: 'Ship it'
+    });
+    assert.equal(requested.length, 1);
+    assert.ok(requested[0].startsWith('https://publish.x.com/oembed?'));
+
+    const profile = await fetch(`${url}/api/x?url=https://x.com/pvncher`);
+    assert.equal(profile.status, 400);
+    assert.match((await profile.json()).error, /X post link is required/);
   } finally {
     server.close();
   }

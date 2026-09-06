@@ -29,6 +29,8 @@
   import {
     indicoLabel,
     indicoReference,
+    xPostLabel,
+    xPostReference,
     mathPasteText,
     quotedBlockPaste,
     shortLinkPaste,
@@ -1863,6 +1865,7 @@
           upgradeCitation(pastedCitation, insert, range);
         } else {
           upgradeIndicoLink(source, insert, range);
+          upgradeXLink(source, insert, range);
         }
         return true;
       }
@@ -1960,6 +1963,37 @@
       return;
     }
     replacePastedLink(placeholder, `[${label}](${reference.url})`, range);
+  }
+
+  /**
+   * Trades the `@handle on X` placeholder for the account's name and the words
+   * of the post itself. Like the Indico upgrade it runs un-awaited, drops out
+   * when the note or the pasted text has moved on, and stays quiet about a
+   * post X will not quote — a photo-only one keeps `on X`.
+   */
+  async function upgradeXLink(source, placeholder, range) {
+    const reference = xPostReference(source);
+    if (!reference) return;
+
+    const root = selectedRoot;
+    const path = selectedPath;
+
+    let metadata;
+    try {
+      metadata = await requestJson(
+        `/api/x?url=${encodeURIComponent(reference.url)}`
+      );
+    } catch (err) {
+      if (err.status !== 404 && root === selectedRoot) error = err.message;
+      return;
+    }
+
+    const label = xPostLabel(metadata);
+    if (!label) return;
+    if (root !== selectedRoot || path !== selectedPath || !selectedIsMarkdown) {
+      return;
+    }
+    replacePastedLink(placeholder, `[${label}](${source.trim()})`, range);
   }
 
   function textBeforeCursor(state) {
