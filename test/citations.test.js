@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  citationArxiv,
+  citationAuthors,
   citationCompletionQuery,
   citationCompletions,
   citationKeys,
   citationPasteSource,
   citationSource,
+  citationSummary,
+  citationVenue,
   parseBibtex
 } from '../src/citations.js';
 import { fetchCitationBibtex } from '../server/citations.js';
@@ -79,4 +83,35 @@ test('fetches BibTeX with content negotiation', async () => {
   assert.equal(result.entry.key, 'Ju:2026abc');
   assert.equal(requests[0].url, 'https://doi.org/10.1234/example.1');
   assert.equal(requests[0].options.headers.Accept, 'application/x-bibtex');
+});
+
+test('compresses author lists and names the venue', () => {
+  const [entry] = parseBibtex(`@article{Aad:2012tfa,
+  author = {Aad, Georges and Abajyan, Tatevik and Zwalinski, L.},
+  title = {{Observation of a new particle}},
+  journal = {Phys. Lett. B},
+  volume = {716},
+  pages = {1--29},
+  year = {2012},
+  eprint = {1207.7214},
+  doi = {10.1016/j.physletb.2012.08.020}
+}`);
+  assert.equal(citationAuthors(entry), 'Aad et al.');
+  assert.equal(citationVenue(entry), 'Phys. Lett. B 716, 1–29');
+  assert.equal(citationArxiv(entry), 'arXiv:1207.7214');
+  assert.equal(
+    citationSummary(entry),
+    'Aad et al. — Observation of a new particle — 2012 — Phys. Lett. B 716, 1–29 — arXiv:1207.7214'
+  );
+});
+
+test('keeps a pair of authors and copes with a bare preprint', () => {
+  const [entry] = parseBibtex(BIBTEX);
+  assert.equal(citationAuthors(entry), 'Ju and Doe');
+  assert.equal(citationVenue(entry), '');
+  assert.equal(citationArxiv(entry), '');
+  assert.equal(
+    citationSummary(entry),
+    'Ju and Doe — A Citation-Aware Knowledge Graph — 2026'
+  );
 });

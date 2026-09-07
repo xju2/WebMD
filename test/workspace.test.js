@@ -229,7 +229,7 @@ test('indexes BibTeX papers and note citations', async () => {
     group: 'citation',
     kind: 'citation',
     href: 'https://doi.org/10.1234/example',
-    summary: 'Ju, Xiangyang — Graph Paper — 2026'
+    summary: 'Ju — Graph Paper — 2026'
   });
 });
 

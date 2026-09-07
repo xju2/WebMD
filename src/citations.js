@@ -112,9 +112,52 @@ export function citationUrl(entry) {
   return entry.arxiv ? `https://arxiv.org/abs/${entry.arxiv}` : '';
 }
 
+// Reference lines name the work, not its whole collaboration: an ATLAS paper
+// carries three thousand authors, so anything past a pair collapses to the
+// first author's surname.
+export function citationAuthors(entry) {
+  const names = String(entry?.author ?? '')
+    .split(/\s+and\s+/i)
+    .map((name) => surname(name))
+    .filter(Boolean);
+  if (!names.length) return '';
+  if (names.length === 1) return names[0];
+  return names.length === 2
+    ? `${names[0]} and ${names[1]}`
+    : `${names[0]} et al.`;
+}
+
+// Where the work appeared, so a published paper reads differently from a
+// preprint: journal (or proceedings) with whatever volume and pages we have.
+export function citationVenue(entry) {
+  const journal = cleanBibtex(
+    entry?.fields?.journal || entry?.fields?.booktitle
+  );
+  if (!journal) return '';
+  const volume = cleanBibtex(entry?.fields?.volume);
+  const pages = cleanBibtex(entry?.fields?.pages).replace(/--/g, '–');
+  // Phys. Lett. B 716, 1-29 - the comma only earns its place between a volume
+  // and the pages inside it.
+  const locator = [volume, pages].filter(Boolean).join(', ');
+  return [journal, locator].filter(Boolean).join(' ');
+}
+
+// The identifier people actually quote and paste into a search box.
+export function citationArxiv(entry) {
+  return entry?.arxiv ? `arXiv:${entry.arxiv}` : '';
+}
+
 export function citationSummary(entry) {
   return entry
-    ? [entry.author, entry.title, entry.year].filter(Boolean).join(' — ')
+    ? [
+        citationAuthors(entry),
+        entry.title,
+        entry.year,
+        citationVenue(entry),
+        citationArxiv(entry)
+      ]
+        .filter(Boolean)
+        .join(' — ')
     : '';
 }
 
@@ -191,9 +234,12 @@ function cleanBibtex(value = '') {
 }
 
 function firstAuthor(authors = '') {
-  const first = authors.split(/\s+and\s+/i)[0]?.trim();
-  if (!first) return '';
-  if (first.includes(',')) return first.split(',')[0].trim();
-  const parts = first.split(/\s+/);
-  return parts.at(-1);
+  return surname(authors.split(/\s+and\s+/i)[0]);
+}
+
+function surname(name = '') {
+  const trimmed = cleanBibtex(name);
+  if (!trimmed) return '';
+  if (trimmed.includes(',')) return trimmed.split(',')[0].trim();
+  return trimmed.split(/\s+/).at(-1);
 }

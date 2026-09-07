@@ -38,13 +38,16 @@
     tidyPasteText
   } from './editor.js';
   import {
+    citationArxiv,
+    citationAuthors,
     citationCompletionQuery,
     citationCompletions,
     citationKeys,
     citationLabel,
     citationPasteSource,
     citationSummary,
-    citationUrl
+    citationUrl,
+    citationVenue
   } from './citations.js';
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
@@ -6243,11 +6246,24 @@
                         {:else}
                           <span>{reference.entry.title || reference.key}</span>
                         {/if}
-                        <small
-                          >{[reference.entry.author, reference.entry.year]
+                        <small>
+                          {[
+                            citationAuthors(reference.entry),
+                            reference.entry.year,
+                            citationVenue(reference.entry)
+                          ]
                             .filter(Boolean)
-                            .join(' · ')}</small
-                        >
+                            .join(' · ')}
+                          {#if reference.entry.arxiv}
+                            ·
+                            <a
+                              href={`https://arxiv.org/abs/${reference.entry.arxiv}`}
+                              rel="noreferrer"
+                              target="_blank"
+                              >{citationArxiv(reference.entry)}</a
+                            >
+                          {/if}
+                        </small>
                       {:else}
                         <span class="citation-missing"
                           >Missing BibTeX key: {reference.key}</span
