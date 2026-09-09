@@ -115,3 +115,58 @@ test('keeps a pair of authors and copes with a bare preprint', () => {
     'Ju and Doe — A Citation-Aware Knowledge Graph — 2026'
   );
 });
+
+test('drops an arXiv version suffix before looking a paper up', () => {
+  assert.deepEqual(citationSource('https://arxiv.org/abs/2608.00146v3'), {
+    kind: 'arxiv',
+    id: '2608.00146'
+  });
+  assert.deepEqual(citationSource('https://arxiv.org/pdf/2608.00146v3'), {
+    kind: 'arxiv',
+    id: '2608.00146'
+  });
+});
+
+test('falls back to arXiv’s DOI when INSPIRE has no such paper', async () => {
+  const requests = [];
+  const { bibtex, entry } = await fetchCitationBibtex(
+    'https://arxiv.org/abs/2401.01234',
+    {
+      fetchImpl: async (url) => {
+        requests.push(url);
+        return url.includes('inspirehep')
+          ? new Response('', { status: 404 })
+          : new Response(`@misc{https://doi.org/10.48550/arxiv.2401.01234,
+  doi = {10.48550/ARXIV.2401.01234},
+  author = {Li, Jinqing and Ma, Jun},
+  title = {Mixture cure models},
+  year = {2024}
+}`);
+      }
+    }
+  );
+  assert.deepEqual(requests, [
+    'https://inspirehep.net/api/arxiv/2401.01234?format=bibtex',
+    'https://doi.org/10.48550/arXiv.2401.01234'
+  ]);
+  // The DataCite key is a URL, which would be unusable as [@...] in a note.
+  assert.equal(entry.key, 'arXiv:2401.01234');
+  assert.equal(entry.arxiv, '2401.01234');
+  assert.equal(citationArxiv(entry), 'arXiv:2401.01234');
+  assert.match(bibtex, /@misc\{arXiv:2401\.01234,/);
+});
+
+test('names the paper when no catalogue has it', async () => {
+  await assert.rejects(
+    fetchCitationBibtex('https://arxiv.org/abs/9999.99999', {
+      fetchImpl: async () => new Response('', { status: 404 })
+    }),
+    /No catalogue has arXiv:9999\.99999 .*returned 404/
+  );
+  await assert.rejects(
+    fetchCitationBibtex('https://inspirehep.net/literature/12345', {
+      fetchImpl: async () => new Response('', { status: 500 })
+    }),
+    /Citation lookup failed with 500/
+  );
+});

@@ -21,7 +21,9 @@ export function citationPasteSource(text, { beforeCursor = '' } = {}) {
 export function citationSource(value) {
   const text = String(value ?? '').trim();
   let match = ARXIV_URL.exec(text);
-  if (match) return { kind: 'arxiv', id: match[1] };
+  // A version suffix points at one revision of a paper, but every catalogue
+  // records the paper itself, so the id we look up drops the `v2`.
+  if (match) return { kind: 'arxiv', id: match[1].replace(/v\d+$/, '') };
   match = DOI_URL.exec(text);
   if (match) return { kind: 'doi', id: match[1].replace(/[.,;]+$/, '') };
   match = INSPIRE_URL.exec(text);
