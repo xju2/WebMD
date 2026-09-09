@@ -21,7 +21,38 @@ export function composeUpdateChanges(updates) {
   return changes;
 }
 
-export function rebaseRemoteUpdate(remoteUpdate, unconfirmedUpdates, makeUpdate) {
+/**
+ * The single change that turns one text into the other, spanning everything
+ * between the first and last character they disagree about. A resync cannot
+ * replay the edits that got us here - they were composed against a base the
+ * server has thrown away - so it sends this instead.
+ */
+export function changesBetween(before = '', after = '') {
+  if (before === after) return null;
+  const limit = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < limit && before[start] === after[start]) start += 1;
+  let end = 0;
+  while (
+    end < limit - start &&
+    before[before.length - 1 - end] === after[after.length - 1 - end]
+  )
+    end += 1;
+  return ChangeSet.of(
+    {
+      from: start,
+      to: before.length - end,
+      insert: after.slice(start, after.length - end)
+    },
+    before.length
+  );
+}
+
+export function rebaseRemoteUpdate(
+  remoteUpdate,
+  unconfirmedUpdates,
+  makeUpdate
+) {
   const remoteChanges = changeSetFromUpdate(remoteUpdate);
   const localChanges = composeUpdateChanges(unconfirmedUpdates);
   const changesForEditor = localChanges

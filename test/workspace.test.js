@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
+import { changesBetween } from '../src/collab.js';
 import { createWorkspace } from '../server/workspace.js';
 import { parseBibtex } from '../src/citations.js';
 
@@ -716,4 +717,37 @@ test('picks up a note edited outside WebMD', async () => {
   // An unchanged file is not republished as a new version.
   assert.equal((await workspace.loadFile('/note.md')).version, 2);
   assert.equal(pushed.length, 1);
+});
+
+test('a restarted server takes the editor’s unsaved text after a resync', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, 'note.md'), 'hello\n');
+
+  // The session the browser tab was talking to, edited up to version 1.
+  const before = await createWorkspace(root);
+  await before.applyUpdates('/note.md', 0, [
+    updateFor('hello\n', { from: 5, to: 5, insert: ' world' })
+  ]);
+
+  // The server restarts: a new instance holds no versions at all.
+  const after = await createWorkspace(root);
+  await assert.rejects(
+    () =>
+      after.applyUpdates('/note.md', 1, [
+        updateFor('hello world\n', { from: 11, to: 11, insert: '!' })
+      ]),
+    /Document is at version 0\./
+  );
+
+  // What the client does next: reload, then send the one change carrying the
+  // server's copy to the text still on screen.
+  const file = await after.loadFile('/note.md');
+  assert.equal(file.version, 0);
+  const typed = 'hello world!\n';
+  const result = await after.applyUpdates('/note.md', file.version, [
+    { changes: changesBetween(file.content, typed).toJSON(), clientID: 'test' }
+  ]);
+
+  assert.equal(result.version, 1);
+  assert.equal(await fs.readFile(path.join(root, 'note.md'), 'utf8'), typed);
 });

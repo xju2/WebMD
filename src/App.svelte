@@ -23,6 +23,7 @@
   } from './calendar.js';
   import {
     rebaseRemoteUpdate,
+    changesBetween,
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
@@ -332,6 +333,8 @@
   let pendingUpdates = [];
   let inFlightUpdates = [];
   let sendingUpdates = false;
+  let resyncing = false;
+  let resyncAttempts = 0;
   let sendPromise = Promise.resolve();
   let sendRun = 0;
   let updateSequence = 0;
@@ -2588,6 +2591,7 @@
 
       documentVersion = Math.max(documentVersion, result.version);
       inFlightUpdates = [];
+      resyncAttempts = 0;
       sendingUpdates = false;
       sessionStorage.removeItem(storageKey(root, path));
       if (pendingUpdates.length) {
@@ -2610,9 +2614,75 @@
       sessionStorage.setItem(storageKey(root, path), content);
       error = err.message;
       status = '[Offline - Retrying]';
-      if (err.status !== 409) queueRetry();
+      if (err.status === 409) resyncDocument(root, path);
+      else queueRetry();
     });
     return sendPromise;
+  }
+
+  /**
+   * A 409 says the server is holding a different version of the note than the
+   * one our updates were composed against - most often because it restarted
+   * and re-read the file from disk at version 0. Resending is hopeless, so we
+   * take the server's copy as the new base, rebase whatever is unsaved onto
+   * it, and carry on. Nothing typed is lost: the editor keeps its text and the
+   * change we send is whatever the two copies disagree about.
+   */
+  async function resyncDocument(root, path) {
+    if (resyncing) return;
+    resyncing = true;
+    resyncAttempts += 1;
+    let rebased = false;
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+      );
+      if (root !== selectedRoot || path !== selectedPath || !selectedIsMarkdown)
+        return;
+
+      // A queue composed against text the server no longer holds cannot be
+      // replayed onto it, so it collapses into one change from there to here.
+      if (file.content !== lastSaved) {
+        const changes = changesBetween(file.content, content);
+        lastSaved = file.content;
+        inFlightUpdates = [];
+        pendingUpdates = changes ? [newCollabUpdate(changes)] : [];
+      }
+      // Reopens the event stream too: the old one is asking for versions in a
+      // numbering the server has forgotten.
+      openDocumentEvents(root, path, file.version);
+      error = '';
+      rebased = true;
+    } catch (err) {
+      if (root === selectedRoot && path === selectedPath) {
+        error = err.message;
+        status = '[Offline - Retrying]';
+      }
+    } finally {
+      resyncing = false;
+    }
+
+    if (root !== selectedRoot || path !== selectedPath) return;
+    // Two clients can keep taking the version from each other. Rather than
+    // trade 409s as fast as the network allows, a resync that has not settled
+    // after a few rounds falls back to the ordinary retry timer.
+    if (rebased && pendingUpdates.length && resyncAttempts <= 3) {
+      await flushPendingUpdates();
+      return;
+    }
+    if (pendingUpdates.length) queueRetry();
+    else clearBufferedContent(root, path);
+  }
+
+  /**
+   * A resync can find the server already holding what is on screen - the save
+   * landed and only the acknowledgement was lost - which leaves nothing to
+   * send and nothing to warn about.
+   */
+  function clearBufferedContent(root, path) {
+    sessionStorage.removeItem(storageKey(root, path));
+    lastSaved = content;
+    status = '[Saved]';
   }
 
   /**

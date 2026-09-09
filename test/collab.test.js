@@ -3,6 +3,7 @@ import { ChangeSet, Text } from '@codemirror/state';
 import test from 'node:test';
 import {
   changeSetFromUpdate,
+  changesBetween,
   rebaseRemoteUpdate,
   updateFromChangeSet
 } from '../src/collab.js';
@@ -34,4 +35,24 @@ test('rebases local pending changes over a remote update', () => {
       .toString(),
     'RabcL'
   );
+});
+
+test('spans what two texts disagree about', () => {
+  const cases = [
+    ['one\ntwo\nthree', 'one\ntwo EDITED\nthree'],
+    ['', 'a whole note typed from nothing'],
+    ['a note deleted down to nothing', ''],
+    ['abc', 'abcdef'],
+    ['abcdef', 'abc'],
+    ['prefix middle suffix', 'prefix suffix']
+  ];
+  for (const [before, after] of cases) {
+    const changes = changesBetween(before, after);
+    assert.equal(
+      changes.apply(Text.of(before.split('\n'))).toString(),
+      after,
+      `${before} -> ${after}`
+    );
+  }
+  assert.equal(changesBetween('same', 'same'), null);
 });
