@@ -58,6 +58,8 @@
     filterPapers,
     linkedArxivIds,
     newsCategoryCounts,
+    NEWS_INSTRUCTIONS_PATH,
+    NEWS_INSTRUCTIONS_TEMPLATE,
     newsClipChange,
     newsSegments,
     shortAuthorList
@@ -280,6 +282,8 @@
   let newsExpanded = new Set();
   let newsClipped = new Set();
   let newsClipping = new Set();
+  let newsRanking = null;
+  let newsRankStatus = '';
   // The Tasks view opens on the board: four ranked lanes, which is the only one
   // of the three that answers "what now". Sections (a dashboard of filters the
   // reader defines) and urgency (strictly by due date) stay as the other two
@@ -524,6 +528,30 @@
     viewMode === 'news';
   $: visiblePapers = filterPapers(newsPapers, newsFilter);
   $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
+  $: rankIndex = new Map(
+    (newsRanking?.order ?? []).map((id, index) => [id, index])
+  );
+  $: pickById = new Map(
+    newsFilter.sort === 'arxiv'
+      ? []
+      : (newsRanking?.picks ?? []).map((pick) => [pick.id, pick])
+  );
+  $: rankedPapers =
+    newsFilter.sort === 'arxiv' || !newsRanking
+      ? visiblePapers
+      : [...visiblePapers].sort(
+          (left, right) =>
+            (rankIndex.get(left.id) ?? rankIndex.size) -
+            (rankIndex.get(right.id) ?? rankIndex.size)
+        );
+  $: pickedPapers = rankedPapers.filter((paper) => pickById.has(paper.id));
+  // The five strongest of today's picks, whichever of them the filter shows.
+  $: topPickIds = new Set([...pickById.keys()].slice(0, 5));
+  $: topPapers = pickedPapers.filter((paper) => topPickIds.has(paper.id));
+  $: morePicks = pickedPapers.filter((paper) => !topPickIds.has(paper.id));
+  $: otherPapers = pickById.size
+    ? rankedPapers.filter((paper) => !pickById.has(paper.id))
+    : rankedPapers;
   $: hiddenReplacementCount = newsFilter.includeReplacements
     ? 0
     : filterPapers(newsPapers, { ...newsFilter, includeReplacements: true })
@@ -1748,6 +1776,7 @@
     clearInlineEdit();
     error = '';
     await Promise.all([loadNews(), loadNewsClipped(selectedRoot)]);
+    if (viewMode === 'news' && newsPapers.length) rankNews();
   }
 
   async function loadNews({ refresh = false } = {}) {
@@ -1763,6 +1792,66 @@
       newsStatus = '';
     } catch (err) {
       newsStatus = err.message;
+    }
+  }
+
+  async function refreshNews() {
+    await loadNews({ refresh: true });
+    await rankNews();
+  }
+
+  /**
+   * Asks the server to order today's listing against this workspace. It runs
+   * after the listing is on screen, because a model call over a whole day of
+   * papers takes a while and the papers are readable in arXiv order meanwhile.
+   */
+  async function rankNews({ refresh = false } = {}) {
+    const root = selectedRoot;
+    newsRankStatus = refresh
+      ? 'Ranking today’s papers again...'
+      : 'Picking the papers you would want to read...';
+    try {
+      const ranking = await requestJson('/api/news/rank', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, refresh })
+      });
+      if (root !== selectedRoot) return;
+      newsRanking = ranking;
+    } catch (err) {
+      if (root === selectedRoot)
+        newsRanking = { order: [], picks: [], warning: err.message };
+    } finally {
+      if (root === selectedRoot) newsRankStatus = '';
+    }
+  }
+
+  /** Opens the ranking instructions note, starting one the first time. */
+  async function openNewsInstructions() {
+    const root = selectedRoot;
+    const path = NEWS_INSTRUCTIONS_PATH;
+    try {
+      try {
+        await requestJson(
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+        );
+      } catch (err) {
+        if (err.status !== 404) throw err;
+        await requestJson('/api/workspace/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            root,
+            path,
+            content: NEWS_INSTRUCTIONS_TEMPLATE
+          })
+        });
+      }
+      if (root !== selectedRoot) return;
+      await openFile(path);
+      setViewMode('edit', { remember: false });
+    } catch (err) {
+      error = `Could not open the ranking instructions: ${err.message}`;
     }
   }
 
@@ -1869,7 +1958,12 @@
   }
 
   function readNewsFilter() {
-    const empty = { query: '', categories: [], includeReplacements: false };
+    const empty = {
+      query: '',
+      categories: [],
+      includeReplacements: false,
+      sort: 'rank'
+    };
     try {
       const stored = JSON.parse(localStorage.getItem(NEWS_FILTER_KEY) || '{}');
       return {
@@ -1877,7 +1971,8 @@
         categories: Array.isArray(stored.categories)
           ? stored.categories.filter((item) => typeof item === 'string')
           : [],
-        includeReplacements: stored.includeReplacements === true
+        includeReplacements: stored.includeReplacements === true,
+        sort: stored.sort === 'arxiv' ? 'arxiv' : 'rank'
       };
     } catch {
       return empty;
@@ -4485,6 +4580,76 @@
   }
 </script>
 
+{#snippet newsCard(paper)}
+  {@const pick = pickById.get(paper.id)}
+  {@const clipped = newsClipped.has(paper.id.toLowerCase())}
+  <li
+    class="news-paper"
+    class:picked={pick}
+    class:top-pick={pick && topPickIds.has(paper.id)}
+  >
+    <div class="news-paper-head">
+      <a class="news-title" href={paper.url} rel="noreferrer" target="_blank"
+        >{@render inline(newsSegments(paper.title, { links: false }))}</a
+      >
+      <button
+        class="news-clip"
+        class:clipped
+        disabled={clipped || newsClipping.has(paper.id)}
+        title={clipped
+          ? 'Already in today’s note'
+          : 'Add to the Reading section of today’s note'}
+        type="button"
+        on:click={() => clipPaper(paper)}
+      >
+        {clipped
+          ? 'Clipped'
+          : newsClipping.has(paper.id)
+            ? 'Clipping...'
+            : 'Clip'}
+      </button>
+    </div>
+    {#if pick}
+      <p class="news-why">
+        {#if pick.score}
+          <span
+            class="news-score"
+            title="How strongly the AI recommends it, out of 10"
+            >{pick.score}</span
+          >
+        {/if}
+        {#if pick.connection}
+          <span class="news-connection">{pick.connection}</span>
+        {/if}
+        {pick.reason}
+      </p>
+    {/if}
+    <p class="news-meta">
+      <span>{shortAuthorList(paper.authors)}</span>
+      <span class="news-id">arXiv:{paper.id}</span>
+      {#each paper.categories as category}
+        <span
+          class="news-category"
+          class:followed={newsCategories.includes(category)}>{category}</span
+        >
+      {/each}
+      {#if paper.announceType !== 'new'}
+        <span class="news-kind">{paper.announceType}</span>
+      {/if}
+    </p>
+    <div class="news-abstract" class:expanded={newsExpanded.has(paper.id)}>
+      {@render inline(newsSegments(paper.abstract))}
+    </div>
+    <button
+      class="news-more"
+      type="button"
+      on:click={() => toggleNewsAbstract(paper.id)}
+    >
+      {newsExpanded.has(paper.id) ? 'Less' : 'More'}
+    </button>
+  </li>
+{/snippet}
+
 {#snippet inline(segments)}
   {#each segments as segment}
     {#if segment.type === 'code'}
@@ -6235,6 +6400,30 @@
                     ? ` · ${hiddenReplacementCount} updates hidden`
                     : ''}
                 </span>
+                <div
+                  class="tasks-grouping"
+                  role="group"
+                  aria-label="Order papers"
+                >
+                  <button
+                    type="button"
+                    class:active={newsFilter.sort !== 'arxiv'}
+                    aria-pressed={newsFilter.sort !== 'arxiv'}
+                    title="AI picks first, then by how closely each paper matches your notes"
+                    on:click={() => setNewsFilter({ sort: 'rank' })}
+                  >
+                    For you
+                  </button>
+                  <button
+                    type="button"
+                    class:active={newsFilter.sort === 'arxiv'}
+                    aria-pressed={newsFilter.sort === 'arxiv'}
+                    title="The order arXiv lists them in"
+                    on:click={() => setNewsFilter({ sort: 'arxiv' })}
+                  >
+                    arXiv
+                  </button>
+                </div>
                 <input
                   class="tasks-filter news-filter"
                   type="search"
@@ -6258,8 +6447,15 @@
                 </label>
                 <button
                   type="button"
+                  title="Edit what the AI ranks papers against"
+                  on:click={openNewsInstructions}
+                >
+                  Instructions
+                </button>
+                <button
+                  type="button"
                   title="Fetch the listing from arXiv again"
-                  on:click={() => loadNews({ refresh: true })}
+                  on:click={refreshNews}
                 >
                   Refresh
                 </button>
@@ -6286,67 +6482,47 @@
                 {newsStatus || `Showing the last listing: ${newsWarning}`}
               </p>
             {/if}
+            {#if newsRankStatus || newsRanking?.warning}
+              <p class="tasks-note news-rank-note">
+                {newsRankStatus || newsRanking.warning}
+              </p>
+            {/if}
+            {#if pickedPapers.length}
+              <h3 class="news-section">
+                Top picks <span>{topPapers.length}</span>
+                <button
+                  type="button"
+                  title="Ask the AI to rank today’s papers again"
+                  disabled={!!newsRankStatus}
+                  on:click={() => rankNews({ refresh: true })}
+                >
+                  Re-rank
+                </button>
+              </h3>
+              <ol class="news-list">
+                {#each topPapers as paper (paper.id)}
+                  {@render newsCard(paper)}
+                {/each}
+              </ol>
+              {#if morePicks.length}
+                <h3 class="news-section">
+                  Also relevant <span>{morePicks.length}</span>
+                </h3>
+                <ol class="news-list">
+                  {#each morePicks as paper (paper.id)}
+                    {@render newsCard(paper)}
+                  {/each}
+                </ol>
+              {/if}
+              <h3 class="news-section">
+                Everything else <span>{otherPapers.length}</span>
+              </h3>
+            {/if}
             <ol class="news-list">
-              {#each visiblePapers as paper (paper.id)}
-                {@const clipped = newsClipped.has(paper.id.toLowerCase())}
-                <li class="news-paper">
-                  <div class="news-paper-head">
-                    <a
-                      class="news-title"
-                      href={paper.url}
-                      rel="noreferrer"
-                      target="_blank"
-                      >{@render inline(
-                        newsSegments(paper.title, { links: false })
-                      )}</a
-                    >
-                    <button
-                      class="news-clip"
-                      class:clipped
-                      disabled={clipped || newsClipping.has(paper.id)}
-                      title={clipped
-                        ? 'Already in today’s note'
-                        : 'Add to the Reading section of today’s note'}
-                      type="button"
-                      on:click={() => clipPaper(paper)}
-                    >
-                      {clipped
-                        ? 'Clipped'
-                        : newsClipping.has(paper.id)
-                          ? 'Clipping...'
-                          : 'Clip'}
-                    </button>
-                  </div>
-                  <p class="news-meta">
-                    <span>{shortAuthorList(paper.authors)}</span>
-                    <span class="news-id">arXiv:{paper.id}</span>
-                    {#each paper.categories as category}
-                      <span
-                        class="news-category"
-                        class:followed={newsCategories.includes(category)}
-                        >{category}</span
-                      >
-                    {/each}
-                    {#if paper.announceType !== 'new'}
-                      <span class="news-kind">{paper.announceType}</span>
-                    {/if}
-                  </p>
-                  <div
-                    class="news-abstract"
-                    class:expanded={newsExpanded.has(paper.id)}
-                  >
-                    {@render inline(newsSegments(paper.abstract))}
-                  </div>
-                  <button
-                    class="news-more"
-                    type="button"
-                    on:click={() => toggleNewsAbstract(paper.id)}
-                  >
-                    {newsExpanded.has(paper.id) ? 'Less' : 'More'}
-                  </button>
-                </li>
+              {#each otherPapers as paper (paper.id)}
+                {@render newsCard(paper)}
               {:else}
-                {#if !newsStatus}
+                {#if !newsStatus && !pickedPapers.length}
                   <li class="preview-empty">
                     {newsPapers.length
                       ? 'No paper matches this filter.'

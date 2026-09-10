@@ -100,6 +100,8 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   only sent to the Indico it is named after.
 - `ARXIV_NEWS_CATEGORIES`: optional comma-separated arXiv categories for the
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
+- `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
+  when the workspace has no `.webmd/news.md`.
 
 ## Prompt presets
 
@@ -460,6 +462,32 @@ feed, so no key is needed, and the listing is cached for half an hour.
   that is created the first time. The line is the same citation a pasted arXiv
   link becomes. If today's note does not exist yet, it is created from the
   daily template. A paper already linked from today's note shows as Clipped.
+
+### Ranking
+
+**For you** orders the listing for you. The configured AI model reads the day's
+papers against three things:
+
+- **Your instructions** in `.webmd/news.md`: your research, and how papers
+  should be judged, in your own words. **Instructions** in the News view opens
+  the note, and starts one the first time. HTML comments in it are not sent.
+  With no note, `ARXIV_NEWS_INTERESTS` is used instead.
+- **What you read**: the titles of arXiv papers cited in your notes, including
+  clipped ones, and the titles in `references.bib`.
+- **What you are working on**: your most recently edited notes.
+
+The model picks up to 20 papers, each with a score from 1 to 10, the research
+area it connects to, and a one-sentence reason. The five strongest are listed
+first as **Top picks**, then **Also relevant**. Everything else follows,
+ordered by how much of your profile's rarer vocabulary each paper uses. That
+same lexical score chooses the 120 papers the model reads, which keeps a day
+of listings to one call. Updates are not judged.
+
+A listing is ranked once per day, so reloads and other tabs reuse it, and
+clipping a paper does not reshuffle the page. Editing the instructions note
+earns a fresh ranking the next time you open News. **Re-rank** asks again
+straight away. Without a reachable model the order falls back to the lexical
+score, with a note saying so. **arXiv** switches back to arXiv's own order.
 
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
 weekends.

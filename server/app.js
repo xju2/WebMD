@@ -1,4 +1,5 @@
 import express from 'express';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,16 @@ import { fetchCitationBibtex } from './citations.js';
 import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import { fetchArxivNews, newsCategories } from './news.js';
+import {
+  buildInterestProfile,
+  buildRankMessages,
+  orderByScore,
+  parseRankedPicks,
+  profileIsEmpty,
+  rankCandidates,
+  readNewsInstructions,
+  scorePapers
+} from './news-rank.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -304,6 +315,104 @@ export async function createApp({
       );
     })
   );
+
+  // One ranking per workspace per listing: a model call reads the whole day's
+  // shortlist, so it runs once and every tab and reload reuses it. Clipping a
+  // paper does not reshuffle the page under you; Re-rank asks again.
+  const newsRankings = new Map();
+
+  app.post(
+    '/api/news/rank',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const news = await fetchArxivNews(newsCategories(env), {
+        fetchImpl: newsFetch
+      });
+      // Editing the instructions note earns a fresh ranking; clipping a paper
+      // (which also feeds the profile) does not.
+      const instructions =
+        (await readNewsInstructions(workspace)) ||
+        String(env.ARXIV_NEWS_INTERESTS ?? '');
+      const key = [
+        req.body?.root ?? '0',
+        news.published,
+        news.categories,
+        createHash('sha1').update(instructions).digest('hex')
+      ].join('|');
+      if (req.body?.refresh) newsRankings.delete(key);
+
+      let ranking = newsRankings.get(key);
+      if (!ranking) {
+        ranking = rankNews(workspace, news, instructions).catch((error) => {
+          newsRankings.delete(key);
+          throw error;
+        });
+        newsRankings.set(key, ranking);
+        // Only the latest listing per workspace is worth keeping.
+        for (const stale of newsRankings.keys()) {
+          if (stale !== key && stale.startsWith(`${req.body?.root ?? '0'}|`))
+            newsRankings.delete(stale);
+        }
+      }
+      res.json(await ranking);
+    })
+  );
+
+  async function rankNews(workspace, news, instructions) {
+    const profile = buildInterestProfile({
+      files: await workspace.markdownFiles(),
+      references: await workspace.references(),
+      interests: instructions
+    });
+    const scores = scorePapers(news.papers, profile);
+    const base = { published: news.published, picks: [] };
+    if (profileIsEmpty(profile)) {
+      return {
+        ...base,
+        order: news.papers.map((paper) => paper.id),
+        method: 'none',
+        warning:
+          'Nothing to rank against yet. Write your ranking instructions, or clip a few papers.'
+      };
+    }
+
+    const lexical = orderByScore(news.papers, scores).map((paper) => paper.id);
+    // Updates are hidden by default and were judged when they first came out.
+    const candidates = rankCandidates(
+      news.papers.filter((paper) => !/^replace/.test(paper.announceType)),
+      scores
+    );
+    if (!candidates.length)
+      return { ...base, order: lexical, method: 'similarity' };
+
+    let picks;
+    try {
+      const reply = await runAiCompletion({
+        messages: buildRankMessages(profile, candidates),
+        env: aiEnv,
+        fetchImpl: aiFetch
+      });
+      picks = parseRankedPicks(reply, candidates);
+    } catch (error) {
+      return {
+        ...base,
+        order: lexical,
+        method: 'similarity',
+        warning: `AI ranking failed, so papers are ordered by how closely they match your notes. ${error.message}`
+      };
+    }
+
+    const picked = new Set(picks.map((pick) => pick.id));
+    return {
+      ...base,
+      picks,
+      order: [
+        ...picks.map((pick) => pick.id),
+        ...lexical.filter((id) => !picked.has(id))
+      ],
+      method: 'ai'
+    };
+  }
 
   app.get(
     '/api/ai/presets',

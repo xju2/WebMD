@@ -139,3 +139,18 @@ export function newsSegments(text = '', { links = true } = {}) {
     segments.push({ type: 'text', text: text.slice(lastIndex) });
   return segments;
 }
+
+/** Must match NEWS_INSTRUCTIONS_PATH in server/news-rank.js. */
+export const NEWS_INSTRUCTIONS_PATH = '/.webmd/news.md';
+
+export const NEWS_INSTRUCTIONS_TEMPLATE = `# arXiv ranking instructions
+
+<!-- The News view gives this note to the AI when it ranks the day's arXiv
+papers. Say what your research is and how papers should be judged, in plain
+words. Edits apply the next time you open News or press Re-rank. Comments like
+this one are not sent. -->
+
+Rank today's arXiv papers by relevance to my research: <your research areas>.
+Prioritize papers with substantive methodological or systems contributions, not
+superficial keyword overlap.
+`;
