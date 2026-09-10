@@ -112,7 +112,7 @@ export function parseArxivEntry(feed, id) {
   return { id, title, authors };
 }
 
-function decodeXml(value) {
+export function decodeXml(value) {
   return value
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

@@ -98,6 +98,8 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   indico.global. Create one under **My Profile → Settings → API tokens** with
   the `Everything (read only)` scope. A token never leaves the backend, and is
   only sent to the Indico it is named after.
+- `ARXIV_NEWS_CATEGORIES`: optional comma-separated arXiv categories for the
+  News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 
 ## Prompt presets
 
@@ -442,6 +444,25 @@ the task's line, where the box can be ticked once and for all.
 Notes written before this carry `↩ [[origin]]` links from the old carry-over
 behaviour. Nothing writes them any more, but they are still parsed and shown as
 backlinks, so those notes keep reading the way they did.
+
+## arXiv news
+
+The newspaper button in the left bar opens today's arXiv announcements for the
+categories in `ARXIV_NEWS_CATEGORIES`. They are read from arXiv's public RSS
+feed, so no key is needed, and the listing is cached for half an hour.
+
+- **Filter** keeps papers whose title, authors, or abstract contain every word
+  you type. The category chips narrow the list to the ones you pick. Both are
+  remembered, so tomorrow's listing opens filtered the same way.
+- **Updates** also shows replacements, which are new versions of older papers.
+  They are hidden by default.
+- **Clip** adds the paper to today's daily note, under a `## Reading` heading
+  that is created the first time. The line is the same citation a pasted arXiv
+  link becomes. If today's note does not exist yet, it is created from the
+  daily template. A paper already linked from today's note shows as Clipped.
+
+arXiv publishes no listing on Saturday or Sunday, so the view is empty on
+weekends.
 
 ## Note dates
 

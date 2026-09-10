@@ -7,6 +7,7 @@ import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { fetchCitationBibtex } from './citations.js';
 import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
 import { fetchXPost, isXPostUrl } from './x.js';
+import { fetchArxivNews, newsCategories } from './news.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -44,6 +45,7 @@ export async function createApp({
   citationFetch = fetch,
   indicoFetch = fetch,
   xFetch = fetch,
+  newsFetch = fetch,
   env = process.env
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
@@ -286,6 +288,20 @@ export async function createApp({
         throw new WorkspaceError(400, 'An X post link is required.');
       }
       res.json(await fetchXPost(url.trim(), { fetchImpl: xFetch }));
+    })
+  );
+
+  // Today's arXiv listing for the News view. Proxied for the usual reasons: no
+  // CORS headers on rss.arxiv.org, and one cached copy for every tab.
+  app.get(
+    '/api/news/arxiv',
+    asyncHandler(async (req, res) => {
+      res.json(
+        await fetchArxivNews(newsCategories(env), {
+          fetchImpl: newsFetch,
+          refresh: req.query.refresh === '1'
+        })
+      );
     })
   );
 

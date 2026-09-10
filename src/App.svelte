@@ -2,7 +2,7 @@
   import { indentWithTab, isolateHistory } from '@codemirror/commands';
   import { markdown } from '@codemirror/lang-markdown';
   import { yamlFrontmatter } from '@codemirror/lang-yaml';
-  import { EditorState, Transaction } from '@codemirror/state';
+  import { ChangeSet, EditorState, Transaction } from '@codemirror/state';
   import { EditorView, keymap } from '@codemirror/view';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
@@ -28,6 +28,7 @@
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import {
+    arxivCitation,
     indicoLabel,
     indicoReference,
     xPostLabel,
@@ -53,6 +54,14 @@
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
+  import {
+    filterPapers,
+    linkedArxivIds,
+    newsCategoryCounts,
+    newsClipChange,
+    newsSegments,
+    shortAuthorList
+  } from './news.js';
   import { sliceNoteSection, splitEmbedTarget } from './note-embed.js';
   import { renderMermaid } from './mermaid.js';
   import { SNIPPETS, clockTime, snippetExpansion } from './snippets.js';
@@ -118,10 +127,11 @@
   const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
-  // 'tasks' and 'calendar' are workspace-wide views rather than ways of looking
-  // at the open note, so neither is remembered as a file's view mode. They are
-  // still navigation destinations, so back and forward can return to them.
-  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar']);
+  // 'tasks', 'calendar', and 'news' are workspace-wide views rather than ways of
+  // looking at the open note, so none is remembered as a file's view mode. They
+  // are still navigation destinations, so back and forward can return to them.
+  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news']);
+  const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
   const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
@@ -261,6 +271,15 @@
   let todayText = dailyNoteDate(new Date());
   let workspaceTasks = [];
   let tasksStatus = '';
+  let newsPapers = [];
+  let newsCategories = [];
+  let newsPublished = '';
+  let newsStatus = '';
+  let newsWarning = '';
+  let newsFilter = readNewsFilter();
+  let newsExpanded = new Set();
+  let newsClipped = new Set();
+  let newsClipping = new Set();
   // The Tasks view opens on the board: four ranked lanes, which is the only one
   // of the three that answers "what now". Sections (a dashboard of filters the
   // reader defines) and urgency (strictly by due date) stay as the other two
@@ -499,7 +518,16 @@
       : taskSectionGroups;
   // The views that take over the whole frame instead of showing the open file.
   $: workspacePaneOpen =
-    viewMode === 'graph' || viewMode === 'calendar' || viewMode === 'tasks';
+    viewMode === 'graph' ||
+    viewMode === 'calendar' ||
+    viewMode === 'tasks' ||
+    viewMode === 'news';
+  $: visiblePapers = filterPapers(newsPapers, newsFilter);
+  $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
+  $: hiddenReplacementCount = newsFilter.includeReplacements
+    ? 0
+    : filterPapers(newsPapers, { ...newsFilter, includeReplacements: true })
+        .length - visiblePapers.length;
   $: noteTasks =
     selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : [];
   $: noteProgress = taskProgress(noteTasks);
@@ -1709,6 +1737,161 @@
     clearInlineEdit();
     error = '';
     await loadTasks(selectedRoot);
+  }
+
+  async function showNews({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('news');
+    viewMode = 'news';
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+    await Promise.all([loadNews(), loadNewsClipped(selectedRoot)]);
+  }
+
+  async function loadNews({ refresh = false } = {}) {
+    newsStatus = refresh ? 'Checking arXiv...' : 'Loading arXiv...';
+    try {
+      const news = await requestJson(
+        `/api/news/arxiv${refresh ? '?refresh=1' : ''}`
+      );
+      newsPapers = news.papers;
+      newsCategories = news.categories;
+      newsPublished = news.published;
+      newsWarning = news.warning || '';
+      newsStatus = '';
+    } catch (err) {
+      newsStatus = err.message;
+    }
+  }
+
+  /** Papers already linked from today's note show as clipped, however they got there. */
+  async function loadNewsClipped(root) {
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(todayNotePath())}`
+      );
+      if (root === selectedRoot) newsClipped = linkedArxivIds(file.content);
+    } catch {
+      // No note yet today means nothing is clipped.
+      if (root === selectedRoot) newsClipped = new Set();
+    }
+  }
+
+  /**
+   * Adds the paper to today's note under `## Reading`, as the same citation a
+   * pasted arXiv link becomes. An existing note is changed through the
+   * collaborative update path, so an editor that has it open sees the line
+   * arrive; a missing one is created from the daily template first.
+   */
+  async function clipPaper(paper) {
+    const root = selectedRoot;
+    const date = new Date();
+    const path = todayNotePath(date);
+    const line = arxivCitation(paper);
+    newsClipping = new Set(newsClipping).add(paper.id);
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        let file = null;
+        try {
+          file = await requestJson(
+            `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+          );
+        } catch (err) {
+          if (err.status !== 404) throw err;
+        }
+
+        if (!file) {
+          const template = await loadDailyNoteTemplate(root);
+          const base = buildDailyNoteContent(
+            date,
+            path,
+            template,
+            await loadDailyNoteQuote(root, template, date)
+          );
+          const clip = newsClipChange(base, line);
+          const content =
+            base.slice(0, clip.from) + clip.insert + base.slice(clip.to);
+          await requestJson('/api/workspace/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ root, path, content })
+          });
+          if (root === selectedRoot) await loadTree(root);
+          break;
+        }
+
+        const changes = ChangeSet.of(
+          newsClipChange(file.content, line),
+          file.content.length
+        );
+        try {
+          await requestJson('/api/workspace/updates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              root,
+              path,
+              version: file.version,
+              updates: [{ clientID: 'news-clip', changes: changes.toJSON() }]
+            })
+          });
+          break;
+        } catch (err) {
+          // Someone typed into the note between the load and the update.
+          if (err.status !== 409 || attempt >= 2) throw err;
+        }
+      }
+      rememberEditedFile(path, root);
+      newsClipped = new Set(newsClipped).add(paper.id.toLowerCase());
+    } catch (err) {
+      error = `Could not clip ${paper.id}: ${err.message}`;
+    } finally {
+      const clipping = new Set(newsClipping);
+      clipping.delete(paper.id);
+      newsClipping = clipping;
+    }
+  }
+
+  function toggleNewsAbstract(id) {
+    const expanded = new Set(newsExpanded);
+    if (expanded.has(id)) expanded.delete(id);
+    else expanded.add(id);
+    newsExpanded = expanded;
+  }
+
+  function toggleNewsCategory(category) {
+    const categories = newsFilter.categories.includes(category)
+      ? newsFilter.categories.filter((item) => item !== category)
+      : [...newsFilter.categories, category];
+    setNewsFilter({ categories });
+  }
+
+  function readNewsFilter() {
+    const empty = { query: '', categories: [], includeReplacements: false };
+    try {
+      const stored = JSON.parse(localStorage.getItem(NEWS_FILTER_KEY) || '{}');
+      return {
+        query: typeof stored.query === 'string' ? stored.query : '',
+        categories: Array.isArray(stored.categories)
+          ? stored.categories.filter((item) => typeof item === 'string')
+          : [],
+        includeReplacements: stored.includeReplacements === true
+      };
+    } catch {
+      return empty;
+    }
+  }
+
+  /** The filter is kept, so tomorrow's listing opens narrowed the same way. */
+  function setNewsFilter(changes) {
+    newsFilter = { ...newsFilter, ...changes };
+    try {
+      localStorage.setItem(NEWS_FILTER_KEY, JSON.stringify(newsFilter));
+    } catch {
+      // Ignore storage failures; the filter still works this session.
+    }
   }
 
   async function loadTasks(root) {
@@ -3616,6 +3799,7 @@
     if (target.view === 'tasks') await showTasks({ remember: false });
     else if (target.view === 'calendar')
       await showCalendar({ remember: false });
+    else if (target.view === 'news') await showNews({ remember: false });
     else
       await openFile(target.path, {
         historyMode: 'replace',
@@ -4688,8 +4872,7 @@
     <button
       aria-label="Open today’s note"
       class:active={selectedPath === todayNotePath() &&
-        viewMode !== 'tasks' &&
-        viewMode !== 'calendar'}
+        !WORKSPACE_VIEWS.has(viewMode)}
       class="global-action today-launcher"
       disabled={!workspaceRoots.length}
       title={`Today’s note (${shortcutKey}+Shift+D)`}
@@ -4752,6 +4935,23 @@
         <path d="M4 16.5 6 18.5l3.5-4" />
         <path d="M12.5 7.5H20" />
         <path d="M12.5 16.5H20" />
+      </svg>
+    </button>
+    <button
+      aria-label="Open arXiv news"
+      class:active={viewMode === 'news'}
+      class="global-action news-launcher"
+      disabled={!workspaceRoots.length}
+      title="arXiv news"
+      type="button"
+      on:click={() => showNews()}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M5 5.5h11v13.5H6.5A1.5 1.5 0 0 1 5 17.5z" />
+        <path d="M16 9h3v8.5a1.5 1.5 0 0 1-3 0" />
+        <path d="M8 9h5" />
+        <path d="M8 12.5h5" />
+        <path d="M8 16h3" />
       </svg>
     </button>
     <button
@@ -5139,7 +5339,9 @@
         >
           {viewMode === 'calendar'
             ? 'Daily Notes'
-            : selectedPath || 'Workspace Home'}
+            : viewMode === 'news'
+              ? 'arXiv News'
+              : selectedPath || 'Workspace Home'}
         </button>
       </div>
       <div class="topbar-actions">
@@ -6014,6 +6216,145 @@
                 one.
               </p>
             {/if}
+          </section>
+        {/if}
+        {#if viewMode === 'news'}
+          <section class="news-pane" aria-label="arXiv news">
+            <header class="tasks-toolbar news-toolbar">
+              <h2>
+                arXiv
+                {#if newsPublished}
+                  <span class="news-date"
+                    >{newsPublished.replace(/ \d\d:\d\d:\d\d.*$/, '')}</span
+                  >
+                {/if}
+              </h2>
+              <div class="tasks-summary">
+                <span>
+                  {visiblePapers.length} papers{hiddenReplacementCount
+                    ? ` · ${hiddenReplacementCount} updates hidden`
+                    : ''}
+                </span>
+                <input
+                  class="tasks-filter news-filter"
+                  type="search"
+                  placeholder="Filter"
+                  aria-label="Filter papers"
+                  title="Every word must appear in the title, authors, or abstract"
+                  value={newsFilter.query}
+                  on:input={(event) =>
+                    setNewsFilter({ query: event.currentTarget.value })}
+                />
+                <label class="tasks-toggle">
+                  <input
+                    type="checkbox"
+                    checked={newsFilter.includeReplacements}
+                    on:change={(event) =>
+                      setNewsFilter({
+                        includeReplacements: event.currentTarget.checked
+                      })}
+                  />
+                  Updates
+                </label>
+                <button
+                  type="button"
+                  title="Fetch the listing from arXiv again"
+                  on:click={() => loadNews({ refresh: true })}
+                >
+                  Refresh
+                </button>
+              </div>
+              <div
+                class="news-categories"
+                role="group"
+                aria-label="Show categories"
+              >
+                {#each newsCategories as category}
+                  <button
+                    type="button"
+                    class:active={newsFilter.categories.includes(category)}
+                    aria-pressed={newsFilter.categories.includes(category)}
+                    on:click={() => toggleNewsCategory(category)}
+                  >
+                    {category} <span>{newsCounts.get(category) ?? 0}</span>
+                  </button>
+                {/each}
+              </div>
+            </header>
+            {#if newsStatus || newsWarning}
+              <p class="tasks-note">
+                {newsStatus || `Showing the last listing: ${newsWarning}`}
+              </p>
+            {/if}
+            <ol class="news-list">
+              {#each visiblePapers as paper (paper.id)}
+                {@const clipped = newsClipped.has(paper.id.toLowerCase())}
+                <li class="news-paper">
+                  <div class="news-paper-head">
+                    <a
+                      class="news-title"
+                      href={paper.url}
+                      rel="noreferrer"
+                      target="_blank"
+                      >{@render inline(
+                        newsSegments(paper.title, { links: false })
+                      )}</a
+                    >
+                    <button
+                      class="news-clip"
+                      class:clipped
+                      disabled={clipped || newsClipping.has(paper.id)}
+                      title={clipped
+                        ? 'Already in today’s note'
+                        : 'Add to the Reading section of today’s note'}
+                      type="button"
+                      on:click={() => clipPaper(paper)}
+                    >
+                      {clipped
+                        ? 'Clipped'
+                        : newsClipping.has(paper.id)
+                          ? 'Clipping...'
+                          : 'Clip'}
+                    </button>
+                  </div>
+                  <p class="news-meta">
+                    <span>{shortAuthorList(paper.authors)}</span>
+                    <span class="news-id">arXiv:{paper.id}</span>
+                    {#each paper.categories as category}
+                      <span
+                        class="news-category"
+                        class:followed={newsCategories.includes(category)}
+                        >{category}</span
+                      >
+                    {/each}
+                    {#if paper.announceType !== 'new'}
+                      <span class="news-kind">{paper.announceType}</span>
+                    {/if}
+                  </p>
+                  <div
+                    class="news-abstract"
+                    class:expanded={newsExpanded.has(paper.id)}
+                  >
+                    {@render inline(newsSegments(paper.abstract))}
+                  </div>
+                  <button
+                    class="news-more"
+                    type="button"
+                    on:click={() => toggleNewsAbstract(paper.id)}
+                  >
+                    {newsExpanded.has(paper.id) ? 'Less' : 'More'}
+                  </button>
+                </li>
+              {:else}
+                {#if !newsStatus}
+                  <li class="preview-empty">
+                    {newsPapers.length
+                      ? 'No paper matches this filter.'
+                      : 'arXiv has no announcements today. It publishes none on weekends.'}
+                  </li>
+                {/if}
+              {/each}
+            </ol>
           </section>
         {/if}
         {#if viewMode === 'calendar'}
