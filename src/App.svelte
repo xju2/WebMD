@@ -41,12 +41,12 @@
   import {
     citationArxiv,
     citationAuthors,
+    citationCard,
     citationCompletionQuery,
     citationCompletions,
     citationKeys,
     citationLabel,
     citationPasteSource,
-    citationSummary,
     citationUrl,
     citationVenue
   } from './citations.js';
@@ -4315,13 +4315,13 @@
       {#if entry && href}
         <a
           class="citation"
-          data-card={citationSummary(entry)}
+          data-card={citationCard(entry)}
           {href}
           rel="noreferrer"
           target="_blank">({citationLabel(entry)})</a
         >
       {:else if entry}
-        <span class="citation" data-card={citationSummary(entry)}
+        <span class="citation" data-card={citationCard(entry)}
           >({citationLabel(entry)})</span
         >
       {:else}

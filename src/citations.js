@@ -149,6 +149,13 @@ export function citationArxiv(entry) {
   return entry?.arxiv ? `arXiv:${entry.arxiv}` : '';
 }
 
+// The hover card in the preview is a reminder of which paper a `(Author, Year)`
+// stands for, so it carries the title alone; the full details live in the
+// reference list at the foot of the document.
+export function citationCard(entry) {
+  return entry?.title || citationSummary(entry);
+}
+
 export function citationSummary(entry) {
   return entry
     ? [

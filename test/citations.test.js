@@ -8,6 +8,7 @@ import {
   citationKeys,
   citationPasteSource,
   citationSource,
+  citationCard,
   citationSummary,
   citationVenue,
   parseBibtex
@@ -114,6 +115,11 @@ test('keeps a pair of authors and copes with a bare preprint', () => {
     citationSummary(entry),
     'Ju and Doe — A Citation-Aware Knowledge Graph — 2026'
   );
+});
+
+test('shows only the title on the preview hover card', () => {
+  const [entry] = parseBibtex(BIBTEX);
+  assert.equal(citationCard(entry), 'A Citation-Aware Knowledge Graph');
 });
 
 test('drops an arXiv version suffix before looking a paper up', () => {
