@@ -173,7 +173,8 @@ Done when:
 
 ### 9. Quiet Workspace Visual Redesign
 
-Status: Stage 1 done (visual and local presentation only).
+Status: Stage 1 done (visual and local presentation only). Stage 2 is
+milestone 10.
 
 Goal: a lighter, calmer research workspace. Light neutral surfaces, readable
 dark text, hairline separators, and restrained teal accents replace the dark
@@ -205,7 +206,49 @@ Done when:
 - Body text and controls meet WCAG AA contrast on their surfaces.
 - Tests, lint, and build match the baseline.
 
-Next stage (not in this one): move AI to the right and add pane resizing.
+### 10. Files Left, AI Right: Panel Layout
+
+Status: Done.
+
+Goal: the Quiet Workspace shell becomes rail | file sidebar | center | AI
+panel. Both side panels collapse and resize independently; opening or closing
+either never recreates the editor, loses unsaved text, or drops the AI thread.
+Layout decisions live in `ARCHITECTURE.md` under "Panel Layout".
+
+Tasks:
+- [x] Layout model in `src/layout.js`: persisted preferences (open flags and
+      widths) apart from transient overlay state; pure `resolveLayout` decides
+      docked, overlay, or hidden per panel from the viewport width.
+- [x] File sidebar: collapse button, drag and keyboard resize handle
+      (double-click resets), compact New plus a "More file actions" menu (Sync,
+      Show current file, Collapse or expand all folders), and a save status
+      footer that never says saved while work is pending or failed.
+- [x] AI panel on the right with its own header, collapse, resize, and a
+      "Hide Markdown" expand toggle; it opens from the rail independently of
+      the sidebar and the current view.
+- [x] Context indicator in the composer from `src/ai-context.js`: the chip
+      and the request payload come from one object, so the label cannot claim
+      context that is not sent.
+- [x] Narrow screens (≤760px): panels become overlays with a backdrop, an
+      inert workspace, Escape to close, and focus returned to where it was.
+      Temporary collapse never overwrites the desktop preference.
+- [x] Document toolbar folds Upload, Delete, and Reference into the ... menu by
+      the center's width, so docked panels on a laptop do not crowd it.
+- [x] Fix: the editor's active-line wash hid the selection highlight.
+- [x] `npm run fixture` (seeded workspace, stub AI and arXiv) and
+      `npm run scenarios` (headless Chrome acceptance checks at five widths).
+
+Done when:
+- Edit, select, open AI, resize and collapse both panels, then keep editing
+  with selection, undo, and save intact.
+- File, News, Tasks, and Calendar navigation with AI open keeps the context
+  label and the request in agreement.
+- A refresh restores panel visibility and widths; storage holds nothing else.
+- No horizontal overflow at 1920, 1440, 1280, 1024, 800, or 390px.
+
+Deferred:
+- Paper context: sending the arXiv card or paper in view as AI context.
+- Contextual replacement of the file tree per view, and pin/unpin panel modes.
 
 ## First Implementation Pass
 

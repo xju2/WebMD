@@ -119,9 +119,15 @@ textarea:focus-visible {
   stroke-width: 1.6;
 }
 
+/* Rail, file sidebar, workspace, AI panel. Which panels dock, float, or hide —
+   and how wide they are — is decided in src/layout.js and arrives here as
+   inline grid columns and the --files-width / --ai-width variables. A panel
+   that floats leaves the grid, so the workspace keeps the whole column. */
 .app-shell {
+  position: relative;
   display: grid;
-  grid-template-columns: var(--rail-width) minmax(210px, 272px) minmax(0, 1fr);
+  grid-template-columns: var(--rail-width) var(--files-width, 240px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
   min-height: 0;
@@ -129,20 +135,8 @@ textarea:focus-visible {
   background: var(--surface);
 }
 
-.app-shell.sidebar-hidden {
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
-}
-
-/* Chat needs a readable measure; the file tree does not. */
-.app-shell.chat-open:not(.sidebar-hidden):not(.markdown-hidden) {
-  grid-template-columns: var(--rail-width) minmax(340px, 30vw) minmax(0, 1fr);
-}
-
-/* The AI panel takes the freed column when the Markdown views are hidden. */
-.app-shell.markdown-hidden {
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
-}
-
+/* The AI panel takes the freed column when the Markdown views are hidden. The
+   workspace is only hidden, never unmounted, so the editor keeps its state. */
 .app-shell.markdown-hidden .workspace {
   display: none;
 }
@@ -150,9 +144,14 @@ textarea:focus-visible {
 .app-shell.markdown-hidden .ai-messages,
 .app-shell.markdown-hidden .ai-form,
 .app-shell.markdown-hidden .ai-status {
-  width: min(100%, 760px);
+  width: min(100% - 28px, 760px);
   margin-right: auto;
   margin-left: auto;
+}
+
+body.resizing-panels {
+  cursor: col-resize;
+  user-select: none;
 }
 
 /* The rail. Unboxed icons on a light ground; the active view gets a pale teal
@@ -255,26 +254,196 @@ textarea:focus-visible {
 }
 
 .sidebar {
+  position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  overflow: hidden;
   border-right: 1px solid var(--border);
   background: var(--surface-side);
 }
 
-.sidebar.sidebar-closed {
+/* Closed panels stay mounted — search text, scroll, and the whole chat
+   survive a close — and are only taken out of the layout. */
+.sidebar.sidebar-closed,
+.ai-panel.panel-closed {
   display: none;
 }
 
-.sidebar.chat-open > :not(.ai-panel),
-.ai-panel.ai-panel-hidden {
-  display: none;
+.sidebar:focus,
+.ai-panel:focus {
+  outline: none;
+}
+
+/* A panel that cannot dock floats over the workspace beside the rail, with a
+   shadow to say it is on top and its own close button in the header. */
+.sidebar.panel-overlay,
+.ai-panel.panel-overlay {
+  position: fixed;
+  z-index: 15;
+  top: 0;
+  bottom: 0;
+  box-shadow: var(--shadow-pop);
+}
+
+.sidebar.panel-overlay {
+  left: var(--rail-width);
+  width: var(--files-width);
+}
+
+.ai-panel.panel-overlay {
+  right: 0;
+  width: var(--ai-width);
+  border-left: 1px solid var(--border);
+}
+
+.panel-backdrop {
+  position: fixed;
+  z-index: 14;
+  inset: 0 0 0 var(--rail-width);
+  padding: 0;
+  border: 0;
+  background: var(--backdrop);
+  cursor: default;
+}
+
+/* Resize handles: an 8px target straddling the panel's inner edge, drawn as a
+   teal hairline on hover and keyboard focus. */
+.resize-handle {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle-files {
+  right: -5px;
+}
+
+.resize-handle-ai {
+  left: -4px;
+}
+
+.resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  content: '';
+  transition: background 120ms ease;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+body.resizing-panels .resize-handle::after {
+  background: var(--accent);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
 }
 
 .workspace-row {
-  padding: 12px 12px 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-row .workspace-select {
+  flex: 1 1 auto;
+}
+
+.workspace-row .panel-close-button {
+  margin-left: auto;
+}
+
+/* Header buttons that open, close, or widen a panel: unboxed icons. */
+.panel-close-button {
+  display: grid;
+  width: var(--control-height);
+  height: var(--control-height);
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.panel-close-button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.panel-close-button[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.files-menu {
+  position: relative;
+}
+
+.files-menu-list {
+  right: 0;
+  left: auto;
+  min-width: 210px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.view-menu-list button .icon {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  color: var(--ink-subtle);
+  vertical-align: -3px;
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.sidebar-status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--ink-disabled);
+}
+
+.sidebar-status-ok .sidebar-status-dot {
+  background: #1f8a4c;
+}
+
+.sidebar-status-pending .sidebar-status-dot {
+  background: #b7791f;
+}
+
+.sidebar-status-error {
+  color: var(--danger);
+}
+
+.sidebar-status-error .sidebar-status-dot {
+  background: var(--danger);
 }
 
 /* A compact select with its own chevron, so it matches the inputs around it
@@ -592,15 +761,119 @@ textarea:focus-visible {
 }
 
 .ai-panel {
+  position: relative;
   display: grid;
-  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
+  border-left: 1px solid var(--border);
   background: var(--surface-side);
   grid-template-rows: auto minmax(0, 1fr) auto auto;
 }
 
-.ai-title {
-  padding-top: 14px;
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ai-header h2 {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 0.98rem;
+  font-weight: 650;
+}
+
+/* What the next message will carry. Collapsed it is one line; open, it says
+   exactly what is sent and what is not. */
+.ai-context {
+  flex: 1 0 100%;
+  min-width: 0;
+  padding: 0 6px 2px 0;
+  font-size: 0.8rem;
+}
+
+.ai-context summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 2px 0;
+  color: var(--ink-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-context summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-context summary::before {
+  flex: 0 0 auto;
+  color: var(--ink-subtle);
+  /* Same shape and size as the Prompts disclosure above it. */
+  content: '▶';
+  font-size: 0.55rem;
+}
+
+.ai-context[open] summary::before {
+  content: '▼';
+}
+
+.ai-context-label {
+  flex: 0 0 auto;
+  color: var(--ink-subtle);
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ai-context-summary {
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-hover);
+  color: var(--ink);
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-context-selection .ai-context-summary,
+.ai-context-note .ai-context-summary {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.ai-context-body {
+  margin: 6px 0 4px;
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.ai-context-body p {
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.ai-context-body blockquote {
+  max-height: 5.2em;
+  margin: 4px 0 6px;
+  padding: 2px 0 2px 10px;
+  overflow: hidden;
+  border-left: 2px solid var(--border-control);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ai-context-body .ai-context-edit {
+  color: var(--ink-subtle);
 }
 
 .ai-messages {
@@ -1080,7 +1353,9 @@ textarea:focus-visible {
 
 .file-heading {
   display: flex;
-  min-width: 0;
+  /* The back and forward arrows always keep their room; only the title
+     truncates. */
+  min-width: calc(var(--control-height) * 2 + 6px);
   align-items: center;
   gap: 12px;
 }
@@ -1611,8 +1886,11 @@ input[type='radio'] {
   color: var(--ink-subtle);
 }
 
+/* Translucent on purpose: CodeMirror paints the selection on a layer beneath
+   the lines, so an opaque active-line fill hides the selection on the line
+   being edited. */
 .editor-host .cm-editor .cm-activeLine {
-  background: #f5f8f8;
+  background: rgb(15 118 110 / 4%);
 }
 
 .editor-host .cm-editor .cm-activeLineGutter {
@@ -4702,10 +4980,6 @@ input[type='radio'] {
 }
 
 @media (max-width: 760px) {
-  .app-shell {
-    grid-template-columns: var(--rail-width) minmax(0, 1fr);
-    grid-template-rows: minmax(150px, 32vh) minmax(0, 1fr);
-  }
 
   /* Side by side has no room here, so the editor keeps the whole column. */
   .editor-split.split {
@@ -4723,29 +4997,10 @@ input[type='radio'] {
     width: 150px;
   }
 
-  .app-shell.sidebar-hidden,
-  .app-shell.markdown-hidden {
-    grid-template-rows: minmax(0, 1fr);
-  }
-
-  .global-bar {
-    grid-row: 1 / -1;
-  }
-
-  .sidebar {
-    grid-column: 2;
-    grid-row: 1;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .workspace {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .app-shell.sidebar-hidden .workspace {
-    grid-row: 1 / -1;
+  /* Both panels float here (see src/layout.js); the AI panel takes the full
+     width beside the rail so its composer is never covered. */
+  .ai-panel.panel-overlay {
+    border-left: 0;
   }
 
   .cm-content {

@@ -114,7 +114,9 @@ function aiConfig(env) {
 
 function chatMessages({ prompt, system, selectedText, path, documentText }) {
   const context = selectedText?.trim()
-    ? `Selected text from ${path || 'the current document'}:\n${selectedText.trim()}`
+    ? // Text selected outside a note (an arXiv abstract, an earlier reply)
+      // has no document to name, so it is not attributed to one.
+      `${path ? `Selected text from ${path}` : 'Selected text'}:\n${selectedText.trim()}`
     : documentText?.trim()
       ? `Current document ${path || ''}:\n${trimContext(documentText)}`
       : path

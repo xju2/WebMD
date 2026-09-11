@@ -93,6 +93,33 @@ content carries the contrast.
 * **Mockup content is illustrative.** Titles, counts, and AI text always come
   from the workspace and APIs; titles are never truncated server-side.
 
+### 2.4 Panel Layout
+
+The shell is a grid: rail (52px) | file sidebar | center | AI panel. The side
+panels are siblings of the center, so opening, closing, or resizing them only
+changes grid columns; the editor, its selection, and the AI thread stay
+mounted.
+
+* **Preferences vs. transient state.** `src/layout.js` owns the model. What
+  the user chose (`filesOpen`, `aiOpen`, `filesWidth`, `aiWidth`) persists in
+  `localStorage` under `webmd:layout`; nothing else is stored there, never
+  documents or conversations. Overlay flags on narrow screens are transient,
+  so squeezing the window never rewrites the desktop layout.
+* **Docking rules.** `resolveLayout` keeps at least `CENTER_MIN` (520px) for
+  the center. Files docks first; AI docks only if the room left after the
+  docked sidebar still fits its minimum, otherwise it opens as an overlay.
+  At ≤760px both panels are overlays, one at a time, over an inert workspace
+  with a backdrop; Escape or the close button returns focus to where it was.
+* **Widths.** Files 180–480px (240 initial), AI 280–720px (340 initial).
+  Handles are `role="separator"` window splitters: drag, arrow keys (Shift
+  for larger steps), Home/End, and double-click to reset.
+* **Toolbar by center width.** The document toolbar folds Upload, Delete,
+  and Reference into the ... menu when the center is under 820px wide, not
+  only when the window is.
+* **Honest status.** The sidebar footer (`src/save-status.js`) says saved
+  only for an open note with nothing pending; offline, saving, and read-only
+  states say so.
+
 ### 2.2 Backend Matrix
 * **Runtime Environment:** **Node.js LTS**. Provides standard event-driven I/O loop performance perfect for handling parallel low-overhead streaming connections.
 * **Application Framework:** **Express**. Configured explicitly to attach exclusively to loopback network interfaces, avoiding public port allocation vectors.
@@ -156,6 +183,13 @@ Wraps the CodeMirror 6 engine instance. It translates structural mutations into 
 
 #### 4.1.4 Intelligence Panels (`ChatSidebar.svelte` & `InlineOverlay.svelte`)
 Consumes Svelte state selection states. Emits structured payloads downstream into backend APIs via continuous streaming architectures, feeding incoming line tokens back into markdown UI viewports via semantic block renderers. Inline AI edits must render a diff preview first; the editor applies the replacement only after user acceptance.
+
+The AI context shown in the composer and the context sent come from one object
+(`chatContext` in `src/ai-context.js`), which mirrors the server's
+`chatMessages`: a selection is sent alone; otherwise the open note is sent
+(read from disk, up to 12,000 characters) only while it is visible, so Tasks,
+Calendar, and arXiv News send no note even when one is open underneath. The
+underlying note is never labelled as a paper; paper context is deferred.
 
 ---
 

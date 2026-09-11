@@ -29,6 +29,20 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { ICONS } from './icons.js';
   import {
+    LAYOUT_KEY,
+    RAIL_WIDTH,
+    WIDTH_LIMITS,
+    clampPanelWidth,
+    closePanel,
+    keyboardWidth,
+    readLayoutPrefs,
+    resolveLayout,
+    serializeLayoutPrefs,
+    togglePanel
+  } from './layout.js';
+  import { chatContext } from './ai-context.js';
+  import { saveStatusView } from './save-status.js';
+  import {
     arxivCitation,
     indicoLabel,
     indicoReference,
@@ -152,6 +166,8 @@
   // Must match the single breakpoint in styles.css so the markup and the
   // stylesheet always agree on what counts as a narrow screen.
   const NARROW_LAYOUT_QUERY = '(max-width: 760px)';
+  // Below this center width the full document toolbar no longer fits in one row.
+  const COMPACT_TOOLBAR_WIDTH = 820;
 
   // Mermaid renders asynchronously, so diagrams are drawn by an action rather
   // than inline markup. The preview reparses the whole note on every keystroke,
@@ -314,8 +330,21 @@
   let narrowLayout = false;
   let diffFiles = [];
   let diffStatus = '';
-  let sidebarVisible = true;
-  let sidebarView = 'files';
+  // Panel layout. Prefs are the remembered desktop choices; transient state is
+  // what is open while the window is too small to dock a panel, and is never
+  // stored. See src/layout.js.
+  let layoutPrefs = loadLayoutPrefs();
+  let layoutTransient = { filesOpen: false, aiOpen: false };
+  let viewportWidth = window.innerWidth;
+  let panelReturnFocus = { files: null, ai: null };
+  // The last thing focused in the workspace, so closing a panel hands focus
+  // back to the editor (with its selection) rather than to the rail button
+  // that happened to be clicked on the way in.
+  let lastWorkspaceFocus = null;
+  let filesPanel;
+  let aiPanel;
+  let chatInput;
+  let filesMenuOpen = false;
   let markdownViewsHidden = false;
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
   // null until the reader picks one by hand, which is what lets a conventionally
@@ -434,10 +463,43 @@
     -1
   );
   $: newerReferencePath = adjacentNotePath(dailyNoteEntries, referenceIndex, 1);
-  // The Markdown views only collapse while the AI panel owns the sidebar, so
-  // closing the panel always brings the editor back.
-  $: markdownViewsCollapsed =
-    markdownViewsHidden && sidebarVisible && sidebarView === 'chat';
+  $: layout = resolveLayout({
+    viewportWidth,
+    prefs: layoutPrefs,
+    transient: layoutTransient
+  });
+  $: filesShown = layout.files !== 'hidden';
+  $: aiShown = layout.ai !== 'hidden';
+  // A phone-width panel covers the workspace, so the workspace stops taking
+  // focus and clicks until it is closed.
+  $: modalPanelOpen = layout.narrow && (filesShown || aiShown);
+  // The Markdown views only collapse while the AI panel is docked, so closing
+  // or floating the panel always brings the editor back.
+  $: markdownViewsCollapsed = markdownViewsHidden && layout.ai === 'docked';
+  $: shellColumns = [
+    `${RAIL_WIDTH}px`,
+    layout.files === 'docked' ? `${layout.filesWidth}px` : '',
+    markdownViewsCollapsed ? '' : 'minmax(0, 1fr)',
+    layout.ai === 'docked'
+      ? markdownViewsCollapsed
+        ? 'minmax(0, 1fr)'
+        : `${layout.aiWidth}px`
+      : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+  // Docked panels can leave a narrow center on a wide screen, so the toolbar
+  // folds Upload, Delete, and Reference into the ... menu by the center's width,
+  // not the window's.
+  $: centerWidth =
+    viewportWidth -
+    RAIL_WIDTH -
+    (layout.files === 'docked' ? layout.filesWidth : 0) -
+    (layout.ai === 'docked' ? layout.aiWidth : 0);
+  $: compactToolbar = narrowLayout || centerWidth < COMPACT_TOOLBAR_WIDTH;
+  // The ... menu carries different items in each mode, so a change should not
+  // leave a half-stale menu open.
+  $: compactToolbar, closeViewMenu();
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
   // Resume follows the notes this browser has changed, not the ones it merely
@@ -546,6 +608,27 @@
   $: toolbarName = toolbarFolder
     ? toolbarTitle.slice(toolbarFolder.length)
     : toolbarTitle;
+  // The note chat may send: a Markdown note on screen. One left open behind
+  // Tasks, Calendar, or News is not on screen, so it stays out of the request
+  // instead of travelling with it unseen.
+  $: aiNotePath = selectedIsMarkdown && documentControls ? selectedPath : '';
+  $: unsavedWork = Boolean(
+    selectedIsMarkdown &&
+    (content !== lastSaved || pendingUpdates.length || inFlightUpdates.length)
+  );
+  $: aiContext = chatContext({
+    notePath: aiNotePath,
+    // The server reads the note from disk, and treats a blank one as empty.
+    noteLength: lastSaved.trim() ? lastSaved.length : 0,
+    unsaved: unsavedWork,
+    selectedText,
+    hiddenNotePath: !aiNotePath && selectedIsMarkdown ? selectedPath : ''
+  });
+  $: saveView = saveStatusView({
+    status,
+    hasNote: Boolean(selectedPath && selectedIsMarkdown),
+    unsaved: unsavedWork
+  });
   $: visiblePapers = filterPapers(newsPapers, newsFilter);
   $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
   $: rankIndex = new Map(
@@ -600,9 +683,6 @@
     const next = Boolean(narrowLayoutQuery?.matches);
     if (next === narrowLayout) return;
     narrowLayout = next;
-    // The ... menu carries different items on each side of the breakpoint, so
-    // a resize should not leave a half-stale menu open.
-    closeViewMenu();
   }
 
   onMount(async () => {
@@ -740,6 +820,9 @@
   async function streamChat({ prompt, presetId = '', label = '' }) {
     if ((!prompt && !presetId) || chatStreaming || inlineEditLoading) return;
 
+    // Captured before anything is awaited: the request carries exactly the
+    // context the panel was showing when Send was pressed.
+    const context = aiContext.payload;
     chatPrompt = '';
     chatStatus = 'Thinking...';
     chatStreaming = true;
@@ -761,8 +844,8 @@
           signal: chatAbort.signal,
           body: JSON.stringify({
             root: selectedRoot,
-            path: selectedIsMarkdown ? selectedPath : '',
-            selectedText,
+            path: context.path,
+            selectedText: context.selectedText,
             presetId,
             prompt
           })
@@ -1007,7 +1090,7 @@
    * is written until the reader accepts, and only this note is ever touched.
    */
   async function requestRelatedNotes() {
-    if (relatedLoading || !selectedIsMarkdown) return;
+    if (relatedLoading || !aiNotePath) return;
 
     const root = selectedRoot;
     const path = selectedPath;
@@ -3387,13 +3470,182 @@
     loadDailyQuote();
   }
 
-  function toggleSidebar(view) {
-    if (sidebarVisible && sidebarView === view) {
-      sidebarVisible = false;
-      return;
+  function loadLayoutPrefs() {
+    try {
+      return readLayoutPrefs(localStorage.getItem(LAYOUT_KEY));
+    } catch {
+      return readLayoutPrefs(null);
     }
-    sidebarView = view;
-    sidebarVisible = true;
+  }
+
+  // Layout only: which panels are open and how wide. Never notes or chat.
+  function saveLayoutPrefs() {
+    try {
+      localStorage.setItem(LAYOUT_KEY, serializeLayoutPrefs(layoutPrefs));
+    } catch {
+      // Private mode or a full quota: the layout still works for this session.
+    }
+  }
+
+  function applyLayoutState(next) {
+    const prefsChanged = next.prefs !== layoutPrefs;
+    layoutPrefs = next.prefs;
+    layoutTransient = next.transient;
+    if (prefsChanged) saveLayoutPrefs();
+  }
+
+  function panelElement(panel) {
+    return panel === 'files' ? filesPanel : aiPanel;
+  }
+
+  function railButton(panel) {
+    return document.querySelector(`[aria-controls="${panel}-panel"].global-action`);
+  }
+
+  async function focusPanel(panel) {
+    await tick();
+    if (panel === 'ai') {
+      if (chatInput && !chatInput.disabled) chatInput.focus();
+      else aiPanel?.focus();
+    } else if (layout.files === 'overlay') {
+      (searchInput || filesPanel)?.focus();
+    }
+  }
+
+  function trackWorkspaceFocus(event) {
+    if (event.target instanceof HTMLElement) lastWorkspaceFocus = event.target;
+  }
+
+  /** Opens or closes a panel from the rail or a panel's own close button. */
+  async function toggleLayoutPanel(panel) {
+    const shown = layout[panel] !== 'hidden';
+    if (shown) return hideLayoutPanel(panel);
+    const active = document.activeElement;
+    panelReturnFocus[panel] =
+      lastWorkspaceFocus?.isConnected
+        ? lastWorkspaceFocus
+        : active && !panelElement(panel)?.contains(active)
+          ? active
+          : null;
+    applyLayoutState(
+      togglePanel(panel, { layout, prefs: layoutPrefs, transient: layoutTransient })
+    );
+    await focusPanel(panel);
+  }
+
+  async function hideLayoutPanel(panel) {
+    const hadFocus = panelElement(panel)?.contains(document.activeElement);
+    applyLayoutState(
+      closePanel(panel, { layout, prefs: layoutPrefs, transient: layoutTransient })
+    );
+    if (panel === 'ai') markdownViewsHidden = false;
+    if (panel === 'files') filesMenuOpen = false;
+    if (!hadFocus) return;
+    // Focus goes back where it came from, or to the rail button that opens the
+    // panel again, rather than being dropped on <body>.
+    await tick();
+    const back = panelReturnFocus[panel];
+    panelReturnFocus[panel] = null;
+    if (back?.isConnected && back.getClientRects().length) back.focus();
+    else railButton(panel)?.focus();
+  }
+
+  function closeOverlayOnEscape(panel, event) {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (layout[panel] !== 'overlay') return;
+    event.preventDefault();
+    hideLayoutPanel(panel);
+  }
+
+  async function showFilesPanel() {
+    if (layout.files === 'hidden') {
+      applyLayoutState(
+        togglePanel('files', {
+          layout,
+          prefs: layoutPrefs,
+          transient: layoutTransient
+        })
+      );
+    }
+    await tick();
+  }
+
+  // Opening a file from a floating sidebar means the user wants to read it.
+  function closeFilesOverlayAfterOpen() {
+    if (layout.files === 'overlay') hideLayoutPanel('files');
+  }
+
+  function setPanelWidth(panel, width) {
+    const other =
+      panel === 'files'
+        ? layout.ai === 'docked'
+          ? layout.aiWidth
+          : 0
+        : layout.files === 'docked'
+          ? layout.filesWidth
+          : 0;
+    const key = panel === 'files' ? 'filesWidth' : 'aiWidth';
+    const next = clampPanelWidth(panel, width, {
+      viewportWidth,
+      otherWidth: other
+    });
+    if (next === layoutPrefs[key]) return;
+    layoutPrefs = { ...layoutPrefs, [key]: next };
+  }
+
+  function startPanelResize(panel, event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add('resizing-panels');
+    const move = (moveEvent) => {
+      setPanelWidth(
+        panel,
+        panel === 'files'
+          ? moveEvent.clientX - RAIL_WIDTH
+          : viewportWidth - moveEvent.clientX
+      );
+    };
+    const end = () => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', end);
+      handle.removeEventListener('pointercancel', end);
+      document.body.classList.remove('resizing-panels');
+      saveLayoutPrefs();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  function resizePanelByKey(panel, event) {
+    const current = panel === 'files' ? layout.filesWidth : layout.aiWidth;
+    const width = keyboardWidth(panel, current, event.key, {
+      shift: event.shiftKey
+    });
+    if (width === null) return;
+    event.preventDefault();
+    setPanelWidth(panel, width);
+    saveLayoutPrefs();
+  }
+
+  function closeFilesMenuOnEscape(event) {
+    if (event.key !== 'Escape' || !filesMenuOpen) return;
+    // Handled here so the Escape does not also close a floating sidebar.
+    event.preventDefault();
+    filesMenuOpen = false;
+    filesPanel?.querySelector('[aria-label="More file actions"]')?.focus();
+  }
+
+  function runFilesMenu(action) {
+    filesMenuOpen = false;
+    action();
+  }
+
+  function resetPanelWidth(panel) {
+    setPanelWidth(panel, WIDTH_LIMITS[panel].initial);
+    saveLayoutPrefs();
   }
 
   async function loadOverview(root = selectedRoot) {
@@ -4186,8 +4438,7 @@
   async function revealSelectedFileInSidebar() {
     if (!selectedPath) return;
 
-    sidebarVisible = true;
-    sidebarView = 'files';
+    await showFilesPanel();
     searchQuery = '';
     expandToPath(selectedPath);
     await tick();
@@ -5038,6 +5289,7 @@
 {/snippet}
 
 <svelte:window
+  bind:innerWidth={viewportWidth}
   on:keydown={handleShortcut}
   on:mousedown={handleMouseNavigation}
   on:mouseup={handleMouseNavigation}
@@ -5047,9 +5299,11 @@
 <main
   bind:this={appShell}
   class:markdown-hidden={markdownViewsCollapsed}
-  class:sidebar-hidden={!sidebarVisible}
-  class:chat-open={sidebarVisible && sidebarView === 'chat'}
+  class:narrow-layout={layout.narrow}
   class="app-shell"
+  style:grid-template-columns={shellColumns}
+  style:--files-width={`${layout.filesWidth}px`}
+  style:--ai-width={`${layout.aiWidth}px`}
 >
   <nav class="global-bar" aria-label="Global actions">
     <span aria-hidden="true" class="rail-mark">W</span>
@@ -5077,15 +5331,14 @@
       {@render icon('today')}
     </button>
     <button
-      aria-label={sidebarVisible && sidebarView === 'files'
-        ? 'Hide files'
-        : 'Show files'}
-      aria-pressed={sidebarVisible && sidebarView === 'files'}
-      class:active={sidebarVisible && sidebarView === 'files'}
+      aria-controls="files-panel"
+      aria-expanded={filesShown}
+      aria-label={filesShown ? 'Hide file sidebar' : 'Show file sidebar'}
+      class:active={filesShown}
       class="global-action"
-      data-tooltip="Files"
+      data-tooltip={filesShown ? 'Hide files' : 'Show files'}
       type="button"
-      on:click={() => toggleSidebar('files')}
+      on:click={() => toggleLayoutPanel('files')}
     >
       {@render icon('folder')}
     </button>
@@ -5123,28 +5376,33 @@
       {@render icon('news')}
     </button>
     <button
-      aria-label={sidebarVisible && sidebarView === 'chat'
-        ? 'Hide AI chat'
-        : 'Show AI chat'}
-      aria-pressed={sidebarVisible && sidebarView === 'chat'}
-      class:active={sidebarVisible && sidebarView === 'chat'}
+      aria-controls="ai-panel"
+      aria-expanded={aiShown}
+      aria-label={aiShown ? 'Hide AI assistant' : 'Show AI assistant'}
+      class:active={aiShown}
       class="global-action"
-      data-tooltip="AI chat"
+      data-tooltip={aiShown ? 'Hide AI assistant' : 'AI assistant'}
       type="button"
-      on:click={() => toggleSidebar('chat')}
+      on:click={() => toggleLayoutPanel('ai')}
     >
       {@render icon('sparkles')}
     </button>
   </nav>
 
+  <!-- Escape anywhere inside closes the panel's overlay. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <aside
-    class:chat-open={sidebarView === 'chat'}
-    class:sidebar-closed={!sidebarVisible}
+    bind:this={filesPanel}
+    aria-label="Workspace files"
+    class:panel-overlay={layout.files === 'overlay'}
+    class:sidebar-closed={!filesShown}
     class="sidebar"
-    aria-label={sidebarView === 'files' ? 'Workspace files' : 'AI chat'}
+    id="files-panel"
+    tabindex="-1"
+    on:keydown={(event) => closeOverlayOnEscape('files', event)}
   >
-    {#if workspaceRoots.length}
-      <div class="workspace-row">
+    <div class="workspace-row">
+      {#if workspaceRoots.length}
         <select
           aria-label="Switch folder"
           class="workspace-select"
@@ -5155,8 +5413,19 @@
             <option value={root.id}>{root.name}</option>
           {/each}
         </select>
-      </div>
-    {/if}
+      {/if}
+      <button
+        aria-controls="files-panel"
+        aria-expanded="true"
+        aria-label="Collapse file sidebar"
+        class="panel-close-button"
+        title="Collapse file sidebar"
+        type="button"
+        on:click={() => hideLayoutPanel('files')}
+      >
+        {@render icon(layout.files === 'overlay' ? 'close' : 'panelLeft')}
+      </button>
+    </div>
     <div class="sidebar-title">
       <span>Files</span>
       <span class="sidebar-count">{fileCount} files</span>
@@ -5170,33 +5439,66 @@
         >
           New
         </button>
-        <button
-          aria-label="Sync files"
-          class="sidebar-icon-button"
-          title="Sync files"
-          type="button"
-          on:click={syncWorkspace}
-        >
-          {@render icon('refresh')}
-        </button>
-        <button
-          aria-label="Collapse all folders"
-          class="sidebar-icon-button"
-          title="Collapse all folders"
-          type="button"
-          on:click={collapseAll}
-        >
-          {@render icon('collapseAll')}
-        </button>
-        <button
-          aria-label="Expand all folders"
-          class="sidebar-icon-button"
-          title="Expand all folders"
-          type="button"
-          on:click={expandAll}
-        >
-          {@render icon('expandAll')}
-        </button>
+        <div class="files-menu">
+          <button
+            aria-expanded={filesMenuOpen}
+            aria-haspopup="menu"
+            aria-label="More file actions"
+            class="sidebar-icon-button"
+            title="More file actions"
+            type="button"
+            on:click={() => (filesMenuOpen = !filesMenuOpen)}
+            on:keydown={closeFilesMenuOnEscape}
+          >
+            {@render icon('more')}
+          </button>
+          {#if filesMenuOpen}
+            <button
+              aria-label="Close file actions"
+              class="view-menu-backdrop"
+              tabindex="-1"
+              type="button"
+              on:click={() => (filesMenuOpen = false)}
+            ></button>
+            <div
+              class="view-menu-list files-menu-list"
+              role="menu"
+              tabindex="-1"
+              on:keydown={closeFilesMenuOnEscape}
+            >
+              <button
+                role="menuitem"
+                type="button"
+                on:click={() => runFilesMenu(syncWorkspace)}
+              >
+                {@render icon('refresh')} Sync files
+              </button>
+              <button
+                disabled={!selectedPath}
+                role="menuitem"
+                type="button"
+                on:click={() => runFilesMenu(revealSelectedFileInSidebar)}
+              >
+                {@render icon('file')} Show current file
+              </button>
+              <hr class="view-menu-divider" />
+              <button
+                role="menuitem"
+                type="button"
+                on:click={() => runFilesMenu(collapseAll)}
+              >
+                {@render icon('collapseAll')} Collapse all folders
+              </button>
+              <button
+                role="menuitem"
+                type="button"
+                on:click={() => runFilesMenu(expandAll)}
+              >
+                {@render icon('expandAll')} Expand all folders
+              </button>
+            </div>
+          {/if}
+        </div>
       </div>
     </div>
     <div class="sidebar-search">
@@ -5222,7 +5524,10 @@
             class:active={result.path === selectedPath}
             class="search-result"
             type="button"
-            on:click={() => openSearchResult(result)}
+            on:click={() => {
+              openSearchResult(result);
+              closeFilesOverlayAfterOpen();
+            }}
           >
             <span>{result.name}</span>
             <small
@@ -5281,10 +5586,11 @@
               : undefined}
             style={`--level: ${node.level}`}
             type="button"
-            on:click={() =>
-              node.type === 'directory'
-                ? toggleFolder(node.path)
-                : openFile(node.path)}
+            on:click={() => {
+              if (node.type === 'directory') return toggleFolder(node.path);
+              openFile(node.path);
+              closeFilesOverlayAfterOpen();
+            }}
           >
             <span aria-hidden="true" class="tree-twisty"
               >{#if node.type === 'directory'}{@render icon(
@@ -5305,165 +5611,36 @@
         {/if}
       </div>
     {/if}
-    <section class:ai-panel-hidden={sidebarView !== 'chat'} class="ai-panel">
-      <div class="sidebar-title ai-title">
-        <span>AI chat</span>
-        <div class="sidebar-title-actions">
-          <button
-            aria-pressed={markdownViewsHidden}
-            class="sync-button"
-            title={markdownViewsHidden
-              ? 'Show the Markdown views'
-              : 'Hide the Markdown views and widen this panel'}
-            type="button"
-            on:click={() => (markdownViewsHidden = !markdownViewsHidden)}
-          >
-            {markdownViewsHidden ? 'Show Markdown' : 'Hide Markdown'}
-          </button>
-        </div>
-      </div>
-      <div class="ai-messages" aria-live="polite" bind:this={chatScrollHost}>
-        {#if chatMessages.length}
-          {#each chatMessages as message}
-            <article class={`ai-message ai-message-${message.role}`}>
-              <strong>{message.role === 'user' ? 'You' : 'AI'}</strong>
-              <div class="ai-bubble">
-                {#if !message.text && chatStreaming}
-                  <span aria-hidden="true" class="ai-typing"
-                    ><span></span><span></span><span></span></span
-                  >
-                {:else if message.role === 'user'}
-                  <p>{message.text}</p>
-                {:else}
-                  <div class="ai-markdown">
-                    {@render markdownBlocks(renderMarkdown(message.text), true)}
-                  </div>
-                {/if}
-              </div>
-            </article>
-          {/each}
-        {:else}
-          <p class="empty-copy">Ask about the current note or selection.</p>
-        {/if}
-      </div>
-      <form class="ai-form" on:submit|preventDefault={sendChat}>
-        <div class="ai-connect">
-          <button
-            class="ai-connect-button"
-            disabled={relatedLoading || !selectedIsMarkdown}
-            title={selectedIsMarkdown
-              ? 'Suggest existing notes to link this note to'
-              : 'Open a Markdown note first'}
-            type="button"
-            on:click={requestRelatedNotes}
-          >
-            {relatedLoading ? 'Connecting...' : 'Connect notes'}
-          </button>
-          {#if relatedStatus}
-            <span class="ai-connect-status">{relatedStatus}</span>
-          {/if}
-        </div>
-        {#if presetGroups.length}
-          <details class="ai-preset">
-            <summary class="ai-preset-label" id="ai-preset-heading"
-              >Prompts</summary
-            >
-            <div class="ai-preset-picker">
-              <div
-                aria-labelledby="ai-preset-heading"
-                class="ai-preset-groups"
-                role="tablist"
-              >
-                {#each presetGroups as group}
-                  <button
-                    aria-controls="ai-preset-items"
-                    aria-selected={group.name === activePresetGroup}
-                    class="ai-preset-group"
-                    class:active={group.name === activePresetGroup}
-                    id={presetGroupId(group.name)}
-                    role="tab"
-                    type="button"
-                    on:click={() => (activePresetGroup = group.name)}
-                  >
-                    {group.name}
-                  </button>
-                {/each}
-              </div>
-              <div
-                aria-labelledby={presetGroupId(activePresetGroup)}
-                class="ai-preset-items"
-                id="ai-preset-items"
-                role="tabpanel"
-              >
-                {#each activePresets as preset}
-                  <button
-                    class="ai-preset-chip"
-                    class:chat={preset.kind === 'chat'}
-                    disabled={presetDisabled(preset)}
-                    title={presetTitle(preset)}
-                    type="button"
-                    on:click={() => runPreset(preset)}
-                  >
-                    {preset.label}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          </details>
-        {/if}
-        {#if aiPresetWarning}
-          <p class="ai-preset-warning">{aiPresetWarning}</p>
-        {/if}
-        <textarea
-          aria-label="Ask AI"
-          bind:value={chatPrompt}
-          disabled={chatStreaming || inlineEditLoading}
-          placeholder={selectedText
-            ? 'Ask about the selection'
-            : 'Ask about this note'}
-          rows="2"
-        ></textarea>
-        <div class="ai-form-actions">
-          <button
-            aria-label="Preview edit for selected text"
-            class="ai-icon-button"
-            disabled={!chatPrompt.trim() ||
-              chatStreaming ||
-              inlineEditLoading ||
-              !canInlineEdit}
-            title={canInlineEdit
-              ? 'Preview edit for selected text'
-              : 'Select text in the editor'}
-            type="button"
-            on:click={() => requestInlineEdit()}
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path
-                d="M4 20.5 4.8 16.2 15.8 5.2a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5L8.8 19.7z"
-              />
-              <path d="m14 7 3 3" />
-            </svg>
-          </button>
-          <button
-            aria-label="Send"
-            class="ai-send-button"
-            disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
-            title="Send"
-            type="submit"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M4 12 20 4l-6 16-3-7-7-1z" />
-            </svg>
-          </button>
-        </div>
-      </form>
-      {#if chatStatus || inlineEditStatus}
-        <p class="ai-status">{chatStatus || inlineEditStatus}</p>
-      {/if}
-    </section>
+    <footer class={`sidebar-status sidebar-status-${saveView.tone}`}>
+      <span aria-hidden="true" class="sidebar-status-dot"></span>
+      <span role="status">{saveView.label}</span>
+    </footer>
+    {#if layout.files === 'docked'}
+      <!-- A focusable separator is the ARIA window-splitter pattern. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <div
+        aria-controls="files-panel"
+        aria-label="Resize file sidebar"
+        aria-orientation="vertical"
+        aria-valuemax={WIDTH_LIMITS.files.max}
+        aria-valuemin={WIDTH_LIMITS.files.min}
+        aria-valuenow={layout.filesWidth}
+        class="resize-handle resize-handle-files"
+        role="separator"
+        tabindex="0"
+        title="Drag or use arrow keys to resize. Double-click to reset."
+        on:dblclick={() => resetPanelWidth('files')}
+        on:keydown={(event) => resizePanelByKey('files', event)}
+        on:pointerdown={(event) => startPanelResize('files', event)}
+      ></div>
+    {/if}
   </aside>
 
-  <section class="workspace">
+  <section
+    class="workspace"
+    inert={modalPanelOpen}
+    on:focusin={trackWorkspaceFocus}
+  >
     <header class:compact={!documentControls} class="topbar">
       <div class="file-heading">
         <div class="navigation-controls" aria-label="File navigation">
@@ -5536,7 +5713,7 @@
               {@render icon('chevronRight')}
             </button>
           </div>
-          {#if !narrowLayout}
+          {#if !compactToolbar}
             <button
               class="upload-button toolbar-button"
               disabled={!workspaceRoots.length}
@@ -5636,7 +5813,7 @@
               <button role="menuitem" type="button" on:click={openMarkdownHelp}>
                 Markdown help
               </button>
-              {#if narrowLayout && documentControls}
+              {#if compactToolbar && documentControls}
                 <hr class="view-menu-divider" />
                 <button
                   disabled={!workspaceRoots.length}
@@ -7095,4 +7272,239 @@
       <span>Selected text: {selectedText.length}</span>
     </footer>
   </section>
+
+  <!-- Escape anywhere inside closes the panel's overlay. -->
+  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+  <aside
+    bind:this={aiPanel}
+    aria-label="AI assistant"
+    class:panel-overlay={layout.ai === 'overlay'}
+    class:panel-closed={!aiShown}
+    class="ai-panel"
+    id="ai-panel"
+    tabindex="-1"
+    on:keydown={(event) => closeOverlayOnEscape('ai', event)}
+  >
+    {#if layout.ai === 'docked'}
+      <!-- A focusable separator is the ARIA window-splitter pattern. -->
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+      <div
+        aria-controls="ai-panel"
+        aria-label="Resize AI assistant"
+        aria-orientation="vertical"
+        aria-valuemax={WIDTH_LIMITS.ai.max}
+        aria-valuemin={WIDTH_LIMITS.ai.min}
+        aria-valuenow={layout.aiWidth}
+        class="resize-handle resize-handle-ai"
+        role="separator"
+        tabindex="0"
+        title="Drag or use arrow keys to resize. Double-click to reset."
+        on:dblclick={() => resetPanelWidth('ai')}
+        on:keydown={(event) => resizePanelByKey('ai', event)}
+        on:pointerdown={(event) => startPanelResize('ai', event)}
+      ></div>
+    {/if}
+    <header class="ai-header">
+      <h2>AI assistant</h2>
+      {#if layout.ai === 'docked'}
+        <button
+          aria-label={markdownViewsHidden
+            ? 'Show the Markdown views'
+            : 'Hide the Markdown views and widen this panel'}
+          aria-pressed={markdownViewsHidden}
+          class="panel-close-button"
+          title={markdownViewsHidden
+            ? 'Show the Markdown views'
+            : 'Hide the Markdown views and widen this panel'}
+          type="button"
+          on:click={() => (markdownViewsHidden = !markdownViewsHidden)}
+        >
+          {@render icon(markdownViewsHidden ? 'collapseWide' : 'expandWide')}
+        </button>
+      {/if}
+      <button
+        aria-controls="ai-panel"
+        aria-expanded="true"
+        aria-label="Close AI assistant"
+        class="panel-close-button"
+        title="Close AI assistant"
+        type="button"
+        on:click={() => hideLayoutPanel('ai')}
+      >
+        {@render icon(layout.ai === 'overlay' ? 'close' : 'panelRight')}
+      </button>
+    </header>
+    <div class="ai-messages" aria-live="polite" bind:this={chatScrollHost}>
+      {#if chatMessages.length}
+        {#each chatMessages as message}
+          <article class={`ai-message ai-message-${message.role}`}>
+            <strong>{message.role === 'user' ? 'You' : 'AI'}</strong>
+            <div class="ai-bubble">
+              {#if !message.text && chatStreaming}
+                <span aria-hidden="true" class="ai-typing"
+                  ><span></span><span></span><span></span></span
+                >
+              {:else if message.role === 'user'}
+                <p>{message.text}</p>
+              {:else}
+                <div class="ai-markdown">
+                  {@render markdownBlocks(renderMarkdown(message.text), true)}
+                </div>
+              {/if}
+            </div>
+          </article>
+        {/each}
+      {:else}
+        <p class="empty-copy">Ask about the current note or selection.</p>
+      {/if}
+    </div>
+    <form class="ai-form" on:submit|preventDefault={sendChat}>
+      <div class="ai-connect">
+        <button
+          class="ai-connect-button"
+          disabled={relatedLoading || !aiNotePath}
+          title={aiNotePath
+            ? `Suggest existing notes to link ${aiNotePath} to`
+            : 'Open a Markdown note first'}
+          type="button"
+          on:click={requestRelatedNotes}
+        >
+          {relatedLoading ? 'Connecting...' : 'Connect notes'}
+        </button>
+        {#if relatedStatus}
+          <span class="ai-connect-status">{relatedStatus}</span>
+        {/if}
+      </div>
+      {#if presetGroups.length}
+        <details class="ai-preset">
+          <summary class="ai-preset-label" id="ai-preset-heading"
+            >Prompts</summary
+          >
+          <div class="ai-preset-picker">
+            <div
+              aria-labelledby="ai-preset-heading"
+              class="ai-preset-groups"
+              role="tablist"
+            >
+              {#each presetGroups as group}
+                <button
+                  aria-controls="ai-preset-items"
+                  aria-selected={group.name === activePresetGroup}
+                  class="ai-preset-group"
+                  class:active={group.name === activePresetGroup}
+                  id={presetGroupId(group.name)}
+                  role="tab"
+                  type="button"
+                  on:click={() => (activePresetGroup = group.name)}
+                >
+                  {group.name}
+                </button>
+              {/each}
+            </div>
+            <div
+              aria-labelledby={presetGroupId(activePresetGroup)}
+              class="ai-preset-items"
+              id="ai-preset-items"
+              role="tabpanel"
+            >
+              {#each activePresets as preset}
+                <button
+                  class="ai-preset-chip"
+                  class:chat={preset.kind === 'chat'}
+                  disabled={presetDisabled(preset)}
+                  title={presetTitle(preset)}
+                  type="button"
+                  on:click={() => runPreset(preset)}
+                >
+                  {preset.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+        </details>
+      {/if}
+      {#if aiPresetWarning}
+        <p class="ai-preset-warning">{aiPresetWarning}</p>
+      {/if}
+      <details class={`ai-context ai-context-${aiContext.kind}`}>
+        <summary>
+          <span class="ai-context-label">Context</span>
+          <span class="ai-context-summary" id="ai-context-summary"
+            >{aiContext.summary}</span
+          >
+        </summary>
+        <div class="ai-context-body">
+          {#each aiContext.details as detail}
+            <p>{detail}</p>
+          {/each}
+          {#if aiContext.excerpt}
+            <blockquote>{aiContext.excerpt}</blockquote>
+          {/if}
+          <p class="ai-context-edit">
+            The pencil drafts a rewrite of the editor selection only, shown
+            as a diff; the note changes only if you accept it.
+          </p>
+        </div>
+      </details>
+      <textarea
+        aria-label="Ask AI"
+        aria-describedby="ai-context-summary"
+        bind:this={chatInput}
+        bind:value={chatPrompt}
+        disabled={chatStreaming || inlineEditLoading}
+        placeholder={aiContext.kind === 'selection'
+          ? 'Ask about the selection'
+          : aiContext.kind === 'note'
+            ? 'Ask about this note'
+            : 'Ask AI'}
+        rows="2"
+      ></textarea>
+      <div class="ai-form-actions">
+        <button
+          aria-label="Preview edit for selected text"
+          class="ai-icon-button"
+          disabled={!chatPrompt.trim() ||
+            chatStreaming ||
+            inlineEditLoading ||
+            !canInlineEdit}
+          title={canInlineEdit
+            ? 'Preview edit for selected text'
+            : 'Select text in the editor'}
+          type="button"
+          on:click={() => requestInlineEdit()}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path
+              d="M4 20.5 4.8 16.2 15.8 5.2a1.8 1.8 0 0 1 2.5 0l1.5 1.5a1.8 1.8 0 0 1 0 2.5L8.8 19.7z"
+            />
+            <path d="m14 7 3 3" />
+          </svg>
+        </button>
+        <button
+          aria-label="Send"
+          class="ai-send-button"
+          disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
+          title="Send"
+          type="submit"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M4 12 20 4l-6 16-3-7-7-1z" />
+          </svg>
+        </button>
+      </div>
+    </form>
+    {#if chatStatus || inlineEditStatus}
+      <p class="ai-status">{chatStatus || inlineEditStatus}</p>
+    {/if}
+  </aside>
+
+  {#if modalPanelOpen}
+    <button
+      aria-label="Close panel"
+      class="panel-backdrop"
+      tabindex="-1"
+      type="button"
+      on:click={() => hideLayoutPanel(layout.files === 'overlay' ? 'files' : 'ai')}
+    ></button>
+  {/if}
 </main>

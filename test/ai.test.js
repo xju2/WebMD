@@ -84,6 +84,32 @@ test('streams Ollama chat chunks', async () => {
   assert.equal(text, 'Hi there');
 });
 
+test('attributes a selection to its note only when there is one', async () => {
+  const sent = [];
+  const fetchImpl = async (_url, options) => {
+    sent.push(JSON.parse(options.body).messages[1].content);
+    return streamResponse('{"message":{"content":"ok"}}\n');
+  };
+  const env = { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' };
+  await collect(
+    streamAiChat({ prompt: 'Why?', selectedText: 'abstract', env, fetchImpl })
+  );
+  await collect(
+    streamAiChat({
+      prompt: 'Why?',
+      selectedText: 'line',
+      path: '/note.md',
+      documentText: 'whole note',
+      env,
+      fetchImpl
+    })
+  );
+  assert.match(sent[0], /^Selected text:\nabstract/);
+  assert.match(sent[1], /^Selected text from \/note\.md:\nline/);
+  // The selection stands in for the note; the rest of it is not sent.
+  assert.doesNotMatch(sent[1], /whole note/);
+});
+
 test('streams AI edit deltas then a final replacement', async () => {
   const events = [];
   const stream = streamAiEdit({

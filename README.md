@@ -528,3 +528,9 @@ case-insensitive matching.
 - `npm run test`: run focused workspace safety tests.
 - `npm run lint`: run syntax checks.
 - `npm run build`: build the frontend into `dist/`.
+- `npm run fixture`: serve a seeded throwaway workspace with a stub AI provider
+  and arXiv feed on port 3197 (`AI_MODE=slow|error`, `NEWS_MODE=error|empty`).
+  It never reads `~/.webmd.conf`.
+- `npm run scenarios`: after `npm run build`, run the headless Chrome layout
+  and AI-context acceptance checks against fixtures (`OUT_DIR` keeps
+  screenshots). Needs Google Chrome, or `CHROME_PATH`.
