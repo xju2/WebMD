@@ -8,7 +8,12 @@ import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { fetchCitationBibtex } from './citations.js';
 import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
 import { fetchXPost, isXPostUrl } from './x.js';
-import { fetchArxivNews, newsCategories } from './news.js';
+import {
+  fetchArxivNews,
+  newsCategories,
+  readCacheFile,
+  writeCacheFile
+} from './news.js';
 import {
   buildInterestProfile,
   buildRankMessages,
@@ -57,6 +62,9 @@ export async function createApp({
   indicoFetch = fetch,
   xFetch = fetch,
   newsFetch = fetch,
+  // Where day-scoped fetches and model answers outlive a restart. Outside the
+  // workspaces so autocommit never picks them up; unset keeps them in memory.
+  cacheDir,
   env = process.env
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
@@ -310,15 +318,16 @@ export async function createApp({
       res.json(
         await fetchArxivNews(newsCategories(env), {
           fetchImpl: newsFetch,
-          refresh: req.query.refresh === '1'
+          refresh: req.query.refresh === '1',
+          cacheDir
         })
       );
     })
   );
 
   // One ranking per workspace per listing: a model call reads the whole day's
-  // shortlist, so it runs once and every tab and reload reuses it. Clipping a
-  // paper does not reshuffle the page under you; Re-rank asks again.
+  // shortlist, so it runs once and every tab, reload, and restart reuses it.
+  // Clipping a paper does not reshuffle the page under you; Re-rank asks again.
   const newsRankings = new Map();
 
   app.post(
@@ -326,24 +335,37 @@ export async function createApp({
     asyncHandler(async (req, res) => {
       const workspace = workspaces.get(req.body?.root);
       const news = await fetchArxivNews(newsCategories(env), {
-        fetchImpl: newsFetch
+        fetchImpl: newsFetch,
+        cacheDir
       });
       // Editing the instructions note earns a fresh ranking; clipping a paper
       // (which also feeds the profile) does not.
       const instructions =
         (await readNewsInstructions(workspace)) ||
         String(env.ARXIV_NEWS_INTERESTS ?? '');
-      const key = [
-        req.body?.root ?? '0',
+      const listing = [
         news.published,
         news.categories,
-        createHash('sha1').update(instructions).digest('hex')
+        sha1(instructions)
       ].join('|');
+      const key = `${req.body?.root ?? '0'}|${listing}`;
       if (req.body?.refresh) newsRankings.delete(key);
 
       let ranking = newsRankings.get(key);
       if (!ranking) {
-        ranking = rankNews(workspace, news, instructions).catch((error) => {
+        const file =
+          cacheDir &&
+          path.join(cacheDir, 'news-rank', `${sha1(workspace.root)}.json`);
+        ranking = (async () => {
+          const saved =
+            file && !req.body?.refresh ? await readCacheFile(file) : null;
+          if (saved?.listing === listing && saved.ranking) return saved.ranking;
+          const fresh = await rankNews(workspace, news, instructions);
+          // Only a model answer costs anything to redo.
+          if (file && fresh.method === 'ai')
+            await writeCacheFile(file, { listing, ranking: fresh });
+          return fresh;
+        })().catch((error) => {
           newsRankings.delete(key);
           throw error;
         });
@@ -624,6 +646,10 @@ function quoteDate(value) {
     Number(parts[3])
   );
   return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function sha1(text) {
+  return createHash('sha1').update(text).digest('hex');
 }
 
 function asyncHandler(handler) {

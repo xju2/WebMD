@@ -21,7 +21,11 @@ if (!workspaceRoots.length) {
 }
 
 try {
-  const app = await createApp({ workspaceRoots });
+  const app = await createApp({
+    workspaceRoots,
+    cacheDir:
+      process.env.WEBMD_CACHE_DIR || path.join(os.homedir(), '.cache', 'webmd')
+  });
   const server = app.listen(port, '127.0.0.1', () => {
     // EADDRINUSE lands just after this callback, so defer and let the error handler win.
     setImmediate(() => console.log(`WebMD listening on http://127.0.0.1:${port}`));

@@ -102,6 +102,9 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
+- `WEBMD_CACHE_DIR`: where the News listing and its AI ranking are kept across
+  restarts, defaults to `~/.cache/webmd`. Nothing there is needed; delete it
+  any time.
 
 ## Prompt presets
 
@@ -451,7 +454,11 @@ backlinks, so those notes keep reading the way they did.
 
 The newspaper button in the left bar opens today's arXiv announcements for the
 categories in `ARXIV_NEWS_CATEGORIES`. They are read from arXiv's public RSS
-feed, so no key is needed, and the listing is cached for half an hour.
+feed, so no key is needed. The listing is cached for as long as arXiv says it
+stands (until the next announcement), kept on disk so a restart does not
+refetch it, and checked by ETag once stale, so an unchanged feed costs a 304.
+The AI ranking is saved the same way: one model call per listing, until the
+instructions change or you press **Re-rank**.
 
 - **Filter** keeps papers whose title, authors, or abstract contain every word
   you type. The category chips narrow the list to the ones you pick. Both are

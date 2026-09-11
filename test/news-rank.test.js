@@ -230,3 +230,54 @@ test('ranks the listing with the AI once per listing and instructions', async ()
     server.close();
   }
 });
+
+test('a saved AI ranking outlives a server restart', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'webmd-news-'));
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd', 'news.md'),
+    'Rank by HL-LHC tracking.\n'
+  );
+
+  let calls = 0;
+  const rankOnce = async (body = {}) => {
+    const app = await createApp({
+      workspaceRoots: [root],
+      env: {},
+      cacheDir,
+      newsFetch: async () => new Response(RSS, { status: 200 }),
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async () => {
+        calls += 1;
+        return ollamaReply(
+          '[{"id": "2609.00002", "score": 9, "connection": "HEP tracking", "reason": "GNN tracking."}]'
+        );
+      }
+    });
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${server.address().port}/api/news/rank`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ root: '0', ...body })
+        }
+      );
+      return response.json();
+    } finally {
+      server.close();
+      resetNewsCache();
+    }
+  };
+
+  const first = await rankOnce();
+  assert.equal(first.method, 'ai');
+  assert.deepEqual(await rankOnce(), first);
+  assert.equal(calls, 1, 'the restarted server reuses the saved ranking');
+
+  await rankOnce({ refresh: true });
+  assert.equal(calls, 2, 'Re-rank still asks the model');
+});

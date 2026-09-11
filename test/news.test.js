@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   DEFAULT_NEWS_CATEGORIES,
@@ -104,6 +107,47 @@ test('caches the listing and falls back to it when arXiv is down', async () => {
   assert.equal(calls, 2);
   assert.equal(refreshed.papers.length, 2);
   assert.match(refreshed.warning, /offline/);
+});
+
+test('keeps the listing on disk and revalidates it by ETag', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  const requests = [];
+  let clock = 0;
+  const now = () => clock;
+  const fetchImpl = async (_url, options) => {
+    requests.push(options?.headers?.['If-None-Match'] ?? null);
+    const headers = {
+      etag: '"v1"',
+      'cache-control': 'max-age=3600',
+      age: '600'
+    };
+    return requests.length === 1
+      ? new Response(RSS, { status: 200, headers })
+      : new Response(null, { status: 304, headers });
+  };
+  const categories = ['hep-ex', 'cs.LG'];
+
+  const first = await fetchArxivNews(categories, { fetchImpl, now, cacheDir });
+  assert.equal(first.papers.length, 2);
+
+  resetNewsCache(); // a server restart
+  clock = 40 * 60 * 1000;
+  const restarted = await fetchArxivNews(categories, {
+    fetchImpl,
+    now,
+    cacheDir
+  });
+  assert.equal(requests.length, 1, 'fresh per max-age less age, from disk');
+  assert.deepEqual(restarted, first);
+
+  clock = 51 * 60 * 1000;
+  const revalidated = await fetchArxivNews(categories, {
+    fetchImpl,
+    now,
+    cacheDir
+  });
+  assert.deepEqual(requests, [null, '"v1"']);
+  assert.deepEqual(revalidated, first, 'a 304 keeps the saved papers');
 });
 
 test('clips into an existing Reading section', () => {

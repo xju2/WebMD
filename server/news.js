@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import { decodeXml } from './arxiv.js';
 import { WorkspaceError } from './workspace.js';
 
@@ -10,12 +12,14 @@ export const DEFAULT_NEWS_CATEGORIES = [
   'physics.data-an'
 ];
 const CATEGORY = /^[a-z][a-z-]*(?:\.[A-Za-z-]+)?$/;
-// arXiv rebuilds the feed once a day, so a half-hour cache costs nothing in
-// freshness and keeps every tab and reload off rss.arxiv.org.
+// arXiv rebuilds the feed once a day and says in max-age how long the current
+// one stands. Without that header a half-hour cache costs nothing in freshness.
 const CACHE_MS = 30 * 60 * 1000;
+const MAX_CACHE_MS = 24 * 60 * 60 * 1000;
 // A forced refresh still waits this long, so the button cannot hammer arXiv.
 const MIN_REFRESH_MS = 60 * 1000;
 
+// key → { news, etag, checkedAt, expiresAt }
 const cache = new Map();
 const inFlight = new Map();
 
@@ -38,42 +42,82 @@ export function newsCategories(env = process.env) {
  * `{ categories, published, fetchedAt, papers, warning? }`. When arXiv cannot
  * be reached, the last good listing comes back with a warning instead of an
  * error, because yesterday's papers beat an empty page.
+ *
+ * With a `cacheDir` the listing also survives a server restart, and a stale
+ * copy is revalidated by ETag, so an unchanged feed costs arXiv a 304 rather
+ * than half a megabyte.
  */
 export async function fetchArxivNews(
   categories,
-  { fetchImpl = fetch, refresh = false, now = Date.now } = {}
+  { fetchImpl = fetch, refresh = false, now = Date.now, cacheDir } = {}
 ) {
   const key = categories.join('+');
-  const cached = cache.get(key);
-  const age = cached ? now() - cached.fetchedAt : Infinity;
-  if (cached && age < (refresh ? MIN_REFRESH_MS : CACHE_MS)) return cached;
+  const file = cacheDir && path.join(cacheDir, 'arxiv-news', `${key}.json`);
+  let cached = cache.get(key);
+  if (!cached && file) {
+    cached = await readCacheFile(file);
+    if (cached?.news?.papers) cache.set(key, cached);
+    else cached = undefined;
+  }
+  if (cached) {
+    const fresh = refresh
+      ? now() - cached.checkedAt < MIN_REFRESH_MS
+      : now() < cached.expiresAt;
+    if (fresh) return cached.news;
+  }
 
   let pending = inFlight.get(key);
   if (!pending) {
-    pending = requestFeed(key, fetchImpl).finally(() => inFlight.delete(key));
+    pending = requestFeed(key, fetchImpl, cached?.etag).finally(() =>
+      inFlight.delete(key)
+    );
     inFlight.set(key, pending);
   }
 
   try {
     const feed = await pending;
-    const news = { categories, ...feed, fetchedAt: now() };
-    cache.set(key, news);
-    return news;
+    const checkedAt = now();
+    const entry = {
+      news: feed.notModified
+        ? cached.news
+        : {
+            categories,
+            published: feed.published,
+            papers: feed.papers,
+            fetchedAt: checkedAt
+          },
+      etag: feed.etag || cached?.etag || '',
+      checkedAt,
+      expiresAt: checkedAt + feed.freshMs
+    };
+    cache.set(key, entry);
+    if (file) await writeCacheFile(file, entry);
+    return entry.news;
   } catch (error) {
     if (!cached) throw error;
-    return { ...cached, warning: error.message };
+    return { ...cached.news, warning: error.message };
   }
 }
 
-async function requestFeed(key, fetchImpl) {
+async function requestFeed(key, fetchImpl, etag) {
   let response;
   try {
-    response = await fetchImpl(`${ARXIV_RSS_URL}${key}`);
+    response = await fetchImpl(
+      `${ARXIV_RSS_URL}${key}`,
+      etag ? { headers: { 'If-None-Match': etag } } : undefined
+    );
   } catch (error) {
     throw new WorkspaceError(
       502,
       `Could not reach arXiv: ${error.message}. Check that this host has outbound network access.`
     );
+  }
+  const freshness = {
+    etag: response?.headers?.get('etag') || '',
+    freshMs: freshMs(response?.headers)
+  };
+  if (etag && response?.status === 304) {
+    return { ...freshness, notModified: true };
   }
   if (!response?.ok) {
     const status = response
@@ -81,7 +125,39 @@ async function requestFeed(key, fetchImpl) {
       : 'no response';
     throw new WorkspaceError(502, `The arXiv feed failed with ${status}.`);
   }
-  return parseArxivRss(await response.text());
+  return { ...freshness, ...parseArxivRss(await response.text()) };
+}
+
+/** How long arXiv says this copy stands: max-age less what the CDN held it. */
+function freshMs(headers) {
+  const maxAge = /max-age=(\d+)/i.exec(headers?.get('cache-control') || '');
+  if (!maxAge) return CACHE_MS;
+  const age = Number(headers.get('age')) || 0;
+  const ms = (Number(maxAge[1]) - age) * 1000;
+  return Math.min(Math.max(ms, MIN_REFRESH_MS), MAX_CACHE_MS);
+}
+
+/**
+ * Best-effort JSON cache files: a missing or unreadable one is a cache miss,
+ * and a failed write only costs the next restart a fetch.
+ */
+export async function readCacheFile(file) {
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+export async function writeCacheFile(file, value) {
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    const temp = `${file}.${process.pid}.tmp`;
+    await fs.writeFile(temp, JSON.stringify(value));
+    await fs.rename(temp, file);
+  } catch (error) {
+    console.warn(`Could not write cache file ${file}: ${error.message}`);
+  }
 }
 
 /**
