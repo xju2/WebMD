@@ -27,6 +27,7 @@
     updateFromChangeSet as createCollabUpdate
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
+  import { ICONS } from './icons.js';
   import {
     arxivCitation,
     indicoLabel,
@@ -526,6 +527,25 @@
     viewMode === 'calendar' ||
     viewMode === 'tasks' ||
     viewMode === 'news';
+  // The rail's workspace views bring their own toolbars, so the file actions
+  // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
+  $: documentControls = !WORKSPACE_VIEWS.has(viewMode);
+  $: toolbarTitle =
+    viewMode === 'calendar'
+      ? 'Daily Notes'
+      : viewMode === 'news'
+        ? 'arXiv News'
+        : viewMode === 'tasks'
+          ? 'Tasks'
+          : selectedPath || 'Workspace Home';
+  // A path reads as its folder, quietly, then the file name.
+  $: toolbarFolder =
+    documentControls && selectedPath && selectedPath.includes('/')
+      ? selectedPath.slice(0, selectedPath.lastIndexOf('/') + 1)
+      : '';
+  $: toolbarName = toolbarFolder
+    ? toolbarTitle.slice(toolbarFolder.length)
+    : toolbarTitle;
   $: visiblePapers = filterPapers(newsPapers, newsFilter);
   $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
   $: rankIndex = new Map(
@@ -4580,6 +4600,14 @@
   }
 </script>
 
+{#snippet icon(name)}
+  <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
+    {#each ICONS[name] as d}
+      <path {d} />
+    {/each}
+  </svg>
+{/snippet}
+
 {#snippet newsCard(paper)}
   {@const pick = pickById.get(paper.id)}
   {@const clipped = newsClipped.has(paper.id.toLowerCase())}
@@ -4589,9 +4617,11 @@
     class:top-pick={pick && topPickIds.has(paper.id)}
   >
     <div class="news-paper-head">
-      <a class="news-title" href={paper.url} rel="noreferrer" target="_blank"
-        >{@render inline(newsSegments(paper.title, { links: false }))}</a
-      >
+      <h4 class="news-title-heading">
+        <a class="news-title" href={paper.url} rel="noreferrer" target="_blank"
+          >{@render inline(newsSegments(paper.title, { links: false }))}</a
+        >
+      </h4>
       <button
         class="news-clip"
         class:clipped
@@ -4602,6 +4632,7 @@
         type="button"
         on:click={() => clipPaper(paper)}
       >
+        {@render icon(clipped ? 'check' : 'clip')}
         {clipped
           ? 'Clipped'
           : newsClipping.has(paper.id)
@@ -4609,23 +4640,8 @@
             : 'Clip'}
       </button>
     </div>
-    {#if pick}
-      <p class="news-why">
-        {#if pick.score}
-          <span
-            class="news-score"
-            title="How strongly the AI recommends it, out of 10"
-            >{pick.score}</span
-          >
-        {/if}
-        {#if pick.connection}
-          <span class="news-connection">{pick.connection}</span>
-        {/if}
-        {pick.reason}
-      </p>
-    {/if}
     <p class="news-meta">
-      <span>{shortAuthorList(paper.authors)}</span>
+      <span class="news-authors">{shortAuthorList(paper.authors)}</span>
       <span class="news-id">arXiv:{paper.id}</span>
       {#each paper.categories as category}
         <span
@@ -4637,10 +4653,27 @@
         <span class="news-kind">{paper.announceType}</span>
       {/if}
     </p>
+    {#if pick}
+      <p class="news-why">
+        {#if pick.score}
+          <span
+            aria-label={`Relevance ${pick.score} out of 10`}
+            class="news-score"
+            title="How strongly the AI recommends it, out of 10"
+            >{pick.score}</span
+          >
+        {/if}
+        {#if pick.connection}
+          <span class="news-connection">{pick.connection}</span>
+        {/if}
+        <span class="news-reason">{pick.reason}</span>
+      </p>
+    {/if}
     <div class="news-abstract" class:expanded={newsExpanded.has(paper.id)}>
       {@render inline(newsSegments(paper.abstract))}
     </div>
     <button
+      aria-expanded={newsExpanded.has(paper.id)}
       class="news-more"
       type="button"
       on:click={() => toggleNewsAbstract(paper.id)}
@@ -5019,37 +5052,29 @@
   class="app-shell"
 >
   <nav class="global-bar" aria-label="Global actions">
+    <span aria-hidden="true" class="rail-mark">W</span>
     <button
       aria-label="Open dashboard"
       class:active={!selectedPath && viewMode === 'edit'}
       class="global-action"
+      data-tooltip="Dashboard"
       disabled={!workspaceRoots.length}
-      title="Dashboard"
       type="button"
       on:click={showHome}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M3 11.5 12 4l9 7.5" />
-        <path d="M5.5 10.5V20h13v-9.5" />
-        <path d="M9.5 20v-6h5v6" />
-      </svg>
+      {@render icon('home')}
     </button>
     <button
       aria-label="Open today’s note"
       class:active={selectedPath === todayNotePath() &&
         !WORKSPACE_VIEWS.has(viewMode)}
       class="global-action today-launcher"
+      data-tooltip={`Today’s note (${shortcutKey}+Shift+D)`}
       disabled={!workspaceRoots.length}
-      title={`Today’s note (${shortcutKey}+Shift+D)`}
       type="button"
       on:click={() => openDailyNote()}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M6.5 4.5h7l4 4v11h-11z" />
-        <path d="M13.5 4.5V9h4" />
-        <path d="M9.5 13h5" />
-        <path d="M9.5 16h3" />
-      </svg>
+      {@render icon('today')}
     </button>
     <button
       aria-label={sidebarVisible && sidebarView === 'files'
@@ -5058,66 +5083,44 @@
       aria-pressed={sidebarVisible && sidebarView === 'files'}
       class:active={sidebarVisible && sidebarView === 'files'}
       class="global-action"
-      title="Files"
+      data-tooltip="Files"
       type="button"
       on:click={() => toggleSidebar('files')}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M4 6.5h6l2 2h8v9H4z" />
-        <path d="M4 9h16" />
-      </svg>
+      {@render icon('folder')}
     </button>
     <button
       aria-label="Open daily notes calendar"
       class:active={viewMode === 'calendar'}
       class="global-action calendar-launcher"
+      data-tooltip="Daily notes calendar"
       disabled={!workspaceRoots.length}
-      title="Daily notes calendar"
       type="button"
       on:click={() => showCalendar()}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M5 5.5h14v14H5z" />
-        <path d="M8 3.5v4" />
-        <path d="M16 3.5v4" />
-        <path d="M5 9h14" />
-        <path d="M8.5 12.5h2" />
-        <path d="M13.5 12.5h2" />
-        <path d="M8.5 16h2" />
-      </svg>
+      {@render icon('calendar')}
     </button>
     <button
       aria-label="Open tasks"
       class:active={viewMode === 'tasks'}
       class="global-action tasks-launcher"
+      data-tooltip={`Tasks (${shortcutKey}+Shift+T)`}
       disabled={!workspaceRoots.length}
-      title={`Tasks (${shortcutKey}+Shift+T)`}
       type="button"
       on:click={() => showTasks()}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M4 7.5 6 9.5l3.5-4" />
-        <path d="M4 16.5 6 18.5l3.5-4" />
-        <path d="M12.5 7.5H20" />
-        <path d="M12.5 16.5H20" />
-      </svg>
+      {@render icon('tasks')}
     </button>
     <button
       aria-label="Open arXiv news"
       class:active={viewMode === 'news'}
       class="global-action news-launcher"
+      data-tooltip="arXiv news"
       disabled={!workspaceRoots.length}
-      title="arXiv news"
       type="button"
       on:click={() => showNews()}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M5 5.5h11v13.5H6.5A1.5 1.5 0 0 1 5 17.5z" />
-        <path d="M16 9h3v8.5a1.5 1.5 0 0 1-3 0" />
-        <path d="M8 9h5" />
-        <path d="M8 12.5h5" />
-        <path d="M8 16h3" />
-      </svg>
+      {@render icon('news')}
     </button>
     <button
       aria-label={sidebarVisible && sidebarView === 'chat'
@@ -5126,21 +5129,11 @@
       aria-pressed={sidebarVisible && sidebarView === 'chat'}
       class:active={sidebarVisible && sidebarView === 'chat'}
       class="global-action"
-      title="AI chat"
+      data-tooltip="AI chat"
       type="button"
       on:click={() => toggleSidebar('chat')}
     >
-      <svg aria-hidden="true" viewBox="0 0 24 24">
-        <path d="M12 3.5v3" />
-        <path d="M12 17.5v3" />
-        <path d="M4.5 12h3" />
-        <path d="M16.5 12h3" />
-        <path d="m6.5 6.5 2.2 2.2" />
-        <path d="m15.3 15.3 2.2 2.2" />
-        <path d="m17.5 6.5-2.2 2.2" />
-        <path d="m8.7 15.3-2.2 2.2" />
-        <circle cx="12" cy="12" r="3.5" />
-      </svg>
+      {@render icon('sparkles')}
     </button>
   </nav>
 
@@ -5150,9 +5143,8 @@
     class="sidebar"
     aria-label={sidebarView === 'files' ? 'Workspace files' : 'AI chat'}
   >
-    <div class="brand-row">
-      <button class="brand" type="button" on:click={showHome}>WebMD</button>
-      {#if workspaceRoots.length}
+    {#if workspaceRoots.length}
+      <div class="workspace-row">
         <select
           aria-label="Switch folder"
           class="workspace-select"
@@ -5163,12 +5155,12 @@
             <option value={root.id}>{root.name}</option>
           {/each}
         </select>
-      {/if}
-    </div>
+      </div>
+    {/if}
     <div class="sidebar-title">
       <span>Files</span>
+      <span class="sidebar-count">{fileCount} files</span>
       <div class="sidebar-title-actions">
-        <span>{fileCount} files</span>
         <button
           aria-label="Create markdown note"
           class="sync-button"
@@ -5180,16 +5172,35 @@
         </button>
         <button
           aria-label="Sync files"
-          class="sync-button"
+          class="sidebar-icon-button"
           title="Sync files"
           type="button"
           on:click={syncWorkspace}
         >
-          Sync
+          {@render icon('refresh')}
+        </button>
+        <button
+          aria-label="Collapse all folders"
+          class="sidebar-icon-button"
+          title="Collapse all folders"
+          type="button"
+          on:click={collapseAll}
+        >
+          {@render icon('collapseAll')}
+        </button>
+        <button
+          aria-label="Expand all folders"
+          class="sidebar-icon-button"
+          title="Expand all folders"
+          type="button"
+          on:click={expandAll}
+        >
+          {@render icon('expandAll')}
         </button>
       </div>
     </div>
     <div class="sidebar-search">
+      {@render icon('search')}
       <input
         aria-label="Search files and contents"
         bind:this={searchInput}
@@ -5202,24 +5213,6 @@
         placeholder="Search or type:Playbook"
         type="search"
       />
-      <div class="tree-actions" aria-label="Folder controls">
-        <button
-          aria-label="Collapse all folders"
-          title="Collapse all folders"
-          type="button"
-          on:click={collapseAll}
-        >
-          -
-        </button>
-        <button
-          aria-label="Expand all folders"
-          title="Expand all folders"
-          type="button"
-          on:click={expandAll}
-        >
-          +
-        </button>
-      </div>
     </div>
 
     {#if searchQuery.trim()}
@@ -5272,7 +5265,7 @@
                 type="button"
                 on:click={() => removeSearchHistory(term)}
               >
-                x
+                {@render icon('close')}
               </button>
             </div>
           {/each}
@@ -5293,14 +5286,15 @@
                 ? toggleFolder(node.path)
                 : openFile(node.path)}
           >
-            <span aria-hidden="true"
-              >{node.type === 'directory'
-                ? node.expanded
-                  ? '-'
-                  : '+'
-                : ''}</span
+            <span aria-hidden="true" class="tree-twisty"
+              >{#if node.type === 'directory'}{@render icon(
+                  'chevronRight'
+                )}{/if}</span
             >
-            <span>{node.name}</span>
+            <span aria-hidden="true" class="tree-icon"
+              >{@render icon(node.type === 'directory' ? 'folder' : 'file')}</span
+            >
+            <span class="tree-name">{node.name}</span>
             {#if node.type === 'directory'}
               <small>{node.fileCount}</small>
             {/if}
@@ -5470,7 +5464,7 @@
   </aside>
 
   <section class="workspace">
-    <header class="topbar">
+    <header class:compact={!documentControls} class="topbar">
       <div class="file-heading">
         <div class="navigation-controls" aria-label="File navigation">
           <button
@@ -5481,7 +5475,7 @@
             type="button"
             on:click={navigateBack}
           >
-            <span aria-hidden="true">&lt;</span>
+            {@render icon('chevronLeft')}
           </button>
           <button
             aria-label="Go forward"
@@ -5491,7 +5485,7 @@
             type="button"
             on:click={navigateForward}
           >
-            <span aria-hidden="true">&gt;</span>
+            {@render icon('chevronRight')}
           </button>
         </div>
         <button
@@ -5502,11 +5496,9 @@
           type="button"
           on:dblclick={revealSelectedFileInSidebar}
         >
-          {viewMode === 'calendar'
-            ? 'Daily Notes'
-            : viewMode === 'news'
-              ? 'arXiv News'
-              : selectedPath || 'Workspace Home'}
+          {#if toolbarFolder}<span class="current-file-folder"
+              >{toolbarFolder}</span
+            >{/if}<span class="current-file-name">{toolbarName}</span>
         </button>
       </div>
       <div class="topbar-actions">
@@ -5518,77 +5510,82 @@
           multiple
           on:change={chooseUploadFiles}
         />
-        <div class="day-step" aria-label="Daily notes">
-          <button
-            aria-label="Open the previous daily note"
-            disabled={!olderDailyNotePath}
-            title={olderDailyNotePath
-              ? `Older daily note (${olderDailyNotePath})`
-              : 'No older daily note'}
-            type="button"
-            on:click={openOlderDailyNote}
-          >
-            ‹
-          </button>
-          <button
-            aria-label="Open the next daily note"
-            disabled={!newerDailyNotePath}
-            title={newerDailyNotePath
-              ? `Newer daily note (${newerDailyNotePath})`
-              : 'No newer daily note'}
-            type="button"
-            on:click={openNewerDailyNote}
-          >
-            ›
-          </button>
-        </div>
-        {#if !narrowLayout}
-          <button
-            class="upload-button"
-            disabled={!workspaceRoots.length}
-            type="button"
-            on:click={() => uploadInput?.click()}
-          >
-            Upload
-          </button>
-          <button
-            class="delete-button"
-            disabled={!selectedPath}
-            type="button"
-            on:click={deleteSelectedFile}
-          >
-            Delete
-          </button>
-          <button
-            aria-pressed={referenceOpen}
-            class:active={referenceOpen}
-            class="reference-button"
-            disabled={!markdownFiles.length}
-            title={`Reference note (${shortcutKey}+Shift+\\)`}
-            type="button"
-            on:click={toggleReferencePane}
-          >
-            Reference
-          </button>
+        {#if documentControls}
+          <div class="day-step" aria-label="Daily notes">
+            <button
+              aria-label="Open the previous daily note"
+              disabled={!olderDailyNotePath}
+              title={olderDailyNotePath
+                ? `Older daily note (${olderDailyNotePath})`
+                : 'No older daily note'}
+              type="button"
+              on:click={openOlderDailyNote}
+            >
+              {@render icon('chevronLeft')}
+            </button>
+            <span aria-hidden="true">Day</span>
+            <button
+              aria-label="Open the next daily note"
+              disabled={!newerDailyNotePath}
+              title={newerDailyNotePath
+                ? `Newer daily note (${newerDailyNotePath})`
+                : 'No newer daily note'}
+              type="button"
+              on:click={openNewerDailyNote}
+            >
+              {@render icon('chevronRight')}
+            </button>
+          </div>
+          {#if !narrowLayout}
+            <button
+              class="upload-button toolbar-button"
+              disabled={!workspaceRoots.length}
+              type="button"
+              on:click={() => uploadInput?.click()}
+            >
+              Upload
+            </button>
+            {#if selectedPath}
+              <button
+                class="delete-button toolbar-button"
+                type="button"
+                on:click={deleteSelectedFile}
+              >
+                Delete
+              </button>
+            {/if}
+            <button
+              aria-pressed={referenceOpen}
+              class:active={referenceOpen}
+              class="reference-button toolbar-button"
+              disabled={!markdownFiles.length}
+              title={`Reference note (${shortcutKey}+Shift+\\)`}
+              type="button"
+              on:click={toggleReferencePane}
+            >
+              Reference
+            </button>
+          {/if}
+          {#if selectedPath}
+            <div class="view-toggle" aria-label="View mode">
+              <button
+                class:active={viewMode === 'edit' && selectedIsMarkdown}
+                disabled={!selectedIsMarkdown}
+                type="button"
+                on:click={() => setViewMode('edit')}
+              >
+                Edit
+              </button>
+              <button
+                class:active={viewMode === 'preview'}
+                type="button"
+                on:click={() => setViewMode('preview')}
+              >
+                Preview
+              </button>
+            </div>
+          {/if}
         {/if}
-        <div class="view-toggle" aria-label="View mode">
-          <button
-            class:active={viewMode === 'edit' && selectedIsMarkdown}
-            disabled={!selectedPath || !selectedIsMarkdown}
-            type="button"
-            on:click={() => setViewMode('edit')}
-          >
-            Edit
-          </button>
-          <button
-            class:active={viewMode === 'preview'}
-            disabled={!selectedPath}
-            type="button"
-            on:click={() => setViewMode('preview')}
-          >
-            Preview
-          </button>
-        </div>
         <div class="view-menu">
           <button
             aria-expanded={viewMenuOpen}
@@ -5601,7 +5598,7 @@
             on:click={() => (viewMenuOpen = !viewMenuOpen)}
             on:keydown={closeViewMenuOnEscape}
           >
-            <span aria-hidden="true">•••</span>
+            {@render icon('more')}
           </button>
           {#if viewMenuOpen}
             <button
@@ -5616,15 +5613,17 @@
               tabindex="-1"
               on:keydown={closeViewMenuOnEscape}
             >
-              <button
-                class:active={viewMode === 'diff' && selectedIsMarkdown}
-                disabled={!selectedPath || !selectedIsMarkdown}
-                role="menuitem"
-                type="button"
-                on:click={chooseDiffView}
-              >
-                Diff
-              </button>
+              {#if documentControls}
+                <button
+                  class:active={viewMode === 'diff' && selectedIsMarkdown}
+                  disabled={!selectedPath || !selectedIsMarkdown}
+                  role="menuitem"
+                  type="button"
+                  on:click={chooseDiffView}
+                >
+                  Diff
+                </button>
+              {/if}
               <button
                 class:active={viewMode === 'graph'}
                 disabled={!workspaceRoots.length}
@@ -5637,7 +5636,7 @@
               <button role="menuitem" type="button" on:click={openMarkdownHelp}>
                 Markdown help
               </button>
-              {#if narrowLayout}
+              {#if narrowLayout && documentControls}
                 <hr class="view-menu-divider" />
                 <button
                   disabled={!workspaceRoots.length}
@@ -5741,7 +5740,7 @@
               type="button"
               on:click={() => (markdownHelpOpen = false)}
             >
-              x
+              {@render icon('close')}
             </button>
           </header>
           <dl>
@@ -5995,21 +5994,24 @@
                     Due {formatDueLabel(taskDueFilter)} ✕
                   </button>
                 {/if}
-                <input
-                  class="tasks-filter"
-                  type="search"
-                  placeholder="Filter  /"
-                  aria-label="Filter tasks"
-                  title={'Filter by text, #tag, or who:name — who: alone shows everything assigned'}
-                  bind:this={taskFilterInput}
-                  bind:value={taskFilter}
-                  on:keydown={(event) => {
-                    if (event.key !== 'Escape') return;
-                    event.preventDefault();
-                    if (taskFilter) taskFilter = '';
-                    else event.currentTarget.blur();
-                  }}
-                />
+                <div class="search-field">
+                  {@render icon('search')}
+                  <input
+                    class="tasks-filter"
+                    type="search"
+                    placeholder="Filter  /"
+                    aria-label="Filter tasks"
+                    title={'Filter by text, #tag, or who:name — who: alone shows everything assigned'}
+                    bind:this={taskFilterInput}
+                    bind:value={taskFilter}
+                    on:keydown={(event) => {
+                      if (event.key !== 'Escape') return;
+                      event.preventDefault();
+                      if (taskFilter) taskFilter = '';
+                      else event.currentTarget.blur();
+                    }}
+                  />
+                </div>
                 <div
                   class="tasks-grouping"
                   role="group"
@@ -6424,16 +6426,19 @@
                     arXiv
                   </button>
                 </div>
-                <input
-                  class="tasks-filter news-filter"
-                  type="search"
-                  placeholder="Filter"
-                  aria-label="Filter papers"
-                  title="Every word must appear in the title, authors, or abstract"
-                  value={newsFilter.query}
-                  on:input={(event) =>
-                    setNewsFilter({ query: event.currentTarget.value })}
-                />
+                <div class="search-field news-filter">
+                  {@render icon('search')}
+                  <input
+                    class="tasks-filter"
+                    type="search"
+                    placeholder="Filter papers"
+                    aria-label="Filter papers"
+                    title="Every word must appear in the title, authors, or abstract"
+                    value={newsFilter.query}
+                    on:input={(event) =>
+                      setNewsFilter({ query: event.currentTarget.value })}
+                  />
+                </div>
                 <label class="tasks-toggle">
                   <input
                     type="checkbox"
@@ -6453,10 +6458,12 @@
                   Instructions
                 </button>
                 <button
+                  class="primary"
                   type="button"
                   title="Fetch the listing from arXiv again"
                   on:click={refreshNews}
                 >
+                  {@render icon('refresh')}
                   Refresh
                 </button>
               </div>
@@ -6490,6 +6497,7 @@
             {#if pickedPapers.length}
               <h3 class="news-section">
                 Top picks <span>{topPapers.length}</span>
+                <i aria-hidden="true" class="news-section-rule"></i>
                 <button
                   type="button"
                   title="Ask the AI to rank today’s papers again"
@@ -6507,6 +6515,7 @@
               {#if morePicks.length}
                 <h3 class="news-section">
                   Also relevant <span>{morePicks.length}</span>
+                  <i aria-hidden="true" class="news-section-rule"></i>
                 </h3>
                 <ol class="news-list">
                   {#each morePicks as paper (paper.id)}
@@ -6516,6 +6525,7 @@
               {/if}
               <h3 class="news-section">
                 Everything else <span>{otherPapers.length}</span>
+                <i aria-hidden="true" class="news-section-rule"></i>
               </h3>
             {/if}
             <ol class="news-list">
@@ -6542,7 +6552,7 @@
                   type="button"
                   on:click={() => moveCalendarMonth(-1)}
                 >
-                  ‹
+                  {@render icon('chevronLeft')}
                 </button>
                 <h2>{calendarMonthName}</h2>
                 <button
@@ -6550,7 +6560,7 @@
                   type="button"
                   on:click={() => moveCalendarMonth(1)}
                 >
-                  ›
+                  {@render icon('chevronRight')}
                 </button>
               </div>
               <div class="calendar-controls">
@@ -7033,7 +7043,7 @@
                 type="button"
                 on:click={() => stepReferenceNote(-1)}
               >
-                ‹
+                {@render icon('chevronLeft')}
               </button>
               <button
                 aria-label="Newer reference note"
@@ -7042,7 +7052,7 @@
                 type="button"
                 on:click={() => stepReferenceNote(1)}
               >
-                ›
+                {@render icon('chevronRight')}
               </button>
             </div>
             <select
@@ -7064,7 +7074,7 @@
               type="button"
               on:click={closeReferencePane}
             >
-              x
+              {@render icon('close')}
             </button>
           </header>
           <article class="preview-pane reference-body">

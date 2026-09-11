@@ -171,6 +171,42 @@ Done when:
 - A user's own presets survive a server restart and travel with the workspace.
 - A malformed preset file degrades to the built-ins with a visible warning.
 
+### 9. Quiet Workspace Visual Redesign
+
+Status: Stage 1 done (visual and local presentation only).
+
+Goal: a lighter, calmer research workspace. Light neutral surfaces, readable
+dark text, hairline separators, and restrained teal accents replace the dark
+rail, boxed controls, and heavy borders. Design decisions live in
+`ARCHITECTURE.md` under "Visual Design System".
+
+Tasks:
+- [x] Baseline: `npm test`, `npm run lint`, `npm run build`, and desktop plus
+      narrow screenshots against a local fixture workspace.
+- [x] Shared design tokens in `src/styles.css` `:root` (surfaces, ink, borders,
+      teal accent, radii, control heights, focus ring) and a global
+      `:focus-visible` ring; hardcoded chrome colours move onto the tokens.
+- [x] Light ~52px tool rail: outline icons, unboxed inactive buttons, pale teal
+      active tile, CSS tooltips that also show on keyboard focus.
+- [x] Quieter file sidebar: no large WebMD heading, compact workspace select,
+      full-width search, folder/file icons with chevrons, muted counts, soft
+      selected-file highlight.
+- [x] View-aware toolbar: document actions only in document views (Home,
+      editor, preview, diff, graph); Tasks, Calendar, and arXiv News show
+      navigation, their title, and the overflow menu.
+- [x] arXiv cards: title, author line, categories, relevance line, and abstract
+      as distinct layers; top picks get a quiet teal edge. Clip, More/Less,
+      filters, ranking, Re-rank, Refresh, and Instructions unchanged.
+- [x] Editor, preview, calendar, tasks, dialogs, menus, and AI panel restyled
+      on the same tokens.
+
+Done when:
+- No document control appears in arXiv News, Tasks, or Calendar.
+- Body text and controls meet WCAG AA contrast on their surfaces.
+- Tests, lint, and build match the baseline.
+
+Next stage (not in this one): move AI to the right and add pane resizing.
+
 ## First Implementation Pass
 
 1. [x] Scaffold frontend and backend.

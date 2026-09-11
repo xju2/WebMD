@@ -58,7 +58,40 @@ The selected architectural ecosystem optimizes for runtime speed, developer velo
 * **Framework:** **Svelte 5** (Reactivity via Runes). Chosen for its compilation model which converts interactive logic into direct DOM micro-mutations, bypassing Virtual DOM diffing tax during massive text rendering cycles.
 * **Editor Core:** **CodeMirror 6 (CM6)**. Chosen for its modular functional architecture, transaction-based document pipeline, fully responsive mobile viewport adaptation, and explicit viewport windowing performance.
 * **Build System:** **Vite**. Leverages native ES modules for instantaneous Hot Module Replacement (HMR) cycles during remote tunnel building.
-* **Styling Framework:** **Tailwind CSS v4** coupled with the `@tailwindcss/typography` (`prose`) plugin for hardware-accelerated fluid presentation layout and structured text translation.
+* **Styling:** One shared plain-CSS stylesheet, `src/styles.css`, built on the design tokens described in "Visual Design System" below. (An earlier plan named Tailwind CSS; it was never adopted.)
+
+> **Current implementation note.** The component split sketched in §4.1
+> (`Sidebar.svelte`, `Editor.svelte`, `ChatSidebar.svelte`) describes
+> responsibilities, not files: the checkout keeps them together in
+> `src/App.svelte`, with CodeMirror wiring in `src/editor.js`.
+
+### 2.3 Visual Design System ("Quiet Workspace")
+
+The interface is a calm reading-and-writing surface, so chrome recedes and
+content carries the contrast.
+
+* **Tokens first.** Colours, radii, control heights, shadows, and the focus
+  ring are CSS custom properties on `:root` in `src/styles.css`. New UI uses
+  the tokens rather than literal colours. Semantic colours that carry meaning
+  (task urgency, diff lines, callout variants, syntax tokens, graph groups)
+  stay literal on purpose.
+* **Surfaces.** White for content; a near-white neutral for the rail and
+  sidebar; hairline `--border` separators instead of boxes. Inactive controls
+  are unboxed; only inputs and secondary buttons carry a light border.
+* **One accent.** Teal (`--accent`, 5.4:1 on white) marks the active rail
+  item, the selected file, segmented-control selection, primary actions, and
+  links. Pale teal (`--accent-soft`) is the selection wash. Nothing else
+  competes with it.
+* **Contrast.** Body text and muted text meet WCAG AA (≥4.5:1) on every
+  surface they sit on; only disabled controls fall below.
+* **Focus.** Every interactive element shows the same 2px teal
+  `:focus-visible` outline; rail tooltips also appear on keyboard focus.
+* **View-aware toolbar.** Document actions (daily-note stepping, Upload,
+  Delete, Reference, Edit/Preview, Diff) appear only in document views. The
+  workspace views launched from the rail (Tasks, Calendar, arXiv News) own
+  their own toolbars and keep only navigation and the overflow menu above.
+* **Mockup content is illustrative.** Titles, counts, and AI text always come
+  from the workspace and APIs; titles are never truncated server-side.
 
 ### 2.2 Backend Matrix
 * **Runtime Environment:** **Node.js LTS**. Provides standard event-driven I/O loop performance perfect for handling parallel low-overhead streaming connections.
