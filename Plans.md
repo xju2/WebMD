@@ -28,6 +28,9 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
   email, or note writing. Built-in presets ship with the server and
   `$WORKSPACE_ROOT/.webmd/prompts.json` overrides or extends them by id.
   `POST /api/ai/edit` now streams so long rewrites show progress.
+- Meetings (milestone 11) follows Indico categories and events, including
+  protected ones through a server-side token bound to one exact origin, and
+  ties each meeting to a Markdown note.
 - No remaining planned implementation items.
 
 ## Milestones
@@ -249,6 +252,71 @@ Done when:
 Deferred:
 - Paper context: sending the arXiv card or paper in view as AI context.
 - Contextual replacement of the file tree per view, and pin/unpin panel modes.
+
+### 11. Meetings: Indico Meetings Linked to Notes
+
+Status: Done.
+
+Goal: follow selected Indico categories and events, including protected ones
+on indico.cern.ch, see upcoming meetings, read an agenda, and create or reopen
+the meeting's Markdown note, without a third permanent sidebar and without the
+browser ever holding a token.
+
+Tasks:
+- [x] Token routing by exact origin (`indicoSites` in `server/indico.js`):
+      `INDICO_<NAME>_TOKEN` binds to a built-in origin (cern, fnal, global) or
+      to `INDICO_<NAME>_URL`. Fixes the old second-label rule, which would have
+      sent the CERN token to `indico.cern.example`.
+- [x] `indicoFetch`: HTTPS only, no credentials in URLs, no custom ports,
+      redirects followed by hand and only within the origin, 15 s timeout, and
+      typed failures (auth, config, network, timeout, redirect, not_found,
+      upstream) whose messages name the variable, never the token. CERN's 400
+      `invalid_token` counts as an authentication failure.
+- [x] The pasted-link title lookup falls back to `/export/` when a
+      `read:legacy_api` token cannot open the HTML page.
+- [x] `server/meetings.js`: `.webmd/meetings.json` (version 1) per workspace
+      root, validated and canonicalized on the server. Bad entries are skipped
+      with a warning and kept on rewrite; a file that does not parse is never
+      overwritten.
+- [x] Export API client: category listings for a bounded window
+      (`from`/`to`/`order`/`limit`, `oa=yes` with a token) and event detail
+      with `detail=contributions`. Normalized model with exact-origin event
+      keys, event-timezone wall time plus absolute instants, dedupe across
+      sources, bounded 10-minute cache with shared in-flight requests, and
+      Refresh bypassing it.
+- [x] Meeting notes: `workspace.createFile` writes through a temp file and
+      `link()`, so it never overwrites. Notes are found by their `indico:`
+      frontmatter after a fresh walk, so renames keep the association.
+      Creation is serialized per workspace, and a taken name falls back to
+      one with the event id. Heading and file name agree, so title sync does
+      not rename the note.
+- [x] `Meetings` rail destination and `src/MeetingsView.svelte`: Quiet
+      Workspace list and detail, source filter, Add source, Refresh, grouped
+      local-day sections, detail with agenda, Open in Indico, and Create or
+      Open note. It stays mounted, so returning keeps the selection. Narrow
+      panes (by pane width) show list and detail in turn, with Back and focus
+      handling.
+- [x] Harness: `scripts/browser-harness.mjs` shared by `npm run scenarios` and
+      the new `npm run scenarios:meetings`. The fixture gains a canned Indico
+      (`MEETINGS_MODE`). `npm run smoke:indico` is an opt-in, read-only real
+      check.
+
+Done when:
+- A valid CERN token lists protected meetings and opens one; no token gives an
+  actionable hint; a rejected token is a distinct authentication error.
+- The CERN token is never sent to another origin, including lookalike hosts and
+  cross-origin redirects; public meetings work without a token.
+- Create note writes valid Markdown in the selected workspace, and pressing it
+  again opens the same note without touching user content.
+- Switching Meetings, Files, News, Tasks, and Calendar keeps editor and panel
+  state; desktop and narrow layouts pass the scenario checks with no overflow.
+
+Deferred:
+- Attachments, participants, calendar write-back, background polling or
+  notifications, AI preparation or summaries, agenda sync into existing notes,
+  OAuth, and discovery across all of Indico.
+- Session names from the export fallback of the title lookup (export names
+  events and contributions only).
 
 ## First Implementation Pass
 

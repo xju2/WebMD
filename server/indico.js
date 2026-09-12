@@ -4,34 +4,253 @@ import { WorkspaceError } from './workspace.js';
 const cache = new Map();
 const inFlight = new Map();
 
+// A slow Indico must not leave a view spinning: every request gives up here.
+export const INDICO_TIMEOUT_MS = 15000;
+// Same-origin hops only (a trailing slash, http to https); anything longer is
+// not an Indico answering the question it was asked.
+const MAX_REDIRECTS = 3;
+
+/**
+ * The Indicos a token can be configured for, by the word its variables use.
+ * `INDICO_<NAME>_URL` adds another installation or moves one of these.
+ */
+export const KNOWN_INDICO_ORIGINS = {
+  cern: 'https://indico.cern.ch',
+  fnal: 'https://indico.fnal.gov',
+  global: 'https://indico.global'
+};
+
+/**
+ * Indico installations this server knows, keyed by exact origin, as
+ * `{ name, origin, token }`. A token is bound to one origin, named up front,
+ * and never to whatever a hostname happens to look like: `INDICO_CERN_TOKEN`
+ * travels to `https://indico.cern.ch` and nowhere else, so a link to
+ * `indico.cern.example` cannot collect it. An installation not in
+ * `KNOWN_INDICO_ORIGINS` needs `INDICO_<NAME>_URL` beside its token.
+ */
+export function indicoSites(env = process.env) {
+  const names = new Map();
+  for (const [key, value] of Object.entries(env || {})) {
+    const match = /^INDICO_([A-Z0-9]+)_(TOKEN|URL)$/.exec(key);
+    if (!match) continue;
+    const name = match[1].toLowerCase();
+    const entry = names.get(name) || {};
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (match[2] === 'TOKEN') entry.token = text;
+    else entry.url = text;
+    names.set(name, entry);
+  }
+  for (const name of Object.keys(KNOWN_INDICO_ORIGINS)) {
+    if (!names.has(name)) names.set(name, {});
+  }
+
+  const sites = new Map();
+  for (const [name, entry] of names) {
+    const origin = entry.url
+      ? trustedOrigin(entry.url)
+      : KNOWN_INDICO_ORIGINS[name] || '';
+    // A token without a place to send it is dropped, never guessed at.
+    if (!origin) continue;
+    const existing = sites.get(origin);
+    if (existing?.token) continue;
+    sites.set(origin, { name, origin, token: entry.token || '' });
+  }
+  return sites;
+}
+
+/** `https://host` for a configured base URL, or '' when it is not one. */
+function trustedOrigin(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return '';
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    return '';
+  }
+  return parsed.origin;
+}
+
+/** The variable a given Indico reads its token from, for error messages. */
+export function indicoTokenName(origin, sites = new Map()) {
+  const name = sites.get(origin)?.name;
+  return name ? `INDICO_${name.toUpperCase()}_TOKEN` : 'INDICO_<NAME>_TOKEN';
+}
+
+/** The token for exactly this origin, or '' — never one for a lookalike. */
+export function tokenForOrigin(origin, sites = new Map()) {
+  return sites.get(origin)?.token || '';
+}
+
 export function isIndicoUrl(value) {
   return typeof value === 'string' && indicoReference(value.trim()) !== null;
 }
 
 /**
- * Personal access tokens, one environment variable per Indico: the site's own
- * word in its hostname, as `INDICO_CERN_TOKEN` for indico.cern.ch,
- * `INDICO_FNAL_TOKEN` for indico.fnal.gov, `INDICO_GLOBAL_TOKEN` for
- * indico.global. A token only ever travels to the site it is named after.
+ * Everything that makes an address safe to fetch from this server: HTTPS, no
+ * credentials, no custom port, and either a configured installation or a host
+ * that calls itself `indico.` — the shape the paste handler already accepts.
+ * Returns `{ origin, url }` or throws a 400 that says what to fix.
  */
-export function indicoTokens(env = process.env) {
-  const tokens = new Map();
-  for (const [key, value] of Object.entries(env)) {
-    const site = /^INDICO_([A-Z0-9]+)_TOKEN$/.exec(key)?.[1];
-    const token = typeof value === 'string' ? value.trim() : '';
-    if (site && token) tokens.set(site.toLowerCase(), token);
+export function checkIndicoAddress(value, sites = new Map()) {
+  let parsed;
+  try {
+    parsed = new URL(String(value ?? '').trim());
+  } catch {
+    throw new WorkspaceError(400, 'That is not a URL.');
   }
-  return tokens;
+  if (parsed.protocol === 'http:') {
+    throw new WorkspaceError(400, 'Use the https:// address of the Indico.');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new WorkspaceError(400, 'Only https:// Indico links are supported.');
+  }
+  if (parsed.username || parsed.password) {
+    throw new WorkspaceError(
+      400,
+      'Remove the user name or password from the link; tokens belong in ~/.webmd.conf.'
+    );
+  }
+  if (parsed.port) {
+    throw new WorkspaceError(400, 'Indico links with a custom port are not supported.');
+  }
+  if (!sites.has(parsed.origin) && !/^indico\./i.test(parsed.hostname)) {
+    throw new WorkspaceError(
+      400,
+      `${parsed.hostname} is not a known Indico. Add INDICO_<NAME>_URL=${parsed.origin} to ~/.webmd.conf to use it.`
+    );
+  }
+  return { origin: parsed.origin, url: parsed };
 }
 
-/** `indico.cern.ch` is the CERN one, `indico.global` the global one. */
-export function indicoSite(host) {
-  return (host || '').toLowerCase().split('.')[1] || '';
+/**
+ * A failure that says what kind it is, so the Meetings view can tell an
+ * expired token from a dead network without reading prose. `kind` is one of
+ * auth, config, network, timeout, redirect, not_found, upstream.
+ */
+export class IndicoError extends WorkspaceError {
+  constructor(kind, message, status = 502) {
+    super(status, message);
+    this.kind = kind;
+  }
 }
 
-/** The variable a given Indico reads its token from, for error messages. */
-export function indicoTokenName(host) {
-  return `INDICO_${indicoSite(host).toUpperCase()}_TOKEN`;
+/**
+ * GET from an Indico with the bearer token only it may see. Redirects are
+ * followed by hand so each hop is checked before the header goes with it: a
+ * hop to another origin, or off HTTPS, stops the request instead of carrying
+ * the token (or the server) somewhere it was never pointed.
+ *
+ * Never puts the token in an error: messages name the variable instead.
+ */
+export async function indicoFetch(
+  target,
+  {
+    fetchImpl = fetch,
+    sites = new Map(),
+    token = '',
+    timeoutMs = INDICO_TIMEOUT_MS,
+    accept
+  } = {}
+) {
+  const start = new URL(target);
+  const origin = start.origin;
+  let url = start;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    let response;
+    try {
+      response = await fetchImpl(url.href, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
+        headers: {
+          ...(accept ? { Accept: accept } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+    } catch (error) {
+      if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+        throw new IndicoError(
+          'timeout',
+          `${start.hostname} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`,
+          504
+        );
+      }
+      throw new IndicoError(
+        'network',
+        `Could not reach ${start.hostname}: ${error?.message || 'network error'}. Check that this host has outbound network access.`
+      );
+    }
+    if (!response) {
+      throw new IndicoError('network', `No response from ${start.hostname}.`);
+    }
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers?.get?.('location');
+      if (!location) {
+        throw new IndicoError(
+          'upstream',
+          `${start.hostname} redirected without saying where.`
+        );
+      }
+      const next = new URL(location, url);
+      if (next.origin !== origin) {
+        // Most often the single sign-on page, which is what a protected page
+        // looks like to a request without a usable token.
+        throw new IndicoError(
+          'redirect',
+          `${start.hostname} redirected to ${next.hostname}; not followed.`
+        );
+      }
+      url = next;
+      continue;
+    }
+
+    if (response.status === 401 || response.status === 403) {
+      throw authError(start.hostname, origin, sites, token, response.status);
+    }
+    if (response.status === 400 && token) {
+      // Indico answers an unknown, expired, or revoked token with a 400 whose
+      // page says invalid_token, rather than with a 401.
+      const body = await safeText(response);
+      if (/invalid_token/i.test(body)) {
+        throw authError(start.hostname, origin, sites, token, 400);
+      }
+      throw new IndicoError('upstream', `${start.hostname} failed with 400 Bad Request.`);
+    }
+    if (response.status === 404) {
+      throw new IndicoError('not_found', `${start.hostname} has no such page.`, 404);
+    }
+    if (!response.ok) {
+      const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
+      throw new IndicoError('upstream', `${start.hostname} failed with ${status}.`);
+    }
+    return response;
+  }
+
+  throw new IndicoError('upstream', `${start.hostname} redirected too many times.`);
+}
+
+function authError(hostname, origin, sites, token, status) {
+  const variable = indicoTokenName(origin, sites);
+  return token
+    ? new IndicoError(
+        'auth',
+        `${hostname} rejected ${variable} (${status}). It may be expired, revoked, or missing the read:legacy_api scope; create a new token and restart WebMD.`
+      )
+    : new IndicoError(
+        'config',
+        `${hostname} needs a login for this (${status}). Set ${variable} in the environment or ~/.webmd.conf and restart WebMD.`
+      );
+}
+
+async function safeText(response) {
+  try {
+    return await response.text();
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -42,7 +261,7 @@ export function indicoTokenName(host) {
  */
 export async function fetchIndicoTitle(
   url,
-  { fetchImpl = fetch, tokens = new Map() } = {}
+  { fetchImpl = fetch, sites = new Map() } = {}
 ) {
   const reference = indicoReference(typeof url === 'string' ? url.trim() : '');
   if (!reference) {
@@ -56,9 +275,10 @@ export async function fetchIndicoTitle(
   const pending = inFlight.get(key);
   if (pending) return await pending;
 
-  const token = tokens.get(indicoSite(reference.host)) || '';
-  const request = requestIndico(reference, fetchImpl, token).finally(() =>
-    inFlight.delete(key)
+  const origin = new URL(reference.url).origin;
+  const token = tokenForOrigin(origin, sites);
+  const request = requestIndico(reference, { fetchImpl, sites, token }).finally(
+    () => inFlight.delete(key)
   );
   inFlight.set(key, request);
 
@@ -67,51 +287,38 @@ export async function fetchIndicoTitle(
   return metadata;
 }
 
-async function requestIndico(reference, fetchImpl, token) {
-  const page = await requestIndicoText(
-    reference,
-    reference.url,
-    fetchImpl,
-    token
-  );
+async function requestIndico(reference, options) {
+  let page;
+  try {
+    page = await (await indicoFetch(reference.url, options)).text();
+  } catch (error) {
+    // A page that turns the token away can still be open to the export API:
+    // a read:legacy_api token reaches /export/ but not the HTML views, which
+    // need read:everything. A redirect to the sign-on page means the same.
+    if (!options.token || !['auth', 'redirect'].includes(error.kind)) {
+      throw titleError(error);
+    }
+    return await exportedTitle(reference, options);
+  }
   try {
     return parseIndicoPage(page, reference.url);
   } catch (error) {
     // A page can still be private to the token's holder, or to nobody at all.
-    if (!token || error.status !== 404) throw error;
-    return await exportedTitle(reference, fetchImpl, token);
+    if (!options.token || error.status !== 404) throw error;
+    return await exportedTitle(reference, options);
   }
 }
 
-async function requestIndicoText(reference, url, fetchImpl, token) {
-  let response;
-  try {
-    response = await fetchImpl(url, {
-      redirect: 'follow',
-      // Cross-origin redirects drop this header, so it stays with the host it
-      // was configured for.
-      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {})
-    });
-  } catch (error) {
-    throw new WorkspaceError(
-      502,
-      `Could not reach Indico: ${error.message}. Check that this host has outbound network access.`
+// The paste handler keeps its placeholder on a 404, so a sign-on redirect
+// without a token reads as "needs a login" rather than as a failure.
+function titleError(error) {
+  if (error.kind === 'redirect') {
+    return new WorkspaceError(
+      404,
+      'Indico gave no title for that link; it may need a login.'
     );
   }
-
-  if (!response) throw new WorkspaceError(502, 'No response from Indico.');
-  if (response.status === 401 || response.status === 403) {
-    throw new WorkspaceError(
-      502,
-      `Indico refused the request with ${response.status}. Check ${indicoTokenName(reference.host)} in the environment or ~/.webmd.conf, and that its scope includes reading events.`
-    );
-  }
-  if (!response.ok) {
-    const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ''}`;
-    throw new WorkspaceError(502, `Indico failed with ${status}.`);
-  }
-
-  return await response.text();
+  return error;
 }
 
 /**
@@ -119,13 +326,13 @@ async function requestIndicoText(reference, url, fetchImpl, token) {
  * for a page the HTML view would not hand over, and it names contributions
  * only as part of the whole event, so that detail is asked for just then.
  */
-async function exportedTitle(reference, fetchImpl, token) {
+async function exportedTitle(reference, options) {
   const contribution = reference.kind === 'contributions';
   const url =
     `https://${reference.host}/export/event/${reference.event}.json` +
     (contribution ? '?detail=contributions&occ=no' : '');
 
-  const body = await requestIndicoText(reference, url, fetchImpl, token);
+  const body = await (await indicoFetch(url, options)).text();
   let exported;
   try {
     exported = JSON.parse(body);
@@ -185,18 +392,28 @@ export function parseIndicoPage(html, url) {
   return { url, title: section || event, event };
 }
 
-function decodeHtml(value) {
+export function decodeHtml(value) {
   return collapse(
-    value
+    String(value ?? '')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#0*39;|&apos;/g, "'")
-      .replace(/&#(\d+);/g, (_match, code) =>
-        String.fromCodePoint(Number(code))
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&#(\d+);/g, (_match, code) => safeCodePoint(Number(code)))
+      .replace(/&#x([0-9a-f]+);/gi, (_match, code) =>
+        safeCodePoint(parseInt(code, 16))
       )
       .replace(/&amp;/g, '&')
   );
+}
+
+function safeCodePoint(code) {
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return '';
+  }
 }
 
 function collapse(value) {

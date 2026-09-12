@@ -89,6 +89,9 @@ export async function createWorkspace(workspaceRoot) {
     backlinks: async (filePath) => collectBacklinks(await files(), filePath),
     markdownFiles: async () =>
       (await files()).filter((file) => file.fileKind === 'markdown'),
+    // Drops the cached walk, for a decision that must see files changed
+    // outside WebMD (a rename in the shell, a git pull) before acting on them.
+    forgetFiles: invalidate,
     overview: () => readOverview(root),
     // Rides the same cached corpus as search and the link graph, so the Tasks
     // view costs no extra walk of the workspace.
@@ -117,6 +120,12 @@ export async function createWorkspace(workspaceRoot) {
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
+      invalidate();
+      return result;
+    },
+    // Like saveFile, but refuses to replace a note that is already there.
+    createFile: async (filePath, content) => {
+      const result = await createFile(root, filePath, content);
       invalidate();
       return result;
     },
@@ -705,6 +714,41 @@ async function saveFile(root, filePath, content) {
   }
 
   return { success: true, timestamp: new Date().toISOString() };
+}
+
+/**
+ * Writes a new note in one step, or fails with a 409 when the name is taken.
+ * The content goes to a temp file first and is then hard-linked into place:
+ * link() will not replace an existing file, so a note created at the same
+ * moment by someone else is never overwritten, and readers never see half a
+ * file.
+ */
+async function createFile(root, filePath, content) {
+  if (typeof content !== 'string') {
+    throw new WorkspaceError(400, 'Content must be a string.');
+  }
+
+  const normalized = normalizeWorkspacePath(filePath);
+  assertMarkdown(normalized);
+  const absolute = await resolvePath(root, normalized, { forWrite: true });
+  const tempPath = path.join(
+    path.dirname(absolute),
+    `.${path.basename(absolute)}.${randomUUID()}.tmp`
+  );
+
+  try {
+    await fs.writeFile(tempPath, content, { encoding: 'utf8', flag: 'wx' });
+    await fs.link(tempPath, absolute);
+  } catch (error) {
+    if (error.code === 'EEXIST') {
+      throw new WorkspaceError(409, `A note already exists at ${normalized}.`);
+    }
+    throw error;
+  } finally {
+    await fs.rm(tempPath, { force: true });
+  }
+
+  return { success: true, path: normalized };
 }
 
 async function renameFile(root, documents, corpus, fromPath, toPath) {

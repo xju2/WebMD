@@ -5119,3 +5119,645 @@ input[type='radio'] {
     grid-template-columns: 38px 38px minmax(0, 1fr);
   }
 }
+
+/* Meetings: a list of upcoming Indico meetings beside the one being read.
+   The pane is a column — toolbar, notices, then list and detail — and the two
+   halves scroll on their own, so a long agenda never scrolls the list away.
+   Below 720px of pane width (not window width: docked panels take room too)
+   the halves take turns, with a back button in the detail. */
+.meetings-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.meetings-pane[hidden] {
+  display: none;
+}
+
+.meetings-toolbar {
+  position: static;
+  flex: 0 0 auto;
+}
+
+.meetings-toolbar h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.meetings-filter {
+  max-width: 220px;
+  height: var(--control-height);
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  appearance: none;
+  background: var(--surface) var(--select-chevron) no-repeat right 8px center /
+    14px;
+  font-size: 0.86rem;
+}
+
+.meetings-sources {
+  display: grid;
+  flex-basis: 100%;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.meetings-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 10px;
+}
+
+.meetings-field {
+  display: grid;
+  flex: 1 1 160px;
+  gap: 4px;
+  min-width: 0;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+  font-weight: 550;
+}
+
+.meetings-field-url {
+  flex: 3 1 280px;
+}
+
+.meetings-field input {
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.meetings-add-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.meetings-add-actions button,
+.meetings-actions button,
+.meetings-open-indico,
+.meetings-empty-action {
+  display: inline-flex;
+  height: var(--control-height);
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 550;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.meetings-add-actions button .icon,
+.meetings-actions .icon,
+.meetings-empty-action .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.meetings-add-actions button:hover:not(:disabled),
+.meetings-actions button:hover:not(:disabled),
+.meetings-open-indico:hover,
+.meetings-empty-action:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.meetings-add-actions button.primary,
+.meetings-actions button.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.meetings-add-actions button.primary:hover:not(:disabled),
+.meetings-actions button.primary:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.meetings-add-actions button:disabled,
+.meetings-actions button:disabled {
+  border-color: var(--border);
+  background: var(--surface-muted);
+  color: var(--ink-disabled);
+  cursor: default;
+}
+
+.meetings-source-list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+  list-style: none;
+}
+
+.meetings-source-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.meetings-source-list li > div {
+  display: grid;
+  min-width: 0;
+}
+
+.meetings-source-label {
+  overflow-wrap: anywhere;
+  color: var(--ink-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.meetings-source-meta,
+.meetings-help {
+  overflow-wrap: anywhere;
+  color: var(--ink-subtle);
+  font-size: 0.8rem;
+}
+
+.meetings-help {
+  margin: 0;
+}
+
+.meetings-link-button {
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.meetings-link-button:disabled {
+  color: var(--ink-disabled);
+  cursor: default;
+}
+
+.meetings-status {
+  flex: 0 0 auto;
+}
+
+.meetings-status:empty {
+  display: none;
+}
+
+.meetings-status > .tasks-note {
+  margin: 12px 24px 0;
+}
+
+.meetings-notice {
+  margin: 10px 24px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.meetings-notice-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--ink-muted);
+  font-size: 0.8rem;
+}
+
+.meetings-notice code,
+.meetings-help code {
+  font-family: var(--code-font);
+  font-size: 0.92em;
+}
+
+.meetings-none {
+  margin: 24px;
+}
+
+.meetings-notice.error {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--ink);
+}
+
+.meetings-sources .meetings-notice,
+.meetings-detail .meetings-notice {
+  margin: 0;
+}
+
+.meetings-status .meetings-notice:last-child {
+  margin-bottom: 2px;
+}
+
+.meetings-empty {
+  max-width: 560px;
+  margin: 48px auto 0;
+  padding: 0 24px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+  text-align: center;
+}
+
+.meetings-empty h3 {
+  margin: 0 0 8px;
+  color: var(--ink-strong);
+  font-size: 1.05rem;
+}
+
+.meetings-empty-action {
+  margin-top: 8px;
+}
+
+.meetings-body {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  min-height: 0;
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.meetings-body[data-layout='list'],
+.meetings-body[data-layout='detail'] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.meetings-list,
+.meetings-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.meetings-list[hidden],
+.meetings-detail[hidden] {
+  display: none;
+}
+
+.meetings-list {
+  padding: 4px 0 24px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-side);
+}
+
+.meetings-body[data-layout='list'] .meetings-list {
+  border-right: 0;
+}
+
+.meetings-list ul {
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.meetings-section {
+  display: flex;
+  gap: 6px;
+  margin: 14px 16px 6px;
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.meetings-section span {
+  color: var(--ink-subtle);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.meetings-item {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr) auto;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.meetings-item:hover {
+  background: var(--surface-hover);
+}
+
+.meetings-item.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.meetings-item-time {
+  display: grid;
+  align-content: start;
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.meetings-item-time > span:last-child {
+  white-space: nowrap;
+}
+
+.meetings-item-main {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: 2px;
+}
+
+.meetings-item-title {
+  overflow-wrap: anywhere;
+  color: var(--ink-strong);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.meetings-item.selected .meetings-item-title {
+  color: var(--accent-ink);
+}
+
+.meetings-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meetings-lock .icon,
+.meetings-item-note .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.meetings-item-note {
+  align-self: center;
+  color: var(--accent);
+}
+
+.meetings-count {
+  margin: 12px 16px 0;
+  color: var(--ink-subtle);
+  font-size: 0.78rem;
+}
+
+.meetings-list > .preview-empty {
+  margin: 16px;
+}
+
+.meetings-detail {
+  padding: 20px clamp(16px, 4vw, 40px) 40px;
+}
+
+.meetings-detail > * {
+  max-width: 760px;
+}
+
+.meetings-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: -6px 0 10px -6px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.meetings-back:hover {
+  background: var(--surface-hover);
+}
+
+.meetings-back .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.meetings-detail h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-strong);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.meetings-facts {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+}
+
+.meetings-facts > div {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: 12px;
+}
+
+.meetings-facts dt {
+  color: var(--ink-subtle);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.meetings-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.meetings-zone {
+  margin-left: 4px;
+  color: var(--ink-subtle);
+}
+
+.meetings-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border-control);
+  border-radius: 999px;
+  color: var(--ink-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.meetings-note-path {
+  font-family: var(--code-font);
+  font-size: 0.82rem;
+}
+
+.meetings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+}
+
+.meetings-detail > .meetings-notice {
+  margin-top: 10px;
+}
+
+.meetings-description {
+  margin-top: 18px;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.meetings-description summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.meetings-description p {
+  margin: 8px 0 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.meetings-agenda-title {
+  margin: 24px 0 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--ink-strong);
+  font-size: 0.95rem;
+}
+
+.meetings-detail > .tasks-note,
+.meetings-detail > .preview-empty {
+  margin: 8px 0 0;
+}
+
+.meetings-agenda {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.meetings-agenda li {
+  display: grid;
+  grid-template-columns: 5.6rem minmax(0, 1fr);
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.meetings-agenda-time {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.meetings-agenda-main {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+
+.meetings-agenda-main a {
+  color: var(--ink-strong);
+  font-weight: 550;
+  text-decoration-color: var(--border-control);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.meetings-agenda-main a:hover {
+  color: var(--accent-ink);
+  text-decoration-color: currentColor;
+}
+
+.meetings-agenda-meta {
+  color: var(--ink-subtle);
+  font-size: 0.8rem;
+}
+
+.meetings-pick {
+  margin-top: 24px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.meetings-pane.compact .meetings-toolbar {
+  padding-inline: 16px;
+}
+
+.meetings-pane.compact .meetings-notice {
+  margin-inline: 16px;
+}
+
+.meetings-pane.compact .meetings-item {
+  gap: 8px;
+}
+
+.meetings-pane.compact .meetings-agenda li {
+  grid-template-columns: 4.6rem minmax(0, 1fr);
+  gap: 10px;
+}
+
+/* Narrow panes scroll as one page, so an open Add source form never squeezes
+   the meeting list into a sliver. */
+.meetings-pane.compact {
+  overflow-y: auto;
+}
+
+.meetings-pane.compact .meetings-body {
+  flex: 1 0 auto;
+}
+
+.meetings-pane.compact .meetings-list,
+.meetings-pane.compact .meetings-detail {
+  overflow-y: visible;
+}

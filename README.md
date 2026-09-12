@@ -91,13 +91,15 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `OLLAMA_BASE_URL`: optional Ollama URL, defaults to `http://127.0.0.1:11434`.
 - `OPENAI_API_KEY`: required for `AI_PROVIDER=openai`; never sent to the browser.
 - `OPENAI_BASE_URL`: optional OpenAI-compatible base URL, defaults to `https://api.openai.com/v1`.
-- `INDICO_<SITE>_TOKEN`: optional Indico personal access token, so pasted Indico
-  links that need a login still get named after the meeting or talk. `<SITE>` is
-  the site's own word in its hostname: `INDICO_CERN_TOKEN` for indico.cern.ch,
-  `INDICO_FNAL_TOKEN` for indico.fnal.gov, `INDICO_GLOBAL_TOKEN` for
-  indico.global. Create one under **My Profile → Settings → API tokens** with
-  the `Everything (read only)` scope. A token never leaves the backend, and is
-  only sent to the Indico it is named after.
+- `INDICO_<NAME>_TOKEN`: optional Indico personal access token, for protected
+  meetings in the Meetings view and for naming pasted Indico links that need a
+  login. Each token is bound to one exact origin: `INDICO_CERN_TOKEN` to
+  `https://indico.cern.ch`, `INDICO_FNAL_TOKEN` to `https://indico.fnal.gov`,
+  `INDICO_GLOBAL_TOKEN` to `https://indico.global`. It never leaves the backend
+  and is sent to that origin only. See [Meetings](#meetings) for scopes.
+- `INDICO_<NAME>_URL`: the `https://` address of any other Indico, paired with
+  its token, as `INDICO_DESY_URL=https://indico.desy.de` beside
+  `INDICO_DESY_TOKEN`. A token with no known or configured address is ignored.
 - `ARXIV_NEWS_CATEGORIES`: optional comma-separated arXiv categories for the
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
@@ -499,6 +501,109 @@ score, with a note saying so. **arXiv** switches back to arXiv's own order.
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
 weekends.
 
+## Meetings
+
+The lectern button in the left bar opens **Meetings**: the upcoming meetings of
+the Indico categories and events you follow, one meeting's agenda, and a
+Markdown note for it.
+
+- **Add source** takes an Indico category link (`…/category/1234/`) or event
+  link (`…/event/5678/`, or any page of the event). The link is checked and
+  stored in canonical form; **Remove** takes it off again.
+- Categories are read two weeks ahead. Meetings are grouped into **Ongoing**,
+  **Today**, **Tomorrow**, **This week**, **Next week**, and **Later** by your
+  browser's local day. Times show in local time, with the event's own time
+  beside them when its timezone reads differently. A meeting listed by two
+  sources appears once.
+- Choose a meeting to see when and where, its agenda (times, titles,
+  speakers, and links to each contribution), and **Open in Indico**.
+- **Create note** writes a note for the meeting and opens it. Pressing it again,
+  now labelled **Open note**, opens the same note. **Refresh** asks Indico
+  again, skipping the ten-minute cache.
+
+### Sources file
+
+Sources are kept per workspace in `.webmd/meetings.json`, which is safe to
+commit: it never holds a token.
+
+```json
+{
+  "version": 1,
+  "noteFolder": "/meetings",
+  "sources": [
+    {
+      "id": "indico.cern.ch-category-1234",
+      "label": "Weekly meetings",
+      "origin": "https://indico.cern.ch",
+      "url": "https://indico.cern.ch/category/1234/",
+      "enabled": true
+    }
+  ]
+}
+```
+
+`id` and `origin` are derived from `url`. Set `"enabled": false` to pause a
+source, and `noteFolder` to put meeting notes elsewhere. An entry that does not
+check out is skipped with a warning naming it, and the others still load. If
+the file is not valid JSON, Meetings says so and refuses to overwrite it.
+
+### Tokens and scopes
+
+Public meetings need no token. For protected ones, create a personal token in
+Indico under **My profile → Settings → API tokens** and put it in
+`~/.webmd.conf`, then restart WebMD:
+
+```conf
+INDICO_CERN_TOKEN=indp_REPLACE_WITH_YOUR_TOKEN
+```
+
+- Meetings reads only Indico's documented HTTP export API (`/export/categ/…`
+  and `/export/event/…`), which needs the **`read:legacy_api`** scope ("Classic
+  API (read only)"). That is the least privilege it needs.
+- Naming a pasted protected link reads the event's page first, which needs
+  `read:everything`. With a `read:legacy_api` token it falls back to the export
+  API, which names events and contributions but not sessions.
+- The token goes in an `Authorization: Bearer` header to its own origin only.
+  A redirect to another host, or off HTTPS, is not followed. The browser is
+  told only whether a token is set.
+
+### Meeting notes
+
+A note is created in `noteFolder` as `Title (YYYY-MM-DD).md`, with frontmatter
+naming the event, the time in the event's timezone, the Indico link, the room,
+a snapshot of the agenda, and empty `## Notes` and `## Action items` sections:
+
+```markdown
+---
+type: meeting
+indico: https://indico.cern.ch/event/5678/
+date: 2026-09-11
+tags: [meeting]
+---
+
+# Tracking weekly (2026-09-11)
+```
+
+The `indico:` line is what ties the note to the meeting, so retitling or moving
+the note keeps the link. Creating never overwrites a file: if the name is taken
+by another note, the event id is added to the name. After that the note is
+yours. Refreshing Indico never touches it, including its agenda.
+
+### Troubleshooting
+
+- **"rejected INDICO_CERN_TOKEN"**: the token is expired, revoked, or lacks
+  `read:legacy_api`. Create a new one and restart WebMD.
+- **"No upcoming meetings visible without a login"**: without a token Indico
+  answers a protected category with an empty list, not an error. Set the
+  token.
+- **"is not a known Indico"**: the host does not start with `indico.`. Add
+  `INDICO_<NAME>_URL=https://…` for it.
+- **Timeouts or "Could not reach"**: the server running WebMD needs outbound
+  HTTPS to the Indico. Each request gives up after 15 seconds.
+- To check a token from the shell without starting WebMD:
+  `INDICO_SMOKE_SOURCE=https://indico.cern.ch/category/1234/ npm run smoke:indico`.
+  It only reads, and never prints the token.
+
 ## Note dates
 
 Saving a note stamps its frontmatter with `creation-date` and
@@ -535,9 +640,14 @@ case-insensitive matching.
 - `npm run test`: run focused workspace safety tests.
 - `npm run lint`: run syntax checks.
 - `npm run build`: build the frontend into `dist/`.
-- `npm run fixture`: serve a seeded throwaway workspace with a stub AI provider
-  and arXiv feed on port 3197 (`AI_MODE=slow|error`, `NEWS_MODE=error|empty`).
-  It never reads `~/.webmd.conf`.
+- `npm run fixture`: serve a seeded throwaway workspace with a stub AI provider,
+  arXiv feed, and Indico on port 3197 (`AI_MODE=slow|error`,
+  `NEWS_MODE=error|empty`, `MEETINGS_MODE=notoken|auth|offline|none`). It never
+  reads `~/.webmd.conf`, and its Indico token is a placeholder.
 - `npm run scenarios`: after `npm run build`, run the headless Chrome layout
   and AI-context acceptance checks against fixtures (`OUT_DIR` keeps
   screenshots). Needs Google Chrome, or `CHROME_PATH`.
+- `npm run scenarios:meetings`: the same for Meetings: list, agenda, notes,
+  add source, token failures, and narrow layouts.
+- `npm run smoke:indico`: opt-in, read-only check of a real Indico source with
+  your own token (`INDICO_SMOKE_SOURCE=<link>`). Not part of `npm test`.

@@ -90,6 +90,8 @@ content carries the contrast.
   Delete, Reference, Edit/Preview, Diff) appear only in document views. The
   workspace views launched from the rail (Tasks, Calendar, arXiv News) own
   their own toolbars and keep only navigation and the overflow menu above.
+  Meetings is one of them too. It stays mounted once visited, so its list and
+  selection survive a trip to a note.
 * **Mockup content is illustrative.** Titles, counts, and AI text always come
   from the workspace and APIs; titles are never truncated server-side.
 
@@ -133,10 +135,12 @@ mounted.
 1. **Loopback Binding Isolation:** The Node.js application must explicitly lock socket binding exclusively to `127.0.0.1`. Attempting to allocate `0.0.0.0` or missing structural parameters must abort server startup sequence immediately.
 2. **Asymmetric Network Profile:** Client browsers interface with the environment completely within an active `ssh -L [LOCAL_PORT]:127.0.0.1:[REMOTE_PORT]` session. The architecture must gracefully absorb transient socket resets inherent to unstable physical tunnel channels.
 3. **Authentication Boundary:** SSH tunnel access is the MVP security boundary. No separate app login or bearer token is required until the server is exposed beyond loopback or shared-host access becomes a real requirement.
+4. **Outbound Credentials:** Third-party tokens (Indico) live only in the server's environment. Each is bound to one exact HTTPS origin and sent there only. Redirects are followed by hand and never across origins, and the browser learns only whether a token is configured. Server-side fetches of user-supplied addresses are limited to HTTPS Indico hosts on the default port, with no credentials in the URL.
 
 ### 3.2 File System Mutation Boundaries
 1. **Root Directory Chroot-Jail Emulation:** The server must map execution context to an isolated `$WORKSPACE_ROOT` parameter. Directory traversal vectors (`../../etc/passwd`) must be aggressively blocked via strict canonical path validation hooks inside Express routers. Symlinks that resolve outside `$WORKSPACE_ROOT` are forbidden.
 2. **Lockless Atomic Operations:** Overwriting active notes must utilize memory-staged atomic proxy execution swaps (`fs.promises.writeFile` to a temporary hidden file followed by immediate renamed sync steps) to completely nullify file fragmentation corruptions if tunnels abort mid-payload delivery.
+3. **Create Without Overwrite:** Notes the server writes on the user's behalf (meeting notes) are created through a temp file and `link()`, which fails rather than replace an existing file, so a generated name can never clobber a user's note.
 
 ---
 

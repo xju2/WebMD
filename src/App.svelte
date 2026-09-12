@@ -28,6 +28,7 @@
   } from './collab.js';
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { ICONS } from './icons.js';
+  import MeetingsView from './MeetingsView.svelte';
   import {
     LAYOUT_KEY,
     RAIL_WIDTH,
@@ -144,10 +145,11 @@
   const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
-  // 'tasks', 'calendar', and 'news' are workspace-wide views rather than ways of
-  // looking at the open note, so none is remembered as a file's view mode. They
-  // are still navigation destinations, so back and forward can return to them.
-  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news']);
+  // 'tasks', 'calendar', 'news', and 'meetings' are workspace-wide views rather
+  // than ways of looking at the open note, so none is remembered as a file's
+  // view mode. They are still navigation destinations, so back and forward can
+  // return to them.
+  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news', 'meetings']);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
   const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
@@ -588,7 +590,8 @@
     viewMode === 'graph' ||
     viewMode === 'calendar' ||
     viewMode === 'tasks' ||
-    viewMode === 'news';
+    viewMode === 'news' ||
+    viewMode === 'meetings';
   // The rail's workspace views bring their own toolbars, so the file actions
   // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
   $: documentControls = !WORKSPACE_VIEWS.has(viewMode);
@@ -597,7 +600,9 @@
       ? 'Daily Notes'
       : viewMode === 'news'
         ? 'arXiv News'
-        : viewMode === 'tasks'
+        : viewMode === 'meetings'
+          ? 'Meetings'
+          : viewMode === 'tasks'
           ? 'Tasks'
           : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
@@ -1880,6 +1885,30 @@
     error = '';
     await Promise.all([loadNews(), loadNewsClipped(selectedRoot)]);
     if (viewMode === 'news' && newsPapers.length) rankNews();
+  }
+
+  // Mounted on the first visit and kept, so the list and its selection are
+  // still there on the way back from a note.
+  let meetingsVisited = false;
+
+  async function showMeetings({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('meetings');
+    viewMode = 'meetings';
+    meetingsVisited = true;
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+  }
+
+  /** A meeting's note, opened in the editor; a new one shows up in the tree. */
+  async function openMeetingNote(path, { created = false } = {}) {
+    const root = selectedRoot;
+    if (created) await loadTree(root);
+    if (root !== selectedRoot) return;
+    await openFile(path);
+    setViewMode('edit', { remember: false });
   }
 
   async function loadNews({ refresh = false } = {}) {
@@ -4167,6 +4196,8 @@
     else if (target.view === 'calendar')
       await showCalendar({ remember: false });
     else if (target.view === 'news') await showNews({ remember: false });
+    else if (target.view === 'meetings')
+      await showMeetings({ remember: false });
     else
       await openFile(target.path, {
         historyMode: 'replace',
@@ -5374,6 +5405,17 @@
       on:click={() => showNews()}
     >
       {@render icon('news')}
+    </button>
+    <button
+      aria-label="Open meetings"
+      class:active={viewMode === 'meetings'}
+      class="global-action meetings-launcher"
+      data-tooltip="Meetings"
+      disabled={!workspaceRoots.length}
+      type="button"
+      on:click={() => showMeetings()}
+    >
+      {@render icon('meetings')}
     </button>
     <button
       aria-controls="ai-panel"
@@ -6719,6 +6761,13 @@
               {/each}
             </ol>
           </section>
+        {/if}
+        {#if meetingsVisited}
+          <MeetingsView
+            active={viewMode === 'meetings'}
+            onOpenNote={openMeetingNote}
+            root={selectedRoot}
+          />
         {/if}
         {#if viewMode === 'calendar'}
           <section class="calendar-pane" aria-label="Daily notes calendar">

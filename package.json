@@ -11,10 +11,12 @@
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test",
-    "lint": "node --check server/index.js && node --check server/app.js && node --check server/autocommit.js && node --check server/workspace.js && node --check server/ai.js && node --check server/arxiv.js && node --check server/citations.js && node --check server/indico.js && node --check server/x.js && node --check server/news.js && node --check server/news-rank.js && node --check server/prompts.js && node --check server/related.js && node --check server/quote.js && node --check scripts/dev.mjs && node --check scripts/fixture.mjs && node --check scripts/browser-scenarios.mjs",
+    "lint": "node --check server/index.js && node --check server/app.js && node --check server/autocommit.js && node --check server/workspace.js && node --check server/ai.js && node --check server/arxiv.js && node --check server/citations.js && node --check server/indico.js && node --check server/meetings.js && node --check server/x.js && node --check server/news.js && node --check server/news-rank.js && node --check server/prompts.js && node --check server/related.js && node --check server/quote.js && node --check scripts/dev.mjs && node --check scripts/fixture.mjs && node --check scripts/browser-harness.mjs && node --check scripts/browser-scenarios.mjs && node --check scripts/meetings-scenarios.mjs && node --check scripts/indico-smoke.mjs",
     "format": "prettier --write .",
     "fixture": "node scripts/fixture.mjs",
-    "scenarios": "node scripts/browser-scenarios.mjs"
+    "scenarios": "node scripts/browser-scenarios.mjs",
+    "scenarios:meetings": "node scripts/meetings-scenarios.mjs",
+    "smoke:indico": "node scripts/indico-smoke.mjs"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",

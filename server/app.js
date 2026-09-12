@@ -6,7 +6,17 @@ import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
 import { fetchCitationBibtex } from './citations.js';
-import { fetchIndicoTitle, indicoTokens, isIndicoUrl } from './indico.js';
+import { fetchIndicoTitle, indicoSites, isIndicoUrl } from './indico.js';
+import {
+  ensureMeetingNote,
+  fetchMeeting,
+  listMeetings,
+  meetingKey,
+  meetingNotes,
+  publicSource,
+  readMeetingsConfig,
+  updateMeetingSources
+} from './meetings.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import {
   fetchArxivNews,
@@ -79,6 +89,9 @@ export async function createApp({
   const imageAssetFolder = normalizeWorkspaceFolder(
     env.IMAGE_ASSET_FOLDER || '/assets'
   );
+  // Indico tokens, each bound to one exact origin. Read once, like the rest
+  // of the environment; they never leave this process.
+  const sites = indicoSites(env);
 
   app.get('/api/settings', (_req, res) => {
     res.json({ imageAssetFolder });
@@ -289,9 +302,112 @@ export async function createApp({
         throw new WorkspaceError(400, 'An Indico event link is required.');
       }
       res.json(
-        await fetchIndicoTitle(url.trim(), {
-          fetchImpl: indicoFetch,
-          tokens: indicoTokens(env)
+        await fetchIndicoTitle(url.trim(), { fetchImpl: indicoFetch, sites })
+      );
+    })
+  );
+
+  // Meetings: per-workspace Indico sources in .webmd/meetings.json, the
+  // upcoming meetings they list, and the note that goes with each. Tokens stay
+  // here; the browser only learns whether one is configured.
+  async function meetingsState(root) {
+    const workspace = workspaces.get(root);
+    const config = await readMeetingsConfig(workspace, sites);
+    return { workspace, config };
+  }
+
+  function meetingSourcesBody(config) {
+    return {
+      noteFolder: config.noteFolder,
+      sources: config.sources.map((source) => publicSource(source, sites)),
+      warnings: config.warnings
+    };
+  }
+
+  app.get(
+    '/api/meetings',
+    asyncHandler(async (req, res) => {
+      const { workspace, config } = await meetingsState(req.query.root);
+      const listing = await listMeetings(config.sources, {
+        sites,
+        fetchImpl: indicoFetch,
+        refresh: req.query.refresh === '1'
+      });
+      const notes = meetingNotes(await workspace.markdownFiles());
+      res.json({
+        ...meetingSourcesBody(config),
+        ...listing,
+        meetings: listing.meetings.map((meeting) => ({
+          ...meeting,
+          notePath: notes.get(meeting.key) || ''
+        }))
+      });
+    })
+  );
+
+  app.get(
+    '/api/meetings/event',
+    asyncHandler(async (req, res) => {
+      const { workspace } = await meetingsState(req.query.root);
+      const meeting = await fetchMeeting(req.query.origin, req.query.id, {
+        sites,
+        fetchImpl: indicoFetch,
+        refresh: req.query.refresh === '1'
+      });
+      const notes = meetingNotes(await workspace.markdownFiles());
+      res.json({ ...meeting, notePath: notes.get(meeting.key) || '' });
+    })
+  );
+
+  app.post(
+    '/api/meetings/sources',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const config = await updateMeetingSources(
+        workspace,
+        { add: { url: req.body?.url, label: req.body?.label } },
+        sites
+      );
+      res.json(meetingSourcesBody(config));
+    })
+  );
+
+  app.delete(
+    '/api/meetings/sources',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const config = await updateMeetingSources(
+        workspace,
+        { remove: String(req.body?.id ?? '') },
+        sites
+      );
+      res.json(meetingSourcesBody(config));
+    })
+  );
+
+  // Creates the meeting's note from Indico's own data, fetched here rather
+  // than taken from the request, or returns the note that already has it.
+  app.post(
+    '/api/meetings/note',
+    asyncHandler(async (req, res) => {
+      const { workspace, config } = await meetingsState(req.body?.root);
+      const origin = String(req.body?.origin ?? '');
+      const eventId = String(req.body?.id ?? '');
+      workspace.forgetFiles();
+      const existing = meetingNotes(await workspace.markdownFiles()).get(
+        meetingKey(origin, eventId)
+      );
+      if (existing) {
+        res.json({ path: existing, created: false });
+        return;
+      }
+      const meeting = await fetchMeeting(origin, eventId, {
+        sites,
+        fetchImpl: indicoFetch
+      });
+      res.json(
+        await ensureMeetingNote(workspace, meeting, {
+          noteFolder: config.noteFolder
         })
       );
     })
@@ -627,9 +743,11 @@ export async function createApp({
 
   app.use((error, _req, res, _next) => {
     const status = error instanceof WorkspaceError ? error.status : 500;
-    res
-      .status(status)
-      .json({ error: error.message || 'Internal server error' });
+    res.status(status).json({
+      error: error.message || 'Internal server error',
+      // Indico failures say what kind they are (auth, network, ...).
+      ...(error.kind ? { kind: error.kind } : {})
+    });
   });
 
   return app;

@@ -7,6 +7,11 @@
 //   AI_MODE=slow npm run fixture       # stream replies slowly
 //   AI_MODE=error npm run fixture      # the provider fails every request
 //   NEWS_MODE=error|empty npm run fixture
+//   MEETINGS_MODE=notoken|auth|offline|none npm run fixture
+//
+// Meetings talk to a canned Indico at indico.cern.ch with a placeholder token
+// (never a real one): `notoken` drops the token, `auth` makes Indico reject it,
+// `offline` fails the network, and `none` starts with no sources at all.
 //
 // The stub's chat reply states which context the server sent it, so a page can
 // be checked against what the AI actually received, not just its own labels.
@@ -18,6 +23,7 @@ import { createApp } from '../server/app.js';
 const port = Number(process.env.PORT || 3197);
 const aiMode = process.env.AI_MODE || 'ok';
 const newsMode = process.env.NEWS_MODE || 'ok';
+const meetingsMode = process.env.MEETINGS_MODE || 'ok';
 const base =
   process.env.FIXTURE_DIR ||
   (await fs.mkdtemp(path.join(os.tmpdir(), 'webmd-fixture-')));
@@ -69,6 +75,44 @@ console.log('fixture');
   '.webmd/news.md':
     'Fixture ranking instructions: statistical combination, detector hardware, machine learning.\n'
 };
+if (meetingsMode !== 'none') {
+  files['.webmd/meetings.json'] = `${JSON.stringify(
+    {
+      version: 1,
+      noteFolder: '/meetings',
+      sources: [
+        {
+          id: 'indico.cern.ch-category-100',
+          label: 'Tracking group',
+          origin: 'https://indico.cern.ch',
+          url: 'https://indico.cern.ch/category/100/',
+          enabled: true
+        },
+        {
+          id: 'indico.cern.ch-category-200',
+          label: 'Public seminars',
+          origin: 'https://indico.cern.ch',
+          url: 'https://indico.cern.ch/category/200/',
+          enabled: true
+        }
+      ]
+    },
+    null,
+    2
+  )}\n`;
+  // An existing note, so one meeting shows Open note instead of Create note.
+  files['meetings/Machine learning seminar.md'] = `---
+type: meeting
+indico: https://indico.cern.ch/event/9002/
+---
+
+# Machine learning seminar
+
+## Notes
+
+Written before the meeting.
+`;
+}
 for (let index = 1; index <= 12; index += 1) {
   files[`raw/imports/import-${String(index).padStart(2, '0')}.md`] =
     `# Import ${index}\n\nFixture import.\n`;
@@ -204,12 +248,170 @@ async function aiFetch(_url, options) {
   return new Response(stream, { status: 200 });
 }
 
+// A canned Indico. Times are wall-clock in Geneva, as Indico states them; the
+// view places them in the browser's day. Category 100 is protected: without a
+// token it answers with nothing, exactly as the real one does.
+const FIXTURE_TOKEN = 'fixture-placeholder-token';
+const zurich = (offset, time) => ({
+  date: isoDay(offset),
+  time: `${time}:00`,
+  tz: 'Europe/Zurich'
+});
+const person = (first, last) => ({ first_name: first, last_name: last });
+const indicoEvents = {
+  9001: {
+    id: '9001',
+    title: 'Tracking and reconstruction weekly',
+    type: 'meeting',
+    category: 'Tracking group',
+    startDate: zurich(0, '15:00'),
+    endDate: zurich(0, '16:30'),
+    timezone: 'Europe/Zurich',
+    roomFullname: '40/S2-C01 - Salle Curie',
+    location: 'CERN',
+    description:
+      '<p>Weekly status of track reconstruction.</p><p>Connection details are on the Indico page.</p>',
+    hasAnyProtection: true,
+    categoryId: 100,
+    contributions: [
+      ['15:00', '15:10', 'Introduction and news', [person('Fixture', 'Convener')]],
+      [
+        '15:10',
+        '15:35',
+        'Seeding performance with the new geometry, a title long enough to wrap in the agenda column',
+        [person('Speaker', 'One'), person('Speaker', 'Two')]
+      ],
+      ['15:35', '16:00', 'GNN-based track finding: timing studies', [person('Speaker', 'Three')]],
+      ['16:00', '16:30', 'AOB', []]
+    ].map(([start, end, title, speakers], index) => ({
+      db_id: 70000 + index,
+      title,
+      startDate: zurich(0, start),
+      endDate: zurich(0, end),
+      speakers,
+      session: index === 2 ? 'ML session' : null,
+      url: `https://indico.cern.ch/event/9001/contributions/${70000 + index}/`
+    }))
+  },
+  9002: {
+    id: '9002',
+    title: 'Machine learning seminar',
+    type: 'lecture',
+    category: 'Public seminars',
+    startDate: zurich(1, '11:00'),
+    endDate: zurich(1, '12:00'),
+    timezone: 'Europe/Zurich',
+    roomFullname: '222/R-001',
+    location: 'CERN',
+    hasAnyProtection: false,
+    categoryId: 200,
+    contributions: []
+  },
+  9003: {
+    id: '9003',
+    title: 'Detector upgrade workshop',
+    type: 'conference',
+    category: 'Tracking group',
+    startDate: zurich(4, '09:00'),
+    endDate: zurich(6, '17:00'),
+    timezone: 'Europe/Zurich',
+    location: 'Fixture Institute',
+    hasAnyProtection: true,
+    categoryId: 100,
+    contributions: [
+      {
+        db_id: 71000,
+        title: 'Opening',
+        startDate: zurich(4, '09:00'),
+        endDate: zurich(4, '09:30'),
+        speakers: [person('Chair', 'Person')]
+      },
+      {
+        db_id: 71001,
+        title: 'Day two summary',
+        startDate: zurich(5, '16:00'),
+        endDate: zurich(5, '17:00'),
+        speakers: []
+      },
+      { db_id: 71002, title: 'Unscheduled poster', startDate: null, speakers: [] }
+    ]
+  },
+  9004: {
+    id: '9004',
+    title: 'Tracking and reconstruction weekly',
+    type: 'meeting',
+    category: 'Tracking group',
+    startDate: zurich(10, '15:00'),
+    endDate: zurich(10, '16:30'),
+    timezone: 'Europe/Zurich',
+    roomFullname: '40/S2-C01 - Salle Curie',
+    location: 'CERN',
+    hasAnyProtection: true,
+    categoryId: 100,
+    contributions: []
+  },
+  9005: {
+    id: '9005',
+    title: 'Colloquium: seeing the unseen',
+    type: 'lecture',
+    category: 'Public seminars',
+    startDate: zurich(2, '16:00'),
+    endDate: zurich(2, '17:00'),
+    timezone: 'Europe/Zurich',
+    location: 'Main Auditorium',
+    hasAnyProtection: false,
+    categoryId: 200,
+    contributions: []
+  }
+};
+
+async function indicoFetch(target, options = {}) {
+  const url = new URL(target);
+  if (url.origin !== 'https://indico.cern.ch') {
+    return new Response('{"results":[]}', { status: 200 });
+  }
+  if (meetingsMode === 'offline') throw new Error('fixture network is offline');
+  const auth = options.headers?.Authorization || '';
+  if (meetingsMode === 'auth' && auth) {
+    return new Response(
+      '<h1>Bad Request</h1>invalid_token: The access token provided is expired, revoked, malformed, or invalid',
+      { status: 400 }
+    );
+  }
+  const authed = auth === `Bearer ${FIXTURE_TOKEN}`;
+  const visible = (event) => authed || !event.hasAnyProtection;
+  const json = (results) =>
+    new Response(JSON.stringify({ count: results.length, results }), {
+      status: 200
+    });
+  const summary = ({ contributions: _c, ...event }) => event;
+  await sleep(150);
+
+  const category = /^\/export\/categ\/(\d+)\.json$/.exec(url.pathname)?.[1];
+  if (category) {
+    return json(
+      Object.values(indicoEvents)
+        .filter((event) => String(event.categoryId) === category && visible(event))
+        .map(summary)
+    );
+  }
+  const eventId = /^\/export\/event\/(\d+)\.json$/.exec(url.pathname)?.[1];
+  const event = indicoEvents[eventId];
+  if (event && visible(event)) {
+    return json([
+      url.searchParams.get('detail') === 'contributions' ? event : summary(event)
+    ]);
+  }
+  return json([]);
+}
+
 const offline = async () => new Response('', { status: 503 });
 const env = {
   AI_PROVIDER: 'ollama',
   OLLAMA_BASE_URL: 'http://127.0.0.1:1',
   AI_MODEL: 'fixture-stub',
-  ARXIV_NEWS_CATEGORIES: 'hep-ex,hep-ph,cs.LG,physics.data-an'
+  ARXIV_NEWS_CATEGORIES: 'hep-ex,hep-ph,cs.LG,physics.data-an',
+  ...(meetingsMode === 'notoken' ? {} : { INDICO_CERN_TOKEN: FIXTURE_TOKEN })
 };
 const app = await createApp({
   workspaceRoots: [research, empty],
@@ -218,12 +420,12 @@ const app = await createApp({
   newsFetch,
   arxivFetch: offline,
   citationFetch: offline,
-  indicoFetch: offline,
+  indicoFetch,
   xFetch: offline,
   env
 });
 app.listen(port, '127.0.0.1', () =>
   console.log(
-    `Fixture on http://127.0.0.1:${port} (ai: ${aiMode}, news: ${newsMode})\nWorkspace: ${base}`
+    `Fixture on http://127.0.0.1:${port} (ai: ${aiMode}, news: ${newsMode}, meetings: ${meetingsMode})\nWorkspace: ${base}`
   )
 );
