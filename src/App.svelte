@@ -17,6 +17,7 @@
     dailyNotePath as buildDailyNotePath,
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
+    eventsByDay,
     shiftMonth,
     stepDailyNote,
     templateNeedsQuote
@@ -426,6 +427,12 @@
     !markdownFiles.some((file) => file.path === activeDailyNoteTemplatePath);
   $: calendarDays = buildCalendarDays(calendarMonth);
   $: dueTaskCounts = countTasksByDueDate(workspaceTasks);
+  // Google Calendar events for the month on screen, when a feed is configured.
+  let calendarEvents = [];
+  let calendarEventsError = '';
+  let calendarEventsRequest = 0;
+  $: if (viewMode === 'calendar') loadCalendarEvents(calendarDays);
+  $: calendarEventsOnDay = eventsByDay(calendarEvents);
   $: calendarMonthName = calendarMonth.toLocaleDateString([], {
     month: 'long',
     year: 'numeric'
@@ -2184,6 +2191,35 @@
     target.scrollIntoView({ block: 'center' });
     target.classList.add('line-flash');
     setTimeout(() => target.classList.remove('line-flash'), 1200);
+  }
+
+  async function loadCalendarEvents(days) {
+    const request = ++calendarEventsRequest;
+    const from = dailyNoteDate(days[0].date);
+    const to = dailyNoteDate(days[days.length - 1].date);
+    try {
+      const response = await fetch(
+        `/api/calendar/events?from=${from}&to=${to}`
+      );
+      const body = await response.json();
+      if (request !== calendarEventsRequest) return;
+      if (!response.ok) throw new Error(body.error || 'Calendar failed.');
+      calendarEvents = body.events;
+      calendarEventsError = body.errors.join(' ');
+    } catch (err) {
+      if (request !== calendarEventsRequest) return;
+      calendarEvents = [];
+      calendarEventsError = err.message;
+    }
+  }
+
+  function calendarEventLabel(event) {
+    if (event.allDay) return event.title;
+    const time = new Date(event.startsAt).toLocaleTimeString([], {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+    return `${time} ${event.title}`;
   }
 
   function moveCalendarMonth(amount) {
@@ -6851,6 +6887,9 @@
                   Using / because {dailyNoteFolder} is not in this connection.
                 </p>
               {/if}
+              {#if calendarEventsError}
+                <p class="calendar-folder-warning">{calendarEventsError}</p>
+              {/if}
             </header>
             <div class="calendar-grid" aria-label={calendarMonthName}>
               {#each WEEK_DAYS as weekday}
@@ -6861,6 +6900,7 @@
                 {@const hasNote = dailyNotePaths.has(path)}
                 {@const dateText = dailyNoteDate(day.date)}
                 {@const dueCount = dueTaskCounts.get(dateText) ?? 0}
+                {@const dayEvents = calendarEventsOnDay.get(dateText) ?? []}
                 <div class="calendar-cell">
                   <button
                     aria-label={`${hasNote ? 'Open' : 'Create'} note for ${calendarDayLabel(day)}`}
@@ -6891,6 +6931,37 @@
                     >
                       {dueCount}
                     </button>
+                  {/if}
+                  {#if dayEvents.length}
+                    <!-- Beside the day button, not in it: a link opens the
+                         meeting, the rest of the cell still opens the note. -->
+                    <ul
+                      class="calendar-events"
+                      class:outside-month={!day.currentMonth}
+                    >
+                      {#each dayEvents.slice(0, 3) as event}
+                        {@const label = calendarEventLabel(event)}
+                        <li class:all-day={event.allDay}>
+                          {#if event.url}
+                            <a
+                              href={event.url}
+                              rel="noreferrer"
+                              target="_blank"
+                              title={[label, event.location]
+                                .filter(Boolean)
+                                .join(' — ')}>{label}</a
+                            >
+                          {:else}
+                            {label}
+                          {/if}
+                        </li>
+                      {/each}
+                      {#if dayEvents.length > 3}
+                        <li class="calendar-events-more">
+                          +{dayEvents.length - 3} more
+                        </li>
+                      {/if}
+                    </ul>
                   {/if}
                 </div>
               {/each}

@@ -30,6 +30,36 @@ export function countTasksByDueDate(tasks = []) {
   return counts;
 }
 
+/**
+ * Calendar events keyed 'YYYY-MM-DD' by the reader's own day: a timed event
+ * on the day it starts, an all-day one on every day it spans (its endDate is
+ * exclusive, as in iCal). All-day events lead, the rest keep start order.
+ */
+export function eventsByDay(events = []) {
+  const days = new Map();
+  const add = (key, event) => {
+    if (!days.has(key)) days.set(key, []);
+    days.get(key).push(event);
+  };
+  for (const event of events) {
+    if (!event.allDay) {
+      add(dailyNoteDate(new Date(event.startsAt)), event);
+      continue;
+    }
+    const [year, month, day] = event.date.split('-').map(Number);
+    // Capped so a months-long "on leave" block cannot stall the grid.
+    for (let offset = 0; offset < 62; offset += 1) {
+      const key = dailyNoteDate(new Date(year, month - 1, day + offset));
+      if (offset && key >= event.endDate) break;
+      add(key, event);
+    }
+  }
+  for (const list of days.values()) {
+    list.sort((a, b) => Number(b.allDay) - Number(a.allDay));
+  }
+  return days;
+}
+
 export function shiftMonth(month, amount) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1);
 }

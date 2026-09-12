@@ -394,6 +394,21 @@ The note button in the global bar (or `Cmd/Ctrl+Shift+D`) opens today's note
 from wherever you are, creating it from the template if the day has none. The
 dashboard's **Open today's note** card does the same thing.
 
+### Google Calendar on the Calendar
+
+The Calendar shows your Google Calendar events under each day, and an event's
+link opens its Meet or Zoom room. In Google Calendar open **Settings → your
+calendar → Integrate calendar**, copy **Secret address in iCal format**, and add
+it to `~/.webmd.conf` (several addresses may be separated by spaces):
+
+```sh
+GOOGLE_CALENDAR_ICS=https://calendar.google.com/calendar/ical/.../private-.../basic.ics
+```
+
+Restart WebMD after setting it. The address works like a password, so it stays
+on the server. Google refreshes the feed every few hours and WebMD rereads it
+every 10 minutes, so a new invite can take a while to appear.
+
 ### Daily note template
 
 A new daily note starts from the template picked in the Calendar header, which

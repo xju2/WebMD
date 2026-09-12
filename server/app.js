@@ -18,6 +18,7 @@ import {
   readMeetingsConfig,
   updateMeetingSources
 } from './meetings.js';
+import { calendarEvents, calendarFeeds } from './gcal.js';
 import {
   assertNoSummary,
   buildSummaryMessages,
@@ -81,6 +82,7 @@ export async function createApp({
   arxivFetch = fetch,
   citationFetch = fetch,
   indicoFetch = fetch,
+  calendarFetch = fetch,
   xFetch = fetch,
   newsFetch = fetch,
   // Where day-scoped fetches and model answers outlive a restart. Outside the
@@ -315,6 +317,23 @@ export async function createApp({
       res.json(
         await fetchIndicoTitle(url.trim(), { fetchImpl: indicoFetch, sites })
       );
+    })
+  );
+
+  // Google Calendar events for the daily-notes calendar. The feed address is a
+  // secret, so only whether one is set reaches the browser.
+  const feeds = calendarFeeds(env);
+  app.get(
+    '/api/calendar/events',
+    asyncHandler(async (req, res) => {
+      if (!feeds.length) return res.json({ configured: false, events: [], errors: [] });
+      const { events, errors } = await calendarEvents(feeds, {
+        from: String(req.query.from || ''),
+        to: String(req.query.to || ''),
+        fetchImpl: calendarFetch,
+        refresh: req.query.refresh === '1'
+      });
+      res.json({ configured: true, events, errors });
     })
   );
 
