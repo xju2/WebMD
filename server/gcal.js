@@ -82,7 +82,7 @@ async function feedEvents(feed, { fetchImpl, refresh }) {
   }
   if (!response.ok) {
     throw new Error(
-      `${new URL(feed).hostname} answered ${response.status}. Check GOOGLE_CALENDAR_ICS.`
+      `${new URL(feed).hostname} answered ${response.status}. Check GOOGLE_CALENDAR_ICS is the secret (not public) iCal address, and restart WebMD after changing it.`
     );
   }
   const events = parseIcs(await response.text());
