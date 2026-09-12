@@ -30,6 +30,7 @@ const auth = await startFixture(3202, { MEETINGS_MODE: 'auth' });
 const noToken = await startFixture(3203, { MEETINGS_MODE: 'notoken' });
 const empty = await startFixture(3204, { MEETINGS_MODE: 'none' });
 const offline = await startFixture(3205, { MEETINGS_MODE: 'offline' });
+const zoom = await startFixture(3206, { MEETINGS_MODE: 'zoom' });
 const { child: chrome, page, profile } = await launchChrome();
 
 const EDITOR = `document.querySelector('.cm-content')?.cmTile?.view`;
@@ -369,11 +370,105 @@ try {
     await page.eval(`return Boolean(document.querySelector('.meetings-empty'));`)
   );
   await page.shot('meetings-empty-desktop');
+
+  // 7. Zoom: Join while a call is on, then a past meeting's recording and
+  // transcript, summarized into its note.
+  await page.viewport(1440, 900);
+  await openMeetings(zoom.url, { reset: true });
+  const chip = await page.eval(`
+    const row = [...document.querySelectorAll('.meetings-row')]
+      .find((el) => el.textContent.includes('Analysis check-in on Zoom'));
+    const link = row?.querySelector('.meetings-join-chip');
+    return link ? { href: link.getAttribute('href'), target: link.getAttribute('target') } : null;`);
+  check(
+    'a call under way offers Join beside its row',
+    chip?.href === 'https://cern.zoom.us/j/98765432101?pwd=Fixture.1' && chip.target === '_blank',
+    JSON.stringify(chip)
+  );
+  const quiet = await page.eval(`
+    return [...document.querySelectorAll('.meetings-row')]
+      .filter((el) => el.querySelector('.meetings-join-chip'))
+      .map((el) => el.querySelector('.meetings-item-title').textContent.trim());`);
+  check('meetings not about to start offer no Join', quiet.length === 1, quiet.join(' | '));
+  await chooseMeeting('Analysis check-in on Zoom');
+  const joinDetail = await page.eval(`
+    const link = document.querySelector('.meetings-actions .meetings-join');
+    return {
+      text: link?.textContent.trim(),
+      primary: link?.classList.contains('primary'),
+      facts: [...document.querySelectorAll('.meetings-facts > div')].map((el) => el.textContent.replace(/\\s+/g, ' ').trim()).find((text) => text.startsWith('Zoom'))
+    };`);
+  check(
+    'the call shows Join Zoom now first, with its meeting ID and passcode',
+    joinDetail.text === 'Join Zoom now' && joinDetail.primary &&
+      /Meeting ID 987 6543 2101 · Passcode 424242/.test(joinDetail.facts),
+    JSON.stringify(joinDetail)
+  );
+  await page.shot('meetings-zoom-live-desktop');
+
+  s = await snapshot();
+  check('past meetings are listed last', s.sections.at(-1) === 'Past week', s.sections.join(', '));
+  await chooseMeeting('Last week analysis review');
+  const follow = () =>
+    page.eval(`
+      const section = document.querySelector('.meetings-follow');
+      return section ? {
+        text: section.textContent.replace(/\\s+/g, ' ').trim(),
+        recording: section.querySelector('a[href*="rec/share"]')?.getAttribute('href') || '',
+        notice: section.querySelector('.meetings-notice')?.textContent.trim() || ''
+      } : null;`);
+  let f = await follow();
+  check(
+    'a past meeting offers its Indico recording and a transcript upload',
+    f?.recording === 'https://cern.zoom.us/rec/share/fixture-recording' &&
+      /linked in Indico/.test(f.text) && /Add file/.test(f.text),
+    f?.text
+  );
+  await clickText('.meetings-follow button', 'Save to note');
+  await page.waitFor(`document.querySelector('.meetings-follow .meetings-notice')`);
+  f = await follow();
+  check('the recording link is saved in the note', /saved in the note/.test(f.notice) && /Change/.test(f.text), f.notice);
+
+  await page.eval(`
+    const input = document.querySelector('.meetings-follow input[type=file]');
+    const data = new DataTransfer();
+    data.items.add(new File(['WEBVTT\\n\\n1\\n00:00:01.000 --> 00:00:03.000\\nAda Lovelace: We rerun the validation.\\n'], 'meeting.transcript.vtt', { type: 'text/vtt' }));
+    input.files = data.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));`);
+  await page.waitFor(`document.querySelector('.meetings-follow .meetings-file-link')`);
+  f = await follow();
+  check(
+    'a transcript file becomes a transcript note beside the meeting note',
+    /Last week analysis review \(\d{4}-\d{2}-\d{2}\) transcript/.test(f.text) && /Transcript saved: 1 turn/.test(f.notice),
+    f.notice
+  );
+  await page.waitFor(`document.getElementById('files-panel')?.textContent.includes('transcript')`);
+  check('the file tree shows the new transcript note', true);
+  await page.shot('meetings-transcript-desktop');
+
+  await page.viewport(390, 844);
+  s = await snapshot();
+  check('phone: the recording and transcript section fits', s.overflow <= 0, `overflow ${s.overflow}`);
+  await page.shot('meetings-transcript-narrow');
+  await page.viewport(1440, 900);
+
+  await clickText('.meetings-follow button', 'Summarize into note');
+  await page.waitFor(`${EDITOR} && ${EDITOR}.state.doc.toString().includes('## Summary')`);
+  s = await snapshot();
+  check(
+    'Summarize writes a summary and action items into the meeting note and opens it',
+    /_Written by AI from \[\[Last week analysis review \(\d{4}-\d{2}-\d{2}\) transcript\]\]\._/.test(s.doc) &&
+      /- \[ \] Rerun the fixture validation who:fixture 📅 \d{4}-\d{2}-\d{2}/.test(s.doc) &&
+      /recording: https:\/\/cern\.zoom\.us\/rec\/share\/fixture-recording/.test(s.doc) &&
+      /- \*\*Zoom:\*\* <https:\/\/cern\.zoom\.us\/j\/12345678901>/.test(s.doc),
+    s.path
+  );
+  await page.shot('meetings-summary-note-desktop');
 } catch (error) {
   check('meetings scenario run', false, error.stack);
 } finally {
   chrome.kill();
-  for (const fixture of [main, auth, noToken, empty, offline]) fixture.child.kill();
+  for (const fixture of [main, auth, noToken, empty, offline, zoom]) fixture.child.kill();
   await fs.rm(profile, { recursive: true, force: true }).catch(() => {});
 }
 

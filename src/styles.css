@@ -5257,6 +5257,17 @@ input[type='radio'] {
   background: var(--accent-hover);
 }
 
+.meetings-open-indico.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.meetings-open-indico.primary:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
 .meetings-add-actions button:disabled,
 .meetings-actions button:disabled {
   border-color: var(--border);
@@ -5522,7 +5533,50 @@ input[type='radio'] {
 }
 
 .meetings-lock .icon,
+.meetings-zoom-mark .icon,
 .meetings-item-note .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.meetings-zoom-mark {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+/* A meeting about to start or under way offers Join beside its row; a link
+   inside the row's button would not be a link anyone could reach. */
+.meetings-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meetings-row > .meetings-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.meetings-join-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.meetings-join-chip:hover {
+  background: var(--accent-hover);
+}
+
+.meetings-join-chip .icon {
   width: 14px;
   height: 14px;
 }
@@ -5719,6 +5773,71 @@ input[type='radio'] {
 
 .meetings-pick {
   margin-top: 24px;
+}
+
+.meetings-follow .meetings-facts {
+  margin-top: 0;
+}
+
+.meetings-follow .meetings-facts dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.meetings-follow .meetings-facts a {
+  color: var(--accent-ink);
+  font-weight: 550;
+  text-underline-offset: 2px;
+}
+
+.meetings-follow .meetings-link-button {
+  padding: 0;
+}
+
+.meetings-follow .meetings-zone {
+  margin-left: 0;
+  font-size: 0.82rem;
+}
+
+.meetings-file-link {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.meetings-inline-form {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.meetings-inline-form input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.meetings-inline-form input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.meetings-follow .meetings-actions {
+  margin-top: 12px;
+}
+
+.meetings-follow > .meetings-notice {
+  margin-top: 10px;
 }
 
 .visually-hidden {

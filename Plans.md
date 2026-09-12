@@ -31,6 +31,9 @@ Ship a remote-first, AI-native Markdown workspace that runs on a target server, 
 - Meetings (milestone 11) follows Indico categories and events, including
   protected ones through a server-side token bound to one exact origin, and
   ties each meeting to a Markdown note.
+- Meetings and Zoom (milestone 12) adds Join for Zoom meetings, keeps the past
+  week listed, and attaches a recording link and transcript to a meeting, with
+  an AI summary and action items written into its note.
 - No remaining planned implementation items.
 
 ## Milestones
@@ -313,10 +316,44 @@ Done when:
 
 Deferred:
 - Attachments, participants, calendar write-back, background polling or
-  notifications, AI preparation or summaries, agenda sync into existing notes,
+  notifications, AI preparation (summaries came in milestone 12), agenda sync into existing notes,
   OAuth, and discovery across all of Indico.
 - Session names from the export fallback of the title lookup (export names
   events and contributions only).
+
+### 12. Meetings and Zoom: Join, Recordings, Transcripts, Summaries
+
+Goal: for the Zoom meetings most Indico meetings are, join from the list, and
+after the meeting tie its recording and transcript to its note and summarize
+the transcript into it, without a Zoom account (the user rarely hosts).
+
+- [x] `server/zoom.js`: Zoom join and recording links, meeting ID, and
+      passcode from an event's location, room, and description (link targets
+      and bare text), and the Zoom plugin's room from the event page, which
+      the export API omits. Zoom hosts over HTTPS only; `pwd` is the only
+      query kept.
+- [x] `eventPageZoom`: the page is read with the token, then anonymously when
+      a `read:legacy_api` token is turned away; failures only mean no Zoom.
+      Read for the opened meeting and for up to 12 meetings within a day.
+- [x] The listing keeps the past week (`MEETING_PAST_DAYS`), shown last as
+      **Past week**, so a meeting is still there when its recording is.
+- [x] `server/transcripts.js`: WebVTT, SubRip, voice tags, and Zoom saved
+      captions become a `type: transcript` note beside the meeting note, one
+      paragraph per speaker turn. `recording:` frontmatter set or removed line
+      by line. Summary prompt, tolerant JSON reply parsing, and insertion of
+      `## Summary` and deduplicated action items; an existing Summary is never
+      replaced.
+- [x] `workspace.editFile`: WebMD's own edits run in the document's write
+      queue and are broadcast as one ordinary version, so open editors rebase.
+- [x] Routes `POST /api/meetings/recording`, `/transcript`, `/summary`; each
+      creates the meeting note first when it has none.
+- [x] Meetings view: Join chip in the list while a call is on, **Join Zoom**
+      in the detail, and a **Recording and transcript** section. Fixture
+      `MEETINGS_MODE=zoom` and scenario checks.
+
+Deferred:
+- Signing in to Zoom to fetch recordings and transcripts automatically (only
+  works for meetings the user hosts).
 
 ## First Implementation Pass
 

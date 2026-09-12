@@ -141,6 +141,7 @@ mounted.
 1. **Root Directory Chroot-Jail Emulation:** The server must map execution context to an isolated `$WORKSPACE_ROOT` parameter. Directory traversal vectors (`../../etc/passwd`) must be aggressively blocked via strict canonical path validation hooks inside Express routers. Symlinks that resolve outside `$WORKSPACE_ROOT` are forbidden.
 2. **Lockless Atomic Operations:** Overwriting active notes must utilize memory-staged atomic proxy execution swaps (`fs.promises.writeFile` to a temporary hidden file followed by immediate renamed sync steps) to completely nullify file fragmentation corruptions if tunnels abort mid-payload delivery.
 3. **Create Without Overwrite:** Notes the server writes on the user's behalf (meeting notes) are created through a temp file and `link()`, which fails rather than replace an existing file, so a generated name can never clobber a user's note.
+   Later changes the server makes to such a note at the user's request (a meeting's `recording:` link, an AI summary) go through `workspace.editFile`, which works out the change inside the document's write queue and broadcasts it as one ordinary collaborative version, so an editor with the note open rebases onto it. An existing `## Summary` is refused, never replaced.
 
 ---
 

@@ -158,6 +158,11 @@ export async function createWorkspace(workspaceRoot) {
       invalidate();
       return result;
     },
+    editFile: async (filePath, transform) => {
+      const result = await editDocument(root, documents, filePath, transform);
+      invalidate();
+      return result;
+    },
     subscribeEvents: (filePath, since, send) =>
       subscribeDocumentEvents(root, documents, filePath, since, send),
     searchFiles: async (query, options) => {
@@ -907,34 +912,85 @@ async function applyDocumentUpdates(
       return { success: true, path: document.path, version: document.version };
     }
 
-    const nextContent = applyChangeSets(document.content, updates);
-    await saveFile(root, document.path, nextContent);
-    document.diskStamp = await currentDiskStamp(root, document.path);
-
-    const events = updates.map((update, index) => ({
-      path: document.path,
-      version: baseVersion + index + 1,
-      updates: [update]
-    }));
-
-    document.content = nextContent;
-    document.version = baseVersion + updates.length;
-    document.events.push(...events);
-    // ponytail: bounded in-memory log; persist logs when reconnect windows matter.
-    while (document.events.length > MAX_DOCUMENT_EVENTS)
-      document.events.shift();
-    for (const event of events) {
-      for (const listener of document.listeners) {
-        try {
-          listener(event);
-        } catch {
-          document.listeners.delete(listener);
-        }
-      }
-    }
-
+    await commitUpdates(
+      root,
+      document,
+      updates,
+      applyChangeSets(document.content, updates)
+    );
     return { success: true, path: document.path, version: document.version };
   });
+}
+
+/**
+ * A change WebMD itself makes to a note (a meeting summary, a recording link),
+ * worked out from the note's current text inside its write queue and applied
+ * as one ordinary version, so an editor that has it open rebases onto it
+ * instead of overwriting it. `transform` returns the new text, or the same
+ * text to leave the note alone; whatever it throws reaches the caller.
+ */
+async function editDocument(root, documents, filePath, transform) {
+  const document = await getDocument(root, documents, filePath);
+  return enqueueDocumentWrite(document, async () => {
+    const before = document.content;
+    const after = await transform(before);
+    if (typeof after !== 'string' || after === before) {
+      return { changed: false, path: document.path, version: document.version };
+    }
+    let start = 0;
+    while (start < before.length && before[start] === after[start]) start += 1;
+    let end = 0;
+    while (
+      end < before.length - start &&
+      end < after.length - start &&
+      before[before.length - 1 - end] === after[after.length - 1 - end]
+    )
+      end += 1;
+    const update = {
+      id: randomUUID(),
+      // Not any connected editor's id, so every client treats it as remote.
+      clientID: 'webmd',
+      changes: ChangeSet.of(
+        [
+          {
+            from: start,
+            to: before.length - end,
+            insert: after.slice(start, after.length - end)
+          }
+        ],
+        before.length
+      ).toJSON()
+    };
+    await commitUpdates(root, document, [update], after);
+    return { changed: true, path: document.path, version: document.version };
+  });
+}
+
+async function commitUpdates(root, document, updates, nextContent) {
+  const baseVersion = document.version;
+  await saveFile(root, document.path, nextContent);
+  document.diskStamp = await currentDiskStamp(root, document.path);
+
+  const events = updates.map((update, index) => ({
+    path: document.path,
+    version: baseVersion + index + 1,
+    updates: [update]
+  }));
+
+  document.content = nextContent;
+  document.version = baseVersion + updates.length;
+  document.events.push(...events);
+  // ponytail: bounded in-memory log; persist logs when reconnect windows matter.
+  while (document.events.length > MAX_DOCUMENT_EVENTS) document.events.shift();
+  for (const event of events) {
+    for (const listener of document.listeners) {
+      try {
+        listener(event);
+      } catch {
+        document.listeners.delete(listener);
+      }
+    }
+  }
 }
 
 async function subscribeDocumentEvents(root, documents, filePath, since, send) {

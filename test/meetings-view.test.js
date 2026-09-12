@@ -5,11 +5,14 @@ import {
   describeMeetingTime,
   filterMeetings,
   groupMeetings,
+  joinState,
   keepSelection,
+  meetingBegun,
   meetingSection,
   meetingsPane,
   sourceNotice,
-  sourceNotices
+  sourceNotices,
+  zoomMeetingId
 } from '../src/meetings.js';
 
 // Local wall-clock times, so the sections are checked in whatever zone the
@@ -42,7 +45,7 @@ test('sorts meetings into local-day sections', () => {
     [meeting('next sunday', local(2026, 9, 20, 23)), 'next-week'],
     [meeting('in two weeks', local(2026, 9, 21, 9)), 'later'],
     [meeting('workshop', local(2026, 9, 8, 9), local(2026, 9, 12, 18)), 'ongoing'],
-    [meeting('yesterday', local(2026, 9, 10, 9)), '']
+    [meeting('yesterday', local(2026, 9, 10, 9)), 'past']
   ];
   for (const [item, section] of cases) {
     assert.equal(meetingSection(item, NOW), section, item.title);
@@ -164,4 +167,41 @@ test('says a shared failure once, naming every source it broke', () => {
     sourceNotices(statuses, names).map((notice) => notice.text),
     ['Tracking, Seminars: rejected INDICO_CERN_TOKEN', 'Other Indico: offline']
   );
+});
+
+test('lists the past week last, newest first', () => {
+  const groups = groupMeetings(
+    [
+      meeting('monday', local(2026, 9, 7, 9)),
+      meeting('today', local(2026, 9, 11, 15)),
+      meeting('wednesday', local(2026, 9, 9, 9))
+    ],
+    NOW
+  );
+  assert.deepEqual(
+    groups.map((group) => [group.label, group.meetings.map((item) => item.title)]),
+    [
+      ['Today', ['today']],
+      ['Past week', ['wednesday', 'monday']]
+    ]
+  );
+});
+
+test('offers Join from a quarter hour before a Zoom meeting until it ends', () => {
+  const zoom = { url: 'https://cern.zoom.us/j/12345678901' };
+  const at = (h, min = 0) => local(2026, 9, 11, h, min);
+  const call = meeting('call', at(15), at(16), { zoom });
+  assert.equal(joinState(call, at(14, 44)), 'upcoming');
+  assert.equal(joinState(call, at(14, 45)), 'live');
+  assert.equal(joinState(call, at(15, 59)), 'live');
+  assert.equal(joinState(call, at(16, 1)), 'over');
+  assert.equal(joinState(meeting('room only', at(15)), at(15)), '');
+  assert.equal(meetingBegun(call, at(14, 59)), false);
+  assert.equal(meetingBegun(call, at(15)), true);
+});
+
+test('writes a Zoom meeting number the way Zoom does', () => {
+  assert.equal(zoomMeetingId('12345678901'), '123 4567 8901');
+  assert.equal(zoomMeetingId('1234567890'), '123 456 7890');
+  assert.equal(zoomMeetingId('123456789'), '123456789');
 });

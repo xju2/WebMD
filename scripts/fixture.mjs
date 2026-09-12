@@ -7,7 +7,7 @@
 //   AI_MODE=slow npm run fixture       # stream replies slowly
 //   AI_MODE=error npm run fixture      # the provider fails every request
 //   NEWS_MODE=error|empty npm run fixture
-//   MEETINGS_MODE=notoken|auth|offline|none npm run fixture
+//   MEETINGS_MODE=notoken|auth|offline|none|zoom npm run fixture
 //
 // Meetings talk to a canned Indico at indico.cern.ch with a placeholder token
 // (never a real one): `notoken` drops the token, `auth` makes Indico reject it,
@@ -225,6 +225,12 @@ async function aiFetch(_url, options) {
         reason: `Fixture reason ${index + 1}, from the stub ranker.`
       }))
     );
+  } else if (/write the minutes of a research meeting/.test(prompt)) {
+    text = JSON.stringify({
+      summary: ['Fixture summary point from the stub.', 'A second fixture point.'],
+      decisions: ['Keep the fixture geometry.'],
+      actions: [{ task: 'Rerun the fixture validation', owner: 'Fixture Person', due: isoDay(7) }]
+    });
   } else if (user.content.includes('\n\nSelected text to replace:\n')) {
     text = 'Fixture replacement text from the stub editor.';
   } else {
@@ -364,6 +370,62 @@ const indicoEvents = {
     contributions: []
   }
 };
+
+// Zoom mode adds a Zoom call under way right now and one from last week that
+// has its recording linked, to the public category.
+const zurichAt = (ms) => {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Zurich',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23'
+    })
+      .formatToParts(ms)
+      .map((part) => [part.type, part.value])
+  );
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:00`,
+    tz: 'Europe/Zurich'
+  };
+};
+if (meetingsMode === 'zoom') {
+  const now = Date.now();
+  indicoEvents[9006] = {
+    id: '9006',
+    title: 'Analysis check-in on Zoom',
+    type: 'meeting',
+    category: 'Public seminars',
+    startDate: zurichAt(now - 10 * 60 * 1000),
+    endDate: zurichAt(now + 50 * 60 * 1000),
+    timezone: 'Europe/Zurich',
+    location: 'Zoom',
+    description:
+      '<p>Join: <a href="https://cern.zoom.us/j/98765432101?pwd=Fixture.1&amp;uname=x">Zoom</a></p><p>Passcode: 424242</p>',
+    hasAnyProtection: false,
+    categoryId: 200,
+    contributions: []
+  };
+  indicoEvents[9007] = {
+    id: '9007',
+    title: 'Last week analysis review',
+    type: 'meeting',
+    category: 'Public seminars',
+    startDate: zurich(-3, '10:00'),
+    endDate: zurich(-3, '11:00'),
+    timezone: 'Europe/Zurich',
+    location: 'Zoom',
+    description:
+      '<p><a href="https://cern.zoom.us/j/12345678901">Join</a></p><p><a href="https://cern.zoom.us/rec/share/fixture-recording">Recording</a></p>',
+    hasAnyProtection: false,
+    categoryId: 200,
+    contributions: []
+  };
+}
 
 async function indicoFetch(target, options = {}) {
   const url = new URL(target);

@@ -6766,6 +6766,7 @@
           <MeetingsView
             active={viewMode === 'meetings'}
             onOpenNote={openMeetingNote}
+            onFilesChanged={() => loadTree(selectedRoot)}
             root={selectedRoot}
           />
         {/if}

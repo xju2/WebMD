@@ -11,16 +11,22 @@
     describeRange,
     filterMeetings,
     groupMeetings,
+    joinState,
     keepSelection,
+    meetingBegun,
     meetingPlace,
     meetingsPane,
-    sourceNotices
+    noteName,
+    sourceNotices,
+    zoomMeetingId
   } from './meetings.js';
 
   export let root = '0';
   export let active = false;
   // Opens a note in the editor; the parent owns navigation and the tree.
   export let onOpenNote = async () => {};
+  // A note or transcript was made here; the parent's file tree should show it.
+  export let onFilesChanged = async () => {};
 
   const COMPACT_WIDTH = 720;
 
@@ -53,6 +59,14 @@
   let observer;
   let request = 0;
   let now = Date.now();
+  // Recording and transcript, for the selected meeting only.
+  let followBusy = '';
+  let followError = '';
+  let followMessage = '';
+  let recordingEditing = false;
+  let recordingDraft = '';
+  let recordingInput;
+  let transcriptInput;
 
   $: compact = paneWidth < COMPACT_WIDTH;
   $: layout = meetingsPane({ compact, detailOpen: detailOpen && !!selectedKey });
@@ -61,6 +75,8 @@
   $: sections = groupMeetings(shown, now);
   $: shownCount = sections.reduce((sum, section) => sum + section.meetings.length, 0);
   $: selected = meetings.find((meeting) => meeting.key === selectedKey) || null;
+  $: view = selected && detail?.key === selected.key ? detail : selected;
+  $: join = joinState(view, now);
   $: sourceById = new Map(sources.map((source) => [source.id, source]));
   $: notices = sourceNotices(listing?.statuses, sourceById);
   $: blocked = notices.some((notice) => notice.tone === 'error');
@@ -69,13 +85,21 @@
   $: if (active && loadedRoot === root && !loading && !listing && !loadError)
     load();
 
+  // The clock moves a Join button into view as a meeting's start comes near.
+  let clock;
   onMount(() => {
     observer = new ResizeObserver(([entry]) => {
       paneWidth = entry.contentRect.width;
     });
     if (pane) observer.observe(pane);
+    clock = setInterval(() => {
+      if (active) now = Date.now();
+    }, 30000);
   });
-  onDestroy(() => observer?.disconnect());
+  onDestroy(() => {
+    observer?.disconnect();
+    clearInterval(clock);
+  });
 
   // Returning to the view picks up notes created or renamed elsewhere; the
   // server's cache keeps this from costing Indico anything.
@@ -143,7 +167,7 @@
       else if (detail && selectedKey === detailKey) {
         // The note may have been created or renamed since the detail loaded.
         const fresh = body.meetings.find((item) => item.key === selectedKey);
-        if (fresh) detail = { ...detail, notePath: fresh.notePath };
+        if (fresh) detail = { ...detail, ...meetingFiles(fresh) };
       }
     } catch (error) {
       if (current !== request) return;
@@ -155,6 +179,7 @@
   }
 
   async function choose(meeting) {
+    if (selectedKey !== meeting.key) resetFollow();
     selectedKey = meeting.key;
     detailOpen = true;
     noteError = '';
@@ -205,7 +230,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ root, origin: meeting.origin, id: meeting.eventId })
       });
-      markNote(meeting.key, result.path);
+      markFiles(meeting.key, { notePath: result.path });
       await onOpenNote(result.path, { created: result.created });
     } catch (error) {
       noteError = error.message;
@@ -214,16 +239,106 @@
     }
   }
 
-  function markNote(key, path) {
+  function meetingFiles(item) {
+    return {
+      notePath: item.notePath,
+      recording: item.recording,
+      transcriptPath: item.transcriptPath
+    };
+  }
+
+  function markFiles(key, files) {
     if (listing) {
       listing = {
         ...listing,
         meetings: listing.meetings.map((item) =>
-          item.key === key ? { ...item, notePath: path } : item
+          item.key === key ? { ...item, ...files } : item
         )
       };
     }
-    if (detail?.key === key) detail = { ...detail, notePath: path };
+    if (detail?.key === key) detail = { ...detail, ...files };
+  }
+
+  function resetFollow() {
+    followBusy = '';
+    followError = '';
+    followMessage = '';
+    recordingEditing = false;
+    recordingDraft = '';
+  }
+
+  // Each of these creates the meeting's note first when it has none, so the
+  // recording and transcript always have a note to belong to.
+  async function followUp(kind, body) {
+    const meeting = selected;
+    if (!meeting || followBusy) return null;
+    followBusy = kind;
+    followError = '';
+    followMessage = '';
+    try {
+      const result = await requestJson(`/api/meetings/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          origin: meeting.origin,
+          id: meeting.eventId,
+          ...body
+        })
+      });
+      markFiles(meeting.key, meetingFiles(result));
+      if (result.created || (kind === 'transcript' && !meeting.transcriptPath))
+        onFilesChanged();
+      return result;
+    } catch (error) {
+      if (selectedKey === meeting.key) followError = error.message;
+      return null;
+    } finally {
+      followBusy = '';
+    }
+  }
+
+  async function editRecording(current = '') {
+    recordingEditing = true;
+    recordingDraft = current;
+    followError = '';
+    await tick();
+    recordingInput?.focus();
+    recordingInput?.select();
+  }
+
+  async function saveRecording(url = recordingDraft) {
+    const result = await followUp('recording', { url: url.trim() });
+    if (!result) return;
+    recordingEditing = false;
+    followMessage = result.recording
+      ? 'Recording link saved in the note.'
+      : 'Recording link removed from the note.';
+  }
+
+  async function uploadTranscript(event) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      followError = 'That transcript is larger than 5 MB.';
+      return;
+    }
+    const replacing = Boolean(view?.transcriptPath);
+    const result = await followUp('transcript', {
+      name: file.name,
+      text: await file.text()
+    });
+    if (result) {
+      followMessage = `${replacing ? 'Transcript replaced' : 'Transcript saved'}: ${result.turns} ${result.turns === 1 ? 'turn' : 'turns'}.`;
+    }
+  }
+
+  async function summarize() {
+    const result = await followUp('summary', {});
+    if (!result) return;
+    followMessage = `Added ${result.points} summary ${result.points === 1 ? 'point' : 'points'} and ${result.actions} action ${result.actions === 1 ? 'item' : 'items'} to the note${result.truncated ? ', from the first part of a long transcript' : ''}.`;
+    await onOpenNote(result.notePath);
   }
 
   async function toggleManage() {
@@ -475,7 +590,8 @@
           <ul>
             {#each section.meetings as meeting (meeting.key)}
               {@const time = describeMeetingTime(meeting)}
-              <li>
+              {@const joining = joinState(meeting, now)}
+              <li class="meetings-row">
                 <button
                   use:trackButton={meeting.key}
                   type="button"
@@ -496,15 +612,31 @@
                           {@render icon('lock')}<span class="visually-hidden">Protected.</span>
                         </span>
                       {/if}
+                      {#if meeting.zoom?.url && joining !== 'live'}
+                        <span class="meetings-zoom-mark" title="Zoom meeting">
+                          {@render icon('video')}<span class="visually-hidden">Zoom.</span>
+                        </span>
+                      {/if}
                       {meetingPlace(meeting) || meeting.category || sourceNames(meeting)}
                     </span>
                   </span>
-                  {#if meeting.notePath}
-                    <span class="meetings-item-note" title="Has a note">
-                      {@render icon('file')}<span class="visually-hidden">Has a note.</span>
+                  {#if meeting.notePath || meeting.transcriptPath}
+                    <span class="meetings-item-note" title={meeting.transcriptPath ? 'Has a note and a transcript' : 'Has a note'}>
+                      {@render icon('file')}<span class="visually-hidden">{meeting.transcriptPath ? 'Has a note and a transcript.' : 'Has a note.'}</span>
                     </span>
                   {/if}
                 </button>
+                {#if joining === 'live'}
+                  <a
+                    class="meetings-join-chip"
+                    href={meeting.zoom.url}
+                    rel="noopener noreferrer"
+                    target="_blank"
+                    aria-label={`Join ${meeting.title} on Zoom`}
+                  >
+                    {@render icon('video')} Join
+                  </a>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -523,7 +655,6 @@
       >
         {#if selected}
           {@const time = describeMeetingTime(selected)}
-          {@const view = detail?.key === selected.key ? detail : selected}
           {#if compact}
             <button class="meetings-back" type="button" on:click={backToList}>
               {@render icon('chevronLeft')} All meetings
@@ -544,6 +675,15 @@
             {#if view.address}
               <div><dt>Address</dt><dd>{view.address}</dd></div>
             {/if}
+            {#if view.zoom?.url}
+              <div>
+                <dt>Zoom</dt>
+                <dd>
+                  {#if view.zoom.id}Meeting ID {zoomMeetingId(view.zoom.id)}{:else}Personal room{/if}
+                  {#if view.zoom.passcode}<span class="meetings-zone">· Passcode {view.zoom.passcode}</span>{/if}
+                </dd>
+              </div>
+            {/if}
             <div>
               <dt>Source</dt>
               <dd>
@@ -556,8 +696,19 @@
             {/if}
           </dl>
           <div class="meetings-actions">
+            {#if join === 'live' || join === 'upcoming'}
+              <a
+                class="meetings-open-indico meetings-join"
+                class:primary={join === 'live'}
+                href={view.zoom.url}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                {@render icon('video')} {join === 'live' ? 'Join Zoom now' : 'Join Zoom'}
+              </a>
+            {/if}
             <button
-              class="primary"
+              class:primary={join !== 'live'}
               type="button"
               disabled={noteBusy}
               on:click={openNote}
@@ -576,6 +727,90 @@
           </div>
           {#if noteError}
             <p class="meetings-notice error" role="alert">{noteError}</p>
+          {/if}
+
+          {#if meetingBegun(selected, now) || view.recording || view.transcriptPath}
+            {@const indicoRecording = view.zoom?.recording || ''}
+            <section class="meetings-follow" aria-label="Recording and transcript">
+              <h4 class="meetings-agenda-title">Recording and transcript</h4>
+              <dl class="meetings-facts">
+                <div>
+                  <dt>Recording</dt>
+                  <dd>
+                    {#if recordingEditing}
+                      <form class="meetings-inline-form" on:submit|preventDefault={() => saveRecording()}>
+                        <input
+                          bind:this={recordingInput}
+                          bind:value={recordingDraft}
+                          aria-label="Recording link"
+                          autocomplete="off"
+                          inputmode="url"
+                          placeholder="https://cern.zoom.us/rec/share/…"
+                          spellcheck="false"
+                          type="url"
+                        />
+                        <button class="meetings-link-button" type="submit" disabled={!!followBusy}>
+                          Save
+                        </button>
+                        <button class="meetings-link-button" type="button" on:click={() => (recordingEditing = false)}>
+                          Cancel
+                        </button>
+                      </form>
+                    {:else if view.recording}
+                      <a href={view.recording} rel="noopener noreferrer" target="_blank">Open recording</a>
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => editRecording(view.recording)}>Change</button>
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => saveRecording('')}>Remove</button>
+                    {:else if indicoRecording}
+                      <a href={indicoRecording} rel="noopener noreferrer" target="_blank">Open recording</a>
+                      <span class="meetings-zone">linked in Indico</span>
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => saveRecording(indicoRecording)}>Save to note</button>
+                    {:else}
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => editRecording()}>Add link</button>
+                    {/if}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Transcript</dt>
+                  <dd>
+                    {#if view.transcriptPath}
+                      <button class="meetings-link-button meetings-file-link" type="button" on:click={() => onOpenNote(view.transcriptPath)}>
+                        {noteName(view.transcriptPath)}
+                      </button>
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => transcriptInput.click()}>
+                        {followBusy === 'transcript' ? 'Saving…' : 'Replace'}
+                      </button>
+                    {:else}
+                      <button class="meetings-link-button" type="button" disabled={!!followBusy} on:click={() => transcriptInput.click()}>
+                        {followBusy === 'transcript' ? 'Saving…' : 'Add file'}
+                      </button>
+                      <span class="meetings-zone">.vtt, .srt, or .txt: in Zoom, the recording’s Audio transcript</span>
+                    {/if}
+                    <input
+                      bind:this={transcriptInput}
+                      class="visually-hidden"
+                      type="file"
+                      accept=".vtt,.srt,.txt,text/vtt,text/plain"
+                      tabindex="-1"
+                      aria-hidden="true"
+                      on:change={uploadTranscript}
+                    />
+                  </dd>
+                </div>
+              </dl>
+              {#if view.transcriptPath}
+                <div class="meetings-actions">
+                  <button type="button" disabled={!!followBusy} on:click={summarize}>
+                    {@render icon('sparkles')}
+                    {followBusy === 'summary' ? 'Summarizing…' : 'Summarize into note'}
+                  </button>
+                </div>
+              {/if}
+              {#if followError}
+                <p class="meetings-notice error" role="alert">{followError}</p>
+              {:else if followMessage}
+                <p class="meetings-notice" role="status">{followMessage}</p>
+              {/if}
+            </section>
           {/if}
 
           {#if view.description}

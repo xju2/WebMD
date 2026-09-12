@@ -9,6 +9,8 @@ import { indicoSites } from '../server/indico.js';
 import {
   htmlToText,
   indicoTime,
+  eventPageZoom,
+  fetchMeeting,
   listMeetings,
   meetingNoteMarkdown,
   noteMeetingKey,
@@ -16,6 +18,7 @@ import {
   parseMeetingSource,
   resetMeetingsCache
 } from '../server/meetings.js';
+import { findZoom, mergeZoom, pageZoom, zoomLink } from '../server/zoom.js';
 import { parseFrontmatter } from '../src/frontmatter.js';
 
 const CERN = 'https://indico.cern.ch';
@@ -95,7 +98,11 @@ const PUBLIC_SEMINAR = rawEvent(
   303,
   'Public seminar',
   ['2026-09-12', '11:00'],
-  ['2026-09-12', '12:00']
+  ['2026-09-12', '12:00'],
+  {
+    description:
+      '<p>Join on <a href="https://cern.zoom.us/j/98765432101?pwd=AbC.1&amp;uname=Someone#success">Zoom</a></p><p>Passcode: 424242.</p>'
+  }
 );
 const FINISHED = rawEvent(
   404,
@@ -221,8 +228,144 @@ test('normalizes an event into the application model without inventing fields', 
   assert.equal(event.description, 'Agenda & minutes\nZoom link in the timetable');
   assert.equal(event.protected, true);
   assert.equal(event.allDay, false);
+  // It mentions Zoom but carries no link or number: no Zoom is made up.
+  assert.equal(event.zoom, null);
   assert.equal(normalizeEvent({ id: 'x' }, CERN), null);
   assert.equal(normalizeEvent({ id: '5', title: 'No dates' }, CERN), null);
+});
+
+test('finds the Zoom join link organizers put in an event, and only Zoom', () => {
+  assert.deepEqual(normalizeEvent(PUBLIC_SEMINAR, CERN).zoom, {
+    // Only the embedded passcode survives; tracking and a stray name do not.
+    url: 'https://cern.zoom.us/j/98765432101?pwd=AbC.1',
+    id: '98765432101',
+    passcode: '424242',
+    recording: ''
+  });
+  // Typed into the location, as a bare link.
+  assert.equal(
+    findZoom({ location: 'Zoom: https://ucsc.zoom.us/my/lab-room' }).url,
+    'https://ucsc.zoom.us/my/lab-room'
+  );
+  // Only a meeting number, written out.
+  assert.deepEqual(
+    findZoom({ description: 'Zoom meeting ID: 912 3456 7890, Password: xyz' }),
+    { url: 'https://zoom.us/j/91234567890', id: '91234567890', passcode: 'xyz', recording: '' }
+  );
+  // A recording link added after the meeting.
+  assert.equal(
+    findZoom({ description: '<a href="https://cern.zoom.us/rec/share/Ab_c-1.xyz?startTime=1">Recording</a>' })
+      .recording,
+    'https://cern.zoom.us/rec/share/Ab_c-1.xyz?startTime=1'
+  );
+  for (const bad of [
+    'http://cern.zoom.us/j/98765432101',
+    'https://zoom.us.evil.example/j/98765432101',
+    'https://evilzoom.us/j/98765432101',
+    'https://cern.zoom.us/signin',
+    'javascript:alert(1)'
+  ]) {
+    assert.equal(zoomLink(bad), null, bad);
+  }
+  assert.equal(findZoom({ description: 'Room 40/S2-C01, ID 12345678901' }), null);
+});
+
+// The shape of the Zoom plugin's block on a CERN event page, as an anonymous
+// visitor sees it: the join button asks for a login, the details do not.
+const VC_ROOM_ANONYMOUS = `
+<div class="vc-room-list">
+  <ind-vc-room-segment class="ui segment vc-room-segment">
+    <div class="item vc-icon"><img src="/static/plugins/vc_zoom/images/zoom_logo.svg"></div>
+    <ind-vc-zoom-join-button classes="orange " href="https://indico.cern.ch/login/?next=/event/101/"
+      caption="Please log in"></ind-vc-zoom-join-button>
+    <div class="ui list">
+      <div class="item"><div class="header">Zoom Meeting ID</div>
+        63934786609
+      </div>
+      <div class="item"><div class="header">Useful links</div>
+        <a href="https://videoconference.docs.cern.ch/zoom-meetings/#phone">Join via phone</a></div>
+      <div class="item"><div class="header">Zoom URL</div>
+        <input name="vc-room-url-1188950" type="text" value="https://cern.zoom.us/j/63934786609" readonly>
+      </div>
+    </div>
+  </ind-vc-room-segment>
+</div>`;
+const VC_ROOM_SIGNED_IN = VC_ROOM_ANONYMOUS.replace(
+  'href="https://indico.cern.ch/login/?next=/event/101/"',
+  'href="https://cern.zoom.us/j/63934786609?pwd=Sign.In&amp;from=addon"'
+).replace('</ind-vc-room-segment>', '<div class="item"><div class="header">Passcode</div> 777111 </div></ind-vc-room-segment>');
+
+test('reads the Zoom plugin room off an event page', () => {
+  assert.deepEqual(pageZoom(`<html>${VC_ROOM_ANONYMOUS}</html>`), {
+    url: 'https://cern.zoom.us/j/63934786609',
+    id: '63934786609',
+    passcode: '',
+    recording: ''
+  });
+  assert.deepEqual(pageZoom(VC_ROOM_SIGNED_IN), {
+    url: 'https://cern.zoom.us/j/63934786609?pwd=Sign.In',
+    id: '63934786609',
+    passcode: '777111',
+    recording: ''
+  });
+  assert.equal(pageZoom('<html>no rooms</html>'), null);
+  assert.equal(pageZoom('<div class="vc-room-list"><ind-vc-room-segment>Vidyo</ind-vc-room-segment></div>'), null);
+  // The page's room wins; a recording only the description had is kept.
+  assert.deepEqual(
+    mergeZoom(
+      { url: 'https://zoom.us/j/111111111', id: '111111111', passcode: 'x', recording: 'https://cern.zoom.us/rec/share/r' },
+      pageZoom(VC_ROOM_ANONYMOUS)
+    ),
+    {
+      url: 'https://cern.zoom.us/j/63934786609',
+      id: '63934786609',
+      passcode: '',
+      recording: 'https://cern.zoom.us/rec/share/r'
+    }
+  );
+});
+
+test('reads the page with the token, else anonymously, and never fails the list for it', async () => {
+  const calls = [];
+  const fetchImpl = async (target, options = {}) => {
+    const auth = options.headers?.Authorization || '';
+    calls.push({ url: target, auth });
+    const url = new URL(target);
+    if (url.pathname === '/export/event/101.json') {
+      return new Response(JSON.stringify({ results: [WEEKLY] }));
+    }
+    if (url.pathname === '/event/101/') {
+      // A read:legacy_api token is turned away from HTML views.
+      if (auth) return new Response('Forbidden', { status: 403 });
+      return new Response(`<html>${VC_ROOM_ANONYMOUS}</html>`);
+    }
+    if (url.pathname === '/export/categ/10.json') {
+      return new Response(JSON.stringify({ results: [WEEKLY, WORKSHOP] }));
+    }
+    return new Response('boom', { status: 500 });
+  };
+  const sites = indicoSites({ INDICO_CERN_TOKEN: TOKEN });
+
+  const meeting = await fetchMeeting(CERN, '101', { sites, fetchImpl });
+  assert.equal(meeting.zoom.url, 'https://cern.zoom.us/j/63934786609');
+  assert.deepEqual(
+    calls.filter((call) => call.url.endsWith('/event/101/')).map((call) => Boolean(call.auth)),
+    [true, false]
+  );
+
+  // The list reads pages only for meetings in the next day: today's weekly,
+  // not next week's workshop, whose page fails without failing anything.
+  resetMeetingsCache();
+  calls.length = 0;
+  const listing = await listMeetings([source(`${CERN}/category/10/`)], {
+    sites,
+    fetchImpl,
+    now: () => NOW
+  });
+  assert.equal(listing.meetings.find((item) => item.eventId === '101').zoom.id, '63934786609');
+  assert.equal(listing.meetings.find((item) => item.eventId === '202').zoom, null);
+  assert.ok(!calls.some((call) => call.url.endsWith('/event/202/')));
+  assert.equal(await eventPageZoom(CERN, '999', { sites: new Map(), fetchImpl }), null);
 });
 
 test('re-reads times listed in the server zone in the event zone', () => {
@@ -293,7 +436,8 @@ test('asks for a bounded window and insists on a login when it has a token', asy
     now: () => NOW
   });
   const url = new URL(calls[0].url);
-  assert.equal(url.searchParams.get('from'), '2026-09-10');
+  // The past week too, so a meeting stays listed until its recording is in.
+  assert.equal(url.searchParams.get('from'), '2026-09-03');
   assert.equal(url.searchParams.get('to'), '2026-09-26');
   assert.equal(url.searchParams.get('oa'), 'yes');
   assert.equal(url.searchParams.get('limit'), '200');
@@ -401,6 +545,11 @@ test('writes a readable meeting note with a stable association', () => {
   assert.match(body, /- 2026-09-12 10:00 Coffee$/m);
   assert.match(body, /## Notes\n/);
   assert.match(body, /## Action items\n/);
+  assert.doesNotMatch(body, /Zoom:/);
+  assert.match(
+    meetingNoteMarkdown({ ...normalizeEvent(PUBLIC_SEMINAR, CERN), agenda: [] }),
+    /- \*\*Zoom:\*\* <https:\/\/cern\.zoom\.us\/j\/98765432101\?pwd=AbC\.1> \(passcode 424242\)/
+  );
   // No blank checkbox that the Tasks view would count as an empty task.
   assert.doesNotMatch(body, /- \[ \]/);
 });

@@ -11,6 +11,7 @@ import {
   tokenForOrigin
 } from './indico.js';
 import { normalizeWorkspaceFolder, WorkspaceError } from './workspace.js';
+import { findZoom, mergeZoom, pageZoom } from './zoom.js';
 
 /**
  * Meetings: Indico categories and events a workspace subscribes to, the
@@ -36,6 +37,9 @@ export const MEETINGS_CONFIG_VERSION = 1;
 // How far ahead a category is asked for. Two weeks covers This week, Next
 // week, and a little of what follows, which is what a triage view is for.
 export const MEETING_WINDOW_DAYS = 14;
+// How far back a meeting stays listed: long enough for its recording and
+// transcript to turn up and be attached to its note.
+export const MEETING_PAST_DAYS = 7;
 // Enough for a busy category's fortnight without letting one source flood the
 // list or the response.
 const CATEGORY_LIMIT = 200;
@@ -43,6 +47,11 @@ const MAX_SOURCES = 50;
 const MAX_LABEL = 120;
 const MAX_DESCRIPTION = 4000;
 const MAX_AGENDA = 300;
+// Meetings whose Zoom room is read off their page for the list's Join button:
+// those under way or starting within a day, and never more than a handful.
+const ZOOM_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
+const MAX_ZOOM_PAGES = 12;
+const ZOOM_PAGE_TIMEOUT_MS = 6000;
 
 // Fresh enough for a list someone glances at a few times a day; Refresh
 // bypasses it. Bounded so a long-running server cannot grow it without end.
@@ -388,6 +397,26 @@ export async function listMeetings(
   const meetings = [...byKey.values()].sort(
     (a, b) => a.startsAt - b.startsAt || a.title.localeCompare(b.title)
   );
+  // Joining is about the next day: only those meetings' pages are read.
+  const soon = meetings
+    .filter(
+      (meeting) =>
+        meeting.endsAt >= now() &&
+        meeting.startsAt <= now() + ZOOM_LOOKAHEAD_MS &&
+        !meeting.allDay &&
+        meeting.endsAt - meeting.startsAt <= 12 * 60 * 60 * 1000
+    )
+    .slice(0, MAX_ZOOM_PAGES);
+  await Promise.all(
+    soon.map(async (meeting) => {
+      const found = await eventPageZoom(meeting.origin, meeting.eventId, {
+        sites,
+        fetchImpl,
+        refresh
+      });
+      meeting.zoom = mergeZoom(meeting.zoom, found);
+    })
+  );
   return {
     from: new Date(window.cutoff).toISOString(),
     to: new Date(window.until).toISOString(),
@@ -398,18 +427,23 @@ export async function listMeetings(
 }
 
 /**
- * Asks Indico for a day either side of the fortnight, in UTC, and leaves the
- * browser to decide what "today" is: the server and the reader need not share
- * a timezone. Anything that ended more than a day ago is dropped here.
+ * Asks Indico for the past week and the coming fortnight with a day to spare
+ * either side, in UTC, and leaves the browser to decide what "today" is: the
+ * server and the reader need not share a timezone. Anything that ended before
+ * the past week began is dropped here.
  */
-export function meetingWindow(nowMs, days = MEETING_WINDOW_DAYS) {
+export function meetingWindow(
+  nowMs,
+  days = MEETING_WINDOW_DAYS,
+  pastDays = MEETING_PAST_DAYS
+) {
   const day = 24 * 60 * 60 * 1000;
-  const from = new Date(nowMs - day);
+  const from = new Date(nowMs - (pastDays + 1) * day);
   const to = new Date(nowMs + (days + 1) * day);
   return {
     from: isoDate(from),
     to: isoDate(to),
-    cutoff: nowMs - day,
+    cutoff: nowMs - pastDays * day,
     until: nowMs + days * day
   };
 }
@@ -483,13 +517,70 @@ export async function fetchMeeting(
           404
         );
   }
+  const found = await eventPageZoom(checked, eventId, { sites, fetchImpl, refresh });
   return {
-    ...publicMeeting(event),
+    ...publicMeeting({ ...event, zoom: mergeZoom(event.zoom, found) }),
     agenda: normalizeAgenda(raw.contributions, checked, event.timezone),
     unscheduled: Array.isArray(raw.contributions)
       ? raw.contributions.filter((item) => !item?.startDate).length
       : 0
   };
+}
+
+/**
+ * The Zoom room on an event's page, or null. The page is asked for with the
+ * token first; a token scoped to the export API alone is turned away from
+ * HTML views, and a public event's room is on its anonymous page too, so that
+ * is tried next. Never fails the caller: a page that cannot be read just means
+ * no Zoom from it. Cached like the exports.
+ */
+export async function eventPageZoom(
+  origin,
+  eventId,
+  { sites = new Map(), fetchImpl = fetch, refresh = false } = {}
+) {
+  const url = `${origin}/event/${eventId}/`;
+  const token = tokenForOrigin(origin, sites);
+  const key = `zoom ${token ? 'auth' : 'anon'} ${url}`;
+  return cached(key, refresh, async () => {
+    const read = (withToken) =>
+      indicoFetch(url, {
+        fetchImpl,
+        sites,
+        token: withToken,
+        accept: 'text/html',
+        timeoutMs: ZOOM_PAGE_TIMEOUT_MS
+      }).then((response) => response.text());
+    try {
+      return pageZoom(await read(token));
+    } catch (error) {
+      if (!token || !['auth', 'redirect'].includes(error.kind)) return null;
+    }
+    try {
+      return pageZoom(await read(''));
+    } catch {
+      return null;
+    }
+  });
+}
+
+/** One cached, shared request per key; `refresh` asks again. */
+async function cached(key, refresh, load) {
+  if (!refresh) {
+    const hit = cache.get(key);
+    if (hit && hit.expiresAt > Date.now()) return hit.value;
+    const pending = inFlight.get(key);
+    if (pending) return await pending;
+  }
+  const request = load().finally(() => {
+    if (inFlight.get(key) === request) inFlight.delete(key);
+  });
+  inFlight.set(key, request);
+  const value = await request;
+  cache.delete(key);
+  cache.set(key, { value, expiresAt: Date.now() + CACHE_MS });
+  while (cache.size > CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+  return value;
 }
 
 async function exportJson(origin, exportPath, params, options) {
@@ -498,15 +589,7 @@ async function exportJson(origin, exportPath, params, options) {
   // Keyed with whether a token went along, so a list fetched anonymously is
   // never served as the authenticated one.
   const key = `${options.token ? 'auth' : 'anon'} ${url}`;
-
-  if (!options.refresh) {
-    const cached = cache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.value;
-    const pending = inFlight.get(key);
-    if (pending) return await pending;
-  }
-
-  const request = (async () => {
+  return cached(key, options.refresh, async () => {
     const response = await indicoFetch(url, {
       fetchImpl: options.fetchImpl,
       sites: options.sites,
@@ -525,16 +608,7 @@ async function exportJson(origin, exportPath, params, options) {
           : `${new URL(origin).hostname} did not answer with JSON; it may need a login. Set ${indicoTokenName(origin, options.sites)} and restart WebMD.`
       );
     }
-  })().finally(() => {
-    if (inFlight.get(key) === request) inFlight.delete(key);
   });
-  inFlight.set(key, request);
-
-  const value = await request;
-  cache.delete(key);
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_MS });
-  while (cache.size > CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-  return value;
 }
 
 /* -------------------------------------------------------------- normalization */
@@ -575,6 +649,7 @@ export function normalizeEvent(raw, origin) {
     room: placeText(raw.roomFullname) || placeText(raw.room),
     address: placeText(raw.address),
     description: htmlToText(raw.description).slice(0, MAX_DESCRIPTION),
+    zoom: findZoom(raw),
     protected: raw.hasAnyProtection === true
   };
 }
@@ -765,11 +840,49 @@ function isAllDay(start, end) {
  */
 export function meetingNotes(files) {
   const notes = new Map();
-  for (const file of files) {
-    const key = noteMeetingKey(file.metadata?.indico);
-    if (key && !notes.has(key)) notes.set(key, file.path);
+  for (const [key, found] of meetingFiles(files)) {
+    if (found.notePath) notes.set(key, found.notePath);
   }
   return notes;
+}
+
+/**
+ * Everything the workspace holds for each meeting, by meeting key:
+ * `{ notePath, recording, transcriptPath }`. A transcript is a note of its own
+ * (`type: transcript`) carrying the same `indico:` link, so it never stands in
+ * for the meeting's note. A recording is the note's `recording:` link, passed
+ * on only when it is a web address.
+ */
+export function meetingFiles(files) {
+  const found = new Map();
+  const entry = (key) => {
+    if (!found.has(key))
+      found.set(key, { notePath: '', recording: '', transcriptPath: '' });
+    return found.get(key);
+  };
+  for (const file of files) {
+    const key = noteMeetingKey(file.metadata?.indico);
+    if (!key) continue;
+    const item = entry(key);
+    if (file.metadata?.type === 'transcript') {
+      item.transcriptPath ||= file.path;
+    } else if (!item.notePath) {
+      item.notePath = file.path;
+      item.recording = webLink(file.metadata?.recording);
+    }
+  }
+  return found;
+}
+
+/** An http(s) address, or '' for anything else a note's field might hold. */
+export function webLink(value) {
+  if (typeof value !== 'string') return '';
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : '';
+  } catch {
+    return '';
+  }
 }
 
 /** The meeting key a note's `indico:` field names, tolerant of how it was typed. */
@@ -839,9 +952,9 @@ export async function ensureMeetingNote(workspace, meeting, { noteFolder }) {
  * the note out from under the association, and a recurring meeting's weekly
  * notes differ by date.
  */
-function meetingNoteNames(meeting) {
-  const base = `${meeting.title} (${meeting.start.date})`;
-  const fallback = `${meeting.title} (${meeting.start.date}, event ${meeting.eventId})`;
+export function meetingNoteNames(meeting, suffix = '') {
+  const base = `${meeting.title} (${meeting.start.date})${suffix}`;
+  const fallback = `${meeting.title} (${meeting.start.date}, event ${meeting.eventId})${suffix}`;
   return [base, fallback]
     .map((heading) => ({ heading, name: titleFileName(heading) }))
     .filter((item) => item.name);
@@ -867,6 +980,12 @@ export function meetingNoteMarkdown(
   ];
   const place = [meeting.room, meeting.location].filter(Boolean);
   if (place.length) lines.push(`- **Where:** ${escapeInline([...new Set(place)].join(', '))}`);
+  if (meeting.zoom?.url) {
+    const passcode = meeting.zoom.passcode
+      ? ` (passcode ${escapeInline(meeting.zoom.passcode)})`
+      : '';
+    lines.push(`- **Zoom:** <${meeting.zoom.url}>${passcode}`);
+  }
 
   const agenda = meeting.agenda || [];
   if (agenda.length) {
@@ -902,7 +1021,7 @@ function noteWhen(meeting) {
   return `${start.date} ${start.time} – ${until} (${timezone})`;
 }
 
-function escapeInline(text) {
+export function escapeInline(text) {
   return String(text).replace(/([\\`*_[\]<>|])/g, '\\$1');
 }
 

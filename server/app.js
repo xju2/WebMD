@@ -11,12 +11,23 @@ import {
   ensureMeetingNote,
   fetchMeeting,
   listMeetings,
+  meetingFiles,
   meetingKey,
   meetingNotes,
   publicSource,
   readMeetingsConfig,
   updateMeetingSources
 } from './meetings.js';
+import {
+  assertNoSummary,
+  buildSummaryMessages,
+  insertSummary,
+  parseSummary,
+  recordingUrl,
+  saveTranscript,
+  setRecordingField,
+  transcriptForModel
+} from './transcripts.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import {
   fetchArxivNews,
@@ -333,13 +344,13 @@ export async function createApp({
         fetchImpl: indicoFetch,
         refresh: req.query.refresh === '1'
       });
-      const notes = meetingNotes(await workspace.markdownFiles());
+      const found = meetingFiles(await workspace.markdownFiles());
       res.json({
         ...meetingSourcesBody(config),
         ...listing,
         meetings: listing.meetings.map((meeting) => ({
           ...meeting,
-          notePath: notes.get(meeting.key) || ''
+          ...meetingExtras(found.get(meeting.key))
         }))
       });
     })
@@ -354,8 +365,8 @@ export async function createApp({
         fetchImpl: indicoFetch,
         refresh: req.query.refresh === '1'
       });
-      const notes = meetingNotes(await workspace.markdownFiles());
-      res.json({ ...meeting, notePath: notes.get(meeting.key) || '' });
+      const found = meetingFiles(await workspace.markdownFiles());
+      res.json({ ...meeting, ...meetingExtras(found.get(meeting.key)) });
     })
   );
 
@@ -410,6 +421,114 @@ export async function createApp({
           noteFolder: config.noteFolder
         })
       );
+    })
+  );
+
+  // What a meeting has in the workspace, by path: its note, the recording
+  // link the note keeps, and its transcript note.
+  function meetingExtras(found) {
+    return {
+      notePath: found?.notePath || '',
+      recording: found?.recording || '',
+      transcriptPath: found?.transcriptPath || ''
+    };
+  }
+
+  // The meeting (from Indico, not the request) and its files, with the note
+  // created first when there is none: a recording or transcript always has a
+  // meeting note to belong to.
+  async function meetingWork(body) {
+    const { workspace, config } = await meetingsState(body?.root);
+    const meeting = await fetchMeeting(
+      String(body?.origin ?? ''),
+      String(body?.id ?? ''),
+      { sites, fetchImpl: indicoFetch }
+    );
+    workspace.forgetFiles();
+    const found = meetingExtras(
+      meetingFiles(await workspace.markdownFiles()).get(meeting.key)
+    );
+    let created = false;
+    if (!found.notePath) {
+      const note = await ensureMeetingNote(workspace, meeting, {
+        noteFolder: config.noteFolder
+      });
+      found.notePath = note.path;
+      created = note.created;
+    }
+    return { workspace, meeting, found, created };
+  }
+
+  app.post(
+    '/api/meetings/recording',
+    asyncHandler(async (req, res) => {
+      const url = recordingUrl(req.body?.url);
+      const { workspace, found, created } = await meetingWork(req.body);
+      await workspace.editFile(found.notePath, (content) =>
+        setRecordingField(content, url)
+      );
+      res.json({ ...found, recording: url, created });
+    })
+  );
+
+  app.post(
+    '/api/meetings/transcript',
+    asyncHandler(async (req, res) => {
+      const { workspace, meeting, found, created } = await meetingWork(req.body);
+      const saved = await saveTranscript(workspace, meeting, {
+        notePath: found.notePath,
+        transcriptPath: found.transcriptPath,
+        fileName: String(req.body?.name ?? '').slice(0, 200),
+        text: req.body?.text
+      });
+      res.json({
+        ...found,
+        transcriptPath: saved.path,
+        created,
+        turns: saved.turns
+      });
+    })
+  );
+
+  // Summarizes the transcript into the meeting note: a Summary section and
+  // the action items, which the Tasks view then lists like any other task.
+  app.post(
+    '/api/meetings/summary',
+    asyncHandler(async (req, res) => {
+      const { workspace, meeting, found } = await meetingWork(req.body);
+      if (!found.transcriptPath) {
+        throw new WorkspaceError(400, 'Add the meeting’s transcript first.');
+      }
+      // Checked before the model is asked, so a refusal costs nothing.
+      const note = await workspace.loadFile(found.notePath);
+      assertNoSummary(note.content);
+
+      const transcript = transcriptForModel(
+        (await workspace.loadFile(found.transcriptPath)).content
+      );
+      const reply = await runAiCompletion({
+        messages: buildSummaryMessages({
+          meeting,
+          transcript: transcript.text,
+          truncated: transcript.truncated
+        }),
+        env: aiEnv,
+        fetchImpl: aiFetch
+      });
+      const summary = parseSummary(reply);
+      const paths = (await workspace.markdownFiles()).map((file) => file.path);
+      const link = shortestWikiTarget(found.transcriptPath, found.notePath, paths);
+      await workspace.editFile(found.notePath, (content) =>
+        insertSummary(content, summary, {
+          source: `[[${link}]]${transcript.truncated ? ' (its first part only)' : ''}`
+        })
+      );
+      res.json({
+        ...found,
+        points: summary.summary.length,
+        actions: summary.actions.length,
+        truncated: transcript.truncated
+      });
     })
   );
 

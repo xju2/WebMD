@@ -510,9 +510,9 @@ Markdown note for it.
 - **Add source** takes an Indico category link (`…/category/1234/`) or event
   link (`…/event/5678/`, or any page of the event). The link is checked and
   stored in canonical form; **Remove** takes it off again.
-- Categories are read two weeks ahead. Meetings are grouped into **Ongoing**,
-  **Today**, **Tomorrow**, **This week**, **Next week**, and **Later** by your
-  browser's local day. Times show in local time, with the event's own time
+- Categories are read two weeks ahead and one week back. Meetings are grouped
+  into **Ongoing**, **Today**, **Tomorrow**, **This week**, **Next week**,
+  **Later**, and **Past week** (newest first) by your browser's local day. Times show in local time, with the event's own time
   beside them when its timezone reads differently. A meeting listed by two
   sources appears once.
 - Choose a meeting to see when and where, its agenda (times, titles,
@@ -520,6 +520,54 @@ Markdown note for it.
 - **Create note** writes a note for the meeting and opens it. Pressing it again,
   now labelled **Open note**, opens the same note. **Refresh** asks Indico
   again, skipping the ten-minute cache.
+- A Zoom meeting shows its meeting ID and passcode, and **Join Zoom**. From a
+  quarter of an hour before it starts until it ends, **Join** also appears
+  beside it in the list. See [Zoom](#zoom-recordings-and-transcripts).
+
+### Zoom, recordings, and transcripts
+
+Indico's Zoom plugin shows its room on the event page but leaves it out of the
+export API, so WebMD reads the page for it: for the meeting you open, and for
+meetings under way or starting within a day (at most 12, cached for ten
+minutes). It also picks up what organizers type into the location, room, or
+description: a `zoom.us` (or `zoomgov.com`) join link, or a written "Meeting
+ID". Only a link's embedded passcode (`pwd`) is kept. No room, no Join button.
+Nothing about Zoom is guessed.
+
+- A public event's page shows its meeting ID and link to anyone. The join link
+  with its passcode built in appears only to signed-in users, so WebMD gets it
+  only with a token that has the `read:everything` scope.
+- A `read:legacy_api` token is turned away from event pages, so WebMD then
+  reads the page anonymously. That works for public events. For protected
+  events it finds no room unless the organizer pasted the link into the
+  description.
+
+Once a meeting has started, its detail shows **Recording and transcript**:
+
+- **Recording**: **Add link** saves a recording share link (any web address)
+  as `recording:` in the meeting note's frontmatter. A Zoom recording link
+  found in the Indico description is offered with **Save to note**.
+- **Transcript**: **Add file** takes the transcript Zoom gives with a cloud
+  recording (the recording page's *Audio transcript*, a `.vtt`), or SubRip
+  (`.srt`), Teams-style voice-tagged WebVTT, or Zoom's saved captions
+  (`.txt`). It becomes a note of its own beside the meeting note,
+  `Title (YYYY-MM-DD) transcript.md`, with `type: transcript`, the same
+  `indico:` link, a wiki link back to the meeting note, and one paragraph per
+  speaker turn (`**00:03:12 Ada Lovelace:** …`). **Replace** rewrites it with
+  a better file.
+- **Summarize into note** asks the AI provider for the meeting's minutes and
+  writes them into the meeting note: a `## Summary` section ahead of
+  `## Notes`, with any decisions, and new action items under
+  `## Action items` in task syntax (`- [ ] … who:ada 📅 2026-09-20`), so they
+  show up in the Tasks view. Items already listed are not added twice. If the
+  note already has a `## Summary`, it is never replaced; delete it to write
+  a new one. Transcripts longer than about 160,000 characters are summarized
+  from their first part, and the note says so.
+
+Any of these creates the meeting note first if it has none. WebMD's own edits
+to a note reach an editor that has it open as an ordinary change, so nothing
+typed there is lost. Recordings themselves stay on Zoom: WebMD needs no Zoom
+account and never signs in to Zoom.
 
 ### Sources file
 
@@ -587,7 +635,9 @@ tags: [meeting]
 The `indico:` line is what ties the note to the meeting, so retitling or moving
 the note keeps the link. Creating never overwrites a file: if the name is taken
 by another note, the event id is added to the name. After that the note is
-yours. Refreshing Indico never touches it, including its agenda.
+yours. Refreshing Indico never touches it, including its agenda. The only later
+changes WebMD makes are the ones you ask for from Meetings: the `recording:`
+line and a summary.
 
 ### Troubleshooting
 
@@ -642,12 +692,13 @@ case-insensitive matching.
 - `npm run build`: build the frontend into `dist/`.
 - `npm run fixture`: serve a seeded throwaway workspace with a stub AI provider,
   arXiv feed, and Indico on port 3197 (`AI_MODE=slow|error`,
-  `NEWS_MODE=error|empty`, `MEETINGS_MODE=notoken|auth|offline|none`). It never
+  `NEWS_MODE=error|empty`, `MEETINGS_MODE=notoken|auth|offline|none|zoom`). It never
   reads `~/.webmd.conf`, and its Indico token is a placeholder.
 - `npm run scenarios`: after `npm run build`, run the headless Chrome layout
   and AI-context acceptance checks against fixtures (`OUT_DIR` keeps
   screenshots). Needs Google Chrome, or `CHROME_PATH`.
 - `npm run scenarios:meetings`: the same for Meetings: list, agenda, notes,
-  add source, token failures, and narrow layouts.
+  add source, token failures, Zoom join, transcript and summary, and narrow
+  layouts.
 - `npm run smoke:indico`: opt-in, read-only check of a real Indico source with
   your own token (`INDICO_SMOKE_SOURCE=<link>`). Not part of `npm test`.

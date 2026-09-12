@@ -9,8 +9,13 @@ export const MEETING_SECTIONS = [
   { id: 'tomorrow', label: 'Tomorrow' },
   { id: 'week', label: 'This week' },
   { id: 'next-week', label: 'Next week' },
-  { id: 'later', label: 'Later' }
+  { id: 'later', label: 'Later' },
+  // Last, newest first: where a recording and transcript get attached.
+  { id: 'past', label: 'Past week' }
 ];
+
+// A Zoom meeting opens its waiting room a little early, and people join then.
+export const JOIN_LEAD_MS = 15 * 60 * 1000;
 
 export function startOfDay(ms) {
   const date = new Date(ms);
@@ -45,15 +50,15 @@ export function meetingEnd(meeting) {
 /**
  * Which section a meeting sits in, by the reader's local calendar. A meeting
  * that began before today and is still running is Ongoing, so a year-long
- * "event" does not crowd the top of Today every morning. Returns '' for one
- * that finished before today began.
+ * "event" does not crowd the top of Today every morning. One that finished
+ * before today began is Past; the server only sends the last week of those.
  */
 export function meetingSection(meeting, now = Date.now()) {
   const start = meetingStart(meeting);
   const end = meetingEnd(meeting);
   if (!Number.isFinite(start)) return '';
   const today = startOfDay(now);
-  if (end < today) return '';
+  if (end < today) return 'past';
   if (start < today) return 'ongoing';
   const tomorrow = addDays(today, 1);
   if (start < tomorrow) return 'today';
@@ -75,8 +80,44 @@ export function groupMeetings(meetings, now = Date.now()) {
     ...section,
     meetings: buckets
       .get(section.id)
-      .sort((a, b) => meetingStart(a) - meetingStart(b))
+      .sort((a, b) =>
+        section.id === 'past'
+          ? meetingStart(b) - meetingStart(a)
+          : meetingStart(a) - meetingStart(b)
+      )
   })).filter((section) => section.meetings.length);
+}
+
+/**
+ * Where a meeting stands for joining it: `live` from a quarter of an hour
+ * before it starts until it ends, `upcoming` before that, `over` after. A
+ * meeting with no Zoom link has nothing to join, so it is ''.
+ */
+export function joinState(meeting, now = Date.now()) {
+  if (!meeting?.zoom?.url) return '';
+  const start = meetingStart(meeting);
+  if (!Number.isFinite(start)) return '';
+  if (now < start - JOIN_LEAD_MS) return 'upcoming';
+  return now <= meetingEnd(meeting) ? 'live' : 'over';
+}
+
+/** Recordings and transcripts only exist once a meeting has begun. */
+export function meetingBegun(meeting, now = Date.now()) {
+  const start = meetingStart(meeting);
+  return Number.isFinite(start) && now >= start;
+}
+
+/** `123 4567 8901`, the way Zoom writes a meeting number. */
+export function zoomMeetingId(id = '') {
+  const digits = String(id).replace(/\D/g, '');
+  if (digits.length === 11) return `${digits.slice(0, 3)} ${digits.slice(3, 7)} ${digits.slice(7)}`;
+  if (digits.length === 10) return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  return digits;
+}
+
+/** A note path as its name, for a link that opens it. */
+export function noteName(path = '') {
+  return String(path).split('/').pop().replace(/\.md$/i, '');
 }
 
 /** Meetings from one source, or from every source when `sourceId` is empty. */
