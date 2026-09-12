@@ -144,14 +144,17 @@
     return body;
   }
 
-  async function load({ refresh = false, quiet = false } = {}) {
+  // The server answers at once, from an older copy if that is all it has, and
+  // says so with `stale`; the fresh copy it fetched behind that is then asked
+  // for quietly (`fresh`), so the list is on screen without waiting on Indico.
+  async function load({ refresh = false, quiet = false, fresh = false } = {}) {
     const current = ++request;
     const forRoot = root;
     if (!quiet) loading = true;
     loadError = '';
     try {
       const body = await requestJson(
-        `/api/meetings?root=${encodeURIComponent(forRoot)}${refresh ? '&refresh=1' : ''}`
+        `/api/meetings?root=${encodeURIComponent(forRoot)}${refresh ? '&refresh=1' : fresh ? '&fresh=1' : ''}`
       );
       if (current !== request || forRoot !== root) return;
       now = Date.now();
@@ -167,13 +170,18 @@
         loadDetail(selectedKey, { refresh });
       else if (detail && selectedKey === detailKey) {
         // The note may have been created or renamed since the detail loaded.
-        const fresh = body.meetings.find((item) => item.key === selectedKey);
-        if (fresh) detail = { ...detail, ...meetingFiles(fresh) };
+        const item = body.meetings.find((item) => item.key === selectedKey);
+        if (item) detail = { ...detail, ...meetingFiles(item) };
+      }
+      if (body.stale && !fresh) {
+        loading = false;
+        load({ quiet: true, fresh: true });
       }
     } catch (error) {
       if (current !== request) return;
-      // A listing already on screen stays; the failure is said above it.
-      loadError = error.message;
+      // A listing already on screen stays; the failure is said above it. The
+      // quiet follow-up to a stale copy fails silently: the copy is still good.
+      if (!fresh) loadError = error.message;
     } finally {
       if (current === request) loading = false;
     }
@@ -197,24 +205,28 @@
     listButtons.get(key)?.focus();
   }
 
-  async function loadDetail(key, { refresh = false } = {}) {
+  // Like the list: a stale agenda shows at once and is replaced quietly.
+  async function loadDetail(key, { refresh = false, fresh = false } = {}) {
     const meeting = meetings.find((item) => item.key === key);
     if (!meeting) return;
-    detailKey = key;
-    detail = null;
-    detailError = null;
-    detailLoading = true;
+    if (!fresh) {
+      detailKey = key;
+      detail = null;
+      detailError = null;
+      detailLoading = true;
+    }
     try {
       const body = await requestJson(
-        `/api/meetings/event?root=${encodeURIComponent(root)}&origin=${encodeURIComponent(meeting.origin)}&id=${encodeURIComponent(meeting.eventId)}${refresh ? '&refresh=1' : ''}`
+        `/api/meetings/event?root=${encodeURIComponent(root)}&origin=${encodeURIComponent(meeting.origin)}&id=${encodeURIComponent(meeting.eventId)}${refresh ? '&refresh=1' : fresh ? '&fresh=1' : ''}`
       );
       if (detailKey !== key) return;
       detail = body;
+      if (body.stale && !fresh) loadDetail(key, { fresh: true });
     } catch (error) {
-      if (detailKey !== key) return;
+      if (detailKey !== key || fresh) return;
       detailError = { message: error.message, kind: error.kind };
     } finally {
-      if (detailKey === key) detailLoading = false;
+      if (detailKey === key && !fresh) detailLoading = false;
     }
   }
 

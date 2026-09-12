@@ -510,6 +510,56 @@ test('caches a listing, shares one request, and refetches on refresh', async () 
   assert.equal(calls.length, 2);
 });
 
+test('keeps listings across a restart and answers a stale one at once', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-meetings-cache-'));
+  try {
+    const { calls, fetchImpl } = fakeIndico();
+    const sources = [source(`${CERN}/category/20/`)];
+    const exports = () => calls.filter((call) => call.url.includes('/export/')).length;
+    const first = await listMeetings(sources, { fetchImpl, cacheDir, now: () => NOW });
+    assert.equal(exports(), 1);
+
+    // A restart forgets the memory but not the file.
+    resetMeetingsCache();
+    const again = await listMeetings(sources, {
+      fetchImpl,
+      cacheDir,
+      allowStale: true,
+      now: () => NOW + 60 * 1000
+    });
+    assert.equal(exports(), 1);
+    assert.equal(again.stale, undefined);
+    assert.deepEqual(again.meetings, first.meetings);
+
+    // A day later, with the date window moved, the copy is served and marked
+    // while a new one is fetched; a caller wanting it fresh waits for that one.
+    const later = NOW + 24 * 60 * 60 * 1000;
+    const stale = await listMeetings(sources, {
+      fetchImpl,
+      cacheDir,
+      allowStale: true,
+      now: () => later
+    });
+    assert.equal(stale.stale, true);
+    assert.ok(stale.meetings.length);
+    const fresh = await listMeetings(sources, { fetchImpl, cacheDir, now: () => later });
+    assert.equal(fresh.stale, undefined);
+    assert.equal(exports(), 2);
+
+    // A copy older than a week is not shown.
+    resetMeetingsCache();
+    await listMeetings(sources, {
+      fetchImpl,
+      cacheDir,
+      allowStale: true,
+      now: () => later + 8 * 24 * 60 * 60 * 1000
+    });
+    assert.equal(exports(), 3);
+  } finally {
+    await fs.rm(cacheDir, { recursive: true, force: true });
+  }
+});
+
 /* ---------------------------------------------------------------- notes */
 
 test('writes a readable meeting note with a stable association', () => {

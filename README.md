@@ -104,9 +104,11 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
-- `WEBMD_CACHE_DIR`: where the News listing and its AI ranking are kept across
-  restarts, defaults to `~/.cache/webmd`. Nothing there is needed; delete it
-  any time.
+- `WEBMD_CACHE_DIR`: where the News listing, its AI ranking, and the Meetings
+  view's Indico answers are kept across restarts, defaults to `~/.cache/webmd`.
+  Meetings shows its last copy at once and refreshes it behind the scenes;
+  protected meetings are cached there too, readable only by you. Nothing there
+  is needed; delete it any time.
 
 ## Prompt presets
 

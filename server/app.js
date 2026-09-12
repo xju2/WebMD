@@ -346,6 +346,14 @@ export async function createApp({
     return { workspace, config };
   }
 
+  // By default the view is answered at once, from a copy up to a week old if
+  // that is all there is (the answer then says `stale`), and asks again with
+  // `fresh=1` for the copy fetched behind it. Refresh skips every cache.
+  function meetingFreshness(query) {
+    const refresh = query.refresh === '1';
+    return { refresh, allowStale: !refresh && query.fresh !== '1' };
+  }
+
   function meetingSourcesBody(config) {
     return {
       noteFolder: config.noteFolder,
@@ -361,7 +369,8 @@ export async function createApp({
       const listing = await listMeetings(config.sources, {
         sites,
         fetchImpl: indicoFetch,
-        refresh: req.query.refresh === '1'
+        cacheDir,
+        ...meetingFreshness(req.query)
       });
       const found = meetingFiles(await workspace.markdownFiles());
       res.json({
@@ -382,7 +391,8 @@ export async function createApp({
       const meeting = await fetchMeeting(req.query.origin, req.query.id, {
         sites,
         fetchImpl: indicoFetch,
-        refresh: req.query.refresh === '1'
+        cacheDir,
+        ...meetingFreshness(req.query)
       });
       const found = meetingFiles(await workspace.markdownFiles());
       res.json({ ...meeting, ...meetingExtras(found.get(meeting.key)) });
@@ -433,7 +443,8 @@ export async function createApp({
       }
       const meeting = await fetchMeeting(origin, eventId, {
         sites,
-        fetchImpl: indicoFetch
+        fetchImpl: indicoFetch,
+        cacheDir
       });
       res.json(
         await ensureMeetingNote(workspace, meeting, {
@@ -462,7 +473,7 @@ export async function createApp({
     const meeting = await fetchMeeting(
       String(body?.origin ?? ''),
       String(body?.id ?? ''),
-      { sites, fetchImpl: indicoFetch }
+      { sites, fetchImpl: indicoFetch, cacheDir }
     );
     workspace.forgetFiles();
     const found = meetingExtras(

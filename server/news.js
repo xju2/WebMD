@@ -149,11 +149,11 @@ export async function readCacheFile(file) {
   }
 }
 
-export async function writeCacheFile(file, value) {
+export async function writeCacheFile(file, value, { mode } = {}) {
   try {
     await fs.mkdir(path.dirname(file), { recursive: true });
     const temp = `${file}.${process.pid}.tmp`;
-    await fs.writeFile(temp, JSON.stringify(value));
+    await fs.writeFile(temp, JSON.stringify(value), { mode });
     await fs.rename(temp, file);
   } catch (error) {
     console.warn(`Could not write cache file ${file}: ${error.message}`);

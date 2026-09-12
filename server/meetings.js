@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { titleFileName } from '../src/note-title.js';
@@ -10,6 +10,7 @@ import {
   indicoTokenName,
   tokenForOrigin
 } from './indico.js';
+import { readCacheFile, writeCacheFile } from './news.js';
 import { normalizeWorkspaceFolder, WorkspaceError } from './workspace.js';
 import { findZoom, mergeZoom, pageZoom } from './zoom.js';
 
@@ -57,8 +58,13 @@ const ZOOM_PAGE_TIMEOUT_MS = 6000;
 // bypasses it. Bounded so a long-running server cannot grow it without end.
 const CACHE_MS = 10 * 60 * 1000;
 const CACHE_ENTRIES = 200;
+// Past CACHE_MS a copy is still shown at once, when the caller allows it,
+// while a new one is fetched behind it; older than this it is not trusted.
+// Also how long an unused cache file is kept.
+const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const cache = new Map();
 const inFlight = new Map();
+const prunedDirs = new Set();
 
 /* ------------------------------------------------------------------ sources */
 
@@ -323,7 +329,9 @@ export function publicSource(source, sites = new Map()) {
 /**
  * Upcoming meetings from every enabled source, normalized, deduplicated by
  * origin and event id, and sorted by start. One failing source is reported
- * beside the others rather than failing the whole list.
+ * beside the others rather than failing the whole list. With `allowStale`, an
+ * out-of-date copy is answered at once and marked `stale: true` while a new
+ * one is fetched; `cacheDir` keeps copies across a restart.
  */
 export async function listMeetings(
   sources,
@@ -331,20 +339,23 @@ export async function listMeetings(
     sites = new Map(),
     fetchImpl = fetch,
     refresh = false,
+    allowStale = false,
+    cacheDir,
     now = Date.now,
     days = MEETING_WINDOW_DAYS
   } = {}
 ) {
   const enabled = sources.filter((source) => source.enabled);
   const window = meetingWindow(now(), days);
+  const stale = allowStale && !refresh ? { served: false } : undefined;
+  const terms = { refresh, cacheDir, stale, now };
   const results = await Promise.all(
     enabled.map(async (source) => {
       try {
         const events = await sourceEvents(source, window, {
           sites,
           fetchImpl,
-          refresh,
-          now
+          terms
         });
         return { source, events };
       } catch (error) {
@@ -412,7 +423,7 @@ export async function listMeetings(
       const found = await eventPageZoom(meeting.origin, meeting.eventId, {
         sites,
         fetchImpl,
-        refresh
+        ...terms
       });
       meeting.zoom = mergeZoom(meeting.zoom, found);
     })
@@ -422,7 +433,8 @@ export async function listMeetings(
     to: new Date(window.until).toISOString(),
     fetchedAt: new Date(now()).toISOString(),
     meetings: meetings.map(publicMeeting),
-    statuses
+    statuses,
+    ...(stale?.served ? { stale: true } : {})
   };
 }
 
@@ -452,7 +464,7 @@ function isoDate(date) {
   return date.toISOString().slice(0, 10);
 }
 
-async function sourceEvents(source, window, { sites, fetchImpl, refresh }) {
+async function sourceEvents(source, window, { sites, fetchImpl, terms }) {
   const token = tokenForOrigin(source.origin, sites);
   const params = new URLSearchParams(
     source.kind === 'category'
@@ -472,7 +484,7 @@ async function sourceEvents(source, window, { sites, fetchImpl, refresh }) {
     sites,
     fetchImpl,
     token,
-    refresh
+    terms
   });
   return (Array.isArray(body?.results) ? body.results : [])
     .map((raw) => normalizeEvent(raw, source.origin))
@@ -482,13 +494,23 @@ async function sourceEvents(source, window, { sites, fetchImpl, refresh }) {
 /**
  * One event with its agenda, for the detail pane and for a new note. Takes the
  * whole contribution list in one request; `occ=no` leaves out the per-day
- * occurrence table the view does not use.
+ * occurrence table the view does not use. `allowStale` and `cacheDir` work as
+ * in listMeetings.
  */
 export async function fetchMeeting(
   origin,
   eventId,
-  { sites = new Map(), fetchImpl = fetch, refresh = false } = {}
+  {
+    sites = new Map(),
+    fetchImpl = fetch,
+    refresh = false,
+    allowStale = false,
+    cacheDir,
+    now = Date.now
+  } = {}
 ) {
+  const stale = allowStale && !refresh ? { served: false } : undefined;
+  const terms = { refresh, cacheDir, stale, now };
   if (!/^\d+$/.test(String(eventId ?? ''))) {
     throw new WorkspaceError(400, 'An Indico event id is required.');
   }
@@ -500,7 +522,7 @@ export async function fetchMeeting(
     checked,
     `/export/event/${eventId}.json`,
     params,
-    { sites, fetchImpl, token, refresh }
+    { sites, fetchImpl, token, terms }
   );
   const raw = Array.isArray(body?.results) ? body.results[0] : null;
   const event = raw && normalizeEvent(raw, checked);
@@ -517,13 +539,18 @@ export async function fetchMeeting(
           404
         );
   }
-  const found = await eventPageZoom(checked, eventId, { sites, fetchImpl, refresh });
+  const found = await eventPageZoom(checked, eventId, {
+    sites,
+    fetchImpl,
+    ...terms
+  });
   return {
     ...publicMeeting({ ...event, zoom: mergeZoom(event.zoom, found) }),
     agenda: normalizeAgenda(raw.contributions, checked, event.timezone),
     unscheduled: Array.isArray(raw.contributions)
       ? raw.contributions.filter((item) => !item?.startDate).length
-      : 0
+      : 0,
+    ...(stale?.served ? { stale: true } : {})
   };
 }
 
@@ -532,17 +559,18 @@ export async function fetchMeeting(
  * token first; a token scoped to the export API alone is turned away from
  * HTML views, and a public event's room is on its anonymous page too, so that
  * is tried next. Never fails the caller: a page that cannot be read just means
- * no Zoom from it. Cached like the exports.
+ * no Zoom from it. Cached like the exports, on the same terms (`refresh`,
+ * `cacheDir`, and a `stale` tracker).
  */
 export async function eventPageZoom(
   origin,
   eventId,
-  { sites = new Map(), fetchImpl = fetch, refresh = false } = {}
+  { sites = new Map(), fetchImpl = fetch, ...terms } = {}
 ) {
   const url = `${origin}/event/${eventId}/`;
   const token = tokenForOrigin(origin, sites);
   const key = `zoom ${token ? 'auth' : 'anon'} ${url}`;
-  return cached(key, refresh, async () => {
+  return cached(key, terms, async () => {
     const read = (withToken) =>
       indicoFetch(url, {
         fetchImpl,
@@ -564,32 +592,94 @@ export async function eventPageZoom(
   });
 }
 
-/** One cached, shared request per key; `refresh` asks again. */
-async function cached(key, refresh, load) {
+/**
+ * One cached, shared request per key. `terms` carries the caller's terms:
+ * `refresh` asks again; `cacheDir` keeps answers across a restart; `stale`,
+ * an object, accepts an out-of-date answer at once (setting `stale.served`)
+ * while a new one is fetched behind it for the next caller.
+ */
+async function cached(key, terms, load) {
+  const { refresh = false, cacheDir, stale, now = Date.now } = terms || {};
+  const file =
+    cacheDir &&
+    path.join(
+      cacheDir,
+      'indico',
+      `${createHash('sha1').update(key).digest('hex')}.json`
+    );
   if (!refresh) {
-    const hit = cache.get(key);
-    if (hit && hit.expiresAt > Date.now()) return hit.value;
+    let hit = cache.get(key);
+    if (!hit && file) {
+      const saved = await readCacheFile(file);
+      if (saved?.key === key && 'value' in saved) hit = remember(key, saved);
+    }
+    if (hit && hit.expiresAt > now()) return hit.value;
     const pending = inFlight.get(key);
+    if (stale && hit && now() - hit.fetchedAt < STALE_MS) {
+      // A failed revalidation keeps the copy for next time.
+      if (!pending) fetchInto(key, load, file, now).catch(() => {});
+      stale.served = true;
+      return hit.value;
+    }
     if (pending) return await pending;
   }
-  const request = load().finally(() => {
-    if (inFlight.get(key) === request) inFlight.delete(key);
-  });
+  return fetchInto(key, load, file, now);
+}
+
+function fetchInto(key, load, file, now) {
+  const request = load()
+    .then(async (value) => {
+      const entry = { key, value, fetchedAt: now(), expiresAt: now() + CACHE_MS };
+      remember(key, entry);
+      if (file) {
+        // Protected meetings (and their Zoom passcodes) land here too.
+        await writeCacheFile(file, entry, { mode: 0o600 });
+        await pruneCacheDir(path.dirname(file));
+      }
+      return value;
+    })
+    .finally(() => {
+      if (inFlight.get(key) === request) inFlight.delete(key);
+    });
   inFlight.set(key, request);
-  const value = await request;
+  return request;
+}
+
+function remember(key, entry) {
   cache.delete(key);
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_MS });
+  cache.set(key, entry);
   while (cache.size > CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-  return value;
+  return entry;
+}
+
+/** Once per directory per process: files nobody has refreshed in a week go. */
+async function pruneCacheDir(dir) {
+  if (prunedDirs.has(dir)) return;
+  prunedDirs.add(dir);
+  try {
+    for (const name of await fs.readdir(dir)) {
+      const file = path.join(dir, name);
+      const { mtimeMs } = await fs.stat(file);
+      if (Date.now() - mtimeMs > STALE_MS) await fs.rm(file, { force: true });
+    }
+  } catch {
+    // Best effort: a leftover file is only a little disk.
+  }
 }
 
 async function exportJson(origin, exportPath, params, options) {
   const query = params.toString();
   const url = `${origin}${exportPath}${query ? `?${query}` : ''}`;
   // Keyed with whether a token went along, so a list fetched anonymously is
-  // never served as the authenticated one.
-  const key = `${options.token ? 'auth' : 'anon'} ${url}`;
-  return cached(key, options.refresh, async () => {
+  // never served as the authenticated one. A category's date window is left
+  // out: it moves every day, and yesterday's list is a fine stand-in while
+  // today's is fetched.
+  const keyParams = new URLSearchParams(params);
+  keyParams.delete('from');
+  keyParams.delete('to');
+  const keyQuery = keyParams.toString();
+  const key = `${options.token ? 'auth' : 'anon'} ${origin}${exportPath}${keyQuery ? `?${keyQuery}` : ''}`;
+  return cached(key, options.terms, async () => {
     const response = await indicoFetch(url, {
       fetchImpl: options.fetchImpl,
       sites: options.sites,
