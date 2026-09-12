@@ -1,4 +1,4 @@
-import { webLink, zonedToEpoch } from './meetings.js';
+import { htmlToText, webLink, zonedToEpoch } from './meetings.js';
 import { WorkspaceError } from './workspace.js';
 
 /**
@@ -104,7 +104,9 @@ export function parseIcs(text) {
     const { name, params, value } = parseLine(line);
     if (name === 'BEGIN') {
       stack.push(value);
-      if (value === 'VEVENT' && stack.length === 2) event = { exdates: [] };
+      if (value === 'VEVENT' && stack.length === 2) {
+        event = { exdates: [], attendees: [] };
+      }
       continue;
     }
     if (name === 'END') {
@@ -122,7 +124,10 @@ export function parseIcs(text) {
     else if (name === 'LOCATION') event.location = unescapeText(value);
     else if (name === 'DESCRIPTION') event.description = unescapeText(value);
     else if (name === 'URL') event.url = value;
-    else if (name === 'X-GOOGLE-CONFERENCE') event.conference = value;
+    else if (name === 'ORGANIZER') event.organizer = personName(params, value);
+    else if (name === 'ATTENDEE' && event.attendees.length < MAX_ATTENDEES) {
+      event.attendees.push(personName(params, value));
+    } else if (name === 'X-GOOGLE-CONFERENCE') event.conference = value;
     else if (name === 'STATUS') event.status = value.toUpperCase();
     else if (name === 'RRULE') event.rrule = value;
     else if (name === 'DURATION') event.duration = value;
@@ -163,6 +168,11 @@ function parseLine(line) {
     }
   }
   return { name: name.toUpperCase(), params, value: line.slice(colon + 1) };
+}
+
+/** The CN a calendar gives a person, else their address without mailto:. */
+function personName(params, value) {
+  return params.CN || value.replace(/^mailto:/i, '');
 }
 
 function unescapeText(value) {
@@ -210,6 +220,8 @@ function localZone() {
 /* ---------------------------------------------------------------- expansion */
 
 const MAX_OCCURRENCES_PER_EVENT = 1000;
+const MAX_ATTENDEES = 50;
+const MAX_DESCRIPTION = 4000;
 
 /**
  * Occurrences touching `window` ({ from, to } in ms): one-off events, every
@@ -275,6 +287,10 @@ function occurrence(event, start, length) {
     allDay: start.allDay,
     location: event.location || '',
     url: eventLink(event),
+    // Google writes HTML descriptions for events made on the web.
+    description: htmlToText(event.description || '').slice(0, MAX_DESCRIPTION),
+    organizer: event.organizer || '',
+    attendees: event.attendees,
     sortAt: start.at
   };
   if (start.allDay) {

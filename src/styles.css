@@ -1657,7 +1657,8 @@ body.resizing-panels .resize-handle::after {
 .calendar-toolbar button,
 .graph-controls button,
 .inline-edit-actions button,
-.ask footer button {
+.ask footer button,
+.calendar-detail footer button {
   display: inline-flex;
   height: var(--control-height);
   align-items: center;
@@ -1690,7 +1691,8 @@ body.resizing-panels .resize-handle::after {
 .calendar-toolbar button:hover:not(:disabled),
 .graph-controls button:hover:not(:disabled),
 .inline-edit-actions button:hover:not(:disabled),
-.ask footer button:hover:not(:disabled) {
+.ask footer button:hover:not(:disabled),
+.calendar-detail footer button:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
@@ -3237,15 +3239,25 @@ input[type='radio'] {
   font-weight: 650;
 }
 
-.calendar-events a {
-  color: var(--ink);
+.calendar-events button {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   pointer-events: auto;
-  text-decoration: none;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.calendar-events a:hover,
-.calendar-events a:focus-visible {
+.calendar-events button:hover,
+.calendar-events button:focus-visible {
   color: var(--accent);
+  outline: none;
   text-decoration: underline;
 }
 
@@ -4734,6 +4746,65 @@ input[type='radio'] {
   color: var(--ink);
   font-family: var(--code-font);
   font-size: 0.86rem;
+}
+
+/* The meeting dialog borrows the Markdown help's frame; below is its list. */
+.calendar-detail ul {
+  margin: 0;
+  padding: 8px 0;
+  list-style: none;
+}
+
+.calendar-detail summary {
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--ink);
+}
+
+.calendar-detail summary:hover {
+  background: var(--surface-hover);
+}
+
+.calendar-detail summary span {
+  flex: 0 0 auto;
+  min-width: 9em;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-detail dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 4px 16px 14px 32px;
+}
+
+.calendar-detail dt {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.calendar-detail dd {
+  display: block;
+  margin: 2px 0 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.calendar-detail-description {
+  max-height: 16em;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.calendar-detail footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
 }
 
 .media-pane {

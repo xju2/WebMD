@@ -44,6 +44,38 @@ export function eventsByDay(events = []) {
   return days;
 }
 
+/** "9:00 – 10:30 AM", "All day", or a range with dates when it spans days. */
+export function eventTimeRange(event, locale = []) {
+  if (event.allDay) {
+    const [year, month, day] = event.endDate.split('-').map(Number);
+    const last = new Date(year, month - 1, day - 1);
+    return dailyNoteDate(last) > event.date
+      ? `All day, until ${last.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}`
+      : 'All day';
+  }
+  const start = new Date(event.startsAt);
+  const end = new Date(event.endsAt);
+  const options = { hour: 'numeric', minute: '2-digit' };
+  if (!sameDay(start, end))
+    Object.assign(options, { month: 'short', day: 'numeric' });
+  return new Intl.DateTimeFormat(locale, options).formatRange(start, end);
+}
+
+/** Text split into plain runs and `{ url }` runs, so links can be clickable. */
+export function linkParts(text = '') {
+  const parts = [];
+  let last = 0;
+  for (const match of String(text).matchAll(/https?:\/\/[^\s<>"]+/g)) {
+    // A sentence's closing punctuation is not part of its link.
+    const url = match[0].replace(/[.,;:!?)\]]+$/, '');
+    if (match.index > last) parts.push({ text: text.slice(last, match.index) });
+    parts.push({ text: url, url });
+    last = match.index + url.length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
 export function shiftMonth(month, amount) {
   return new Date(month.getFullYear(), month.getMonth() + amount, 1);
 }

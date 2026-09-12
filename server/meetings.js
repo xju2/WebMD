@@ -844,6 +844,16 @@ export function htmlToText(html) {
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, '\n')
     .replace(/<li[^>]*>/gi, '- ')
+    // A link whose text is not its address keeps the address beside it.
+    .replace(
+      /<a\b[^>]*\bhref="(https?:[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+      (_, href, text) =>
+        decodeHtml(text.replace(/<[^>]+>/g, '')) === decodeHtml(href)
+          ? href
+          : `${text} (${href})`
+    )
+    // Inline tags sit inside words and sentences: "<b>analysis</b>." has no space.
+    .replace(/<\/?(?:a|b|i|u|em|strong|span|font|code|small|sup|sub)\b[^>]*>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .split('\n')
     .map((line) => decodeHtml(line))

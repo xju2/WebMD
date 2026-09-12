@@ -12,7 +12,7 @@ import {
   parseIcs,
   resetCalendarCache
 } from '../server/gcal.js';
-import { eventsByDay } from '../src/calendar.js';
+import { eventsByDay, eventTimeRange, linkParts } from '../src/calendar.js';
 
 test.beforeEach(() => resetCalendarCache());
 
@@ -61,6 +61,10 @@ const ICS = [
   'DTEND;VALUE=DATE:20261104',
   'UID:trip@google.com',
   'SUMMARY:Trip',
+  'ORGANIZER;CN=Ada Lovelace:mailto:ada@example.org',
+  'ATTENDEE;CN=Ada Lovelace;PARTSTAT=ACCEPTED:mailto:ada@example.org',
+  'ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:bob@example.org',
+  'DESCRIPTION:<p>Pack the <b>poster</b>.</p><p><a href="https://example.org/h">Hotel</a></p>',
   'LOCATION:https://example.org/trip',
   'END:VEVENT',
   'END:VCALENDAR',
@@ -274,5 +278,46 @@ test('eventsByDay puts all-day events on every day they span, first', () => {
   assert.deepEqual(
     days.get('2026-11-03').map((event) => event.title),
     ['Trip', 'Standup']
+  );
+});
+
+test('details: organizer, guests, and an HTML description as text', () => {
+  const trip = expandEvents(
+    parseIcs(ICS),
+    window('2026-11-01', '2026-11-05')
+  ).find((event) => event.title === 'Trip');
+  assert.equal(trip.organizer, 'Ada Lovelace');
+  assert.deepEqual(trip.attendees, ['Ada Lovelace', 'bob@example.org']);
+  assert.equal(
+    trip.description,
+    'Pack the poster.\nHotel (https://example.org/h)'
+  );
+});
+
+test('linkParts keeps text around links and drops trailing punctuation', () => {
+  assert.deepEqual(linkParts('See https://a.example/x). Then go.'), [
+    { text: 'See ' },
+    { text: 'https://a.example/x', url: 'https://a.example/x' },
+    { text: '). Then go.' }
+  ]);
+  assert.deepEqual(linkParts(''), []);
+});
+
+test('eventTimeRange: a range, all day, and all day across days', () => {
+  const event = {
+    startsAt: new Date(2026, 8, 15, 9, 0).toISOString(),
+    endsAt: new Date(2026, 8, 15, 10, 30).toISOString()
+  };
+  assert.match(eventTimeRange(event, 'en-US'), /^9:00\s*–\s*10:30\sAM$/);
+  assert.equal(
+    eventTimeRange({ allDay: true, date: '2026-09-21', endDate: '2026-09-22' }),
+    'All day'
+  );
+  assert.equal(
+    eventTimeRange(
+      { allDay: true, date: '2026-09-21', endDate: '2026-09-24' },
+      'en-US'
+    ),
+    'All day, until Sep 23'
   );
 });

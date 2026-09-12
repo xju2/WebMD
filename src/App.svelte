@@ -17,6 +17,8 @@
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
     eventsByDay,
+    eventTimeRange,
+    linkParts,
     shiftMonth,
     stepDailyNote,
     templateNeedsQuote
@@ -432,6 +434,9 @@
   let calendarEvents = [];
   let calendarEventsError = '';
   let calendarEventsRequest = 0;
+  // The day whose events the detail dialog lists: { day, events, open }.
+  let calendarDetail = null;
+  let calendarDetailClose = null;
   $: if (viewMode === 'calendar') loadCalendarEvents(calendarDays);
   $: calendarEventsOnDay = eventsByDay(calendarEvents);
   $: calendarMonthName = calendarMonth.toLocaleDateString([], {
@@ -2240,6 +2245,18 @@
       calendarEvents = [];
       calendarEventsError = err.message;
     }
+  }
+
+  async function openCalendarDetail(day, events, open = -1) {
+    calendarDetail = { day, events, open };
+    await tick();
+    calendarDetailClose?.focus();
+  }
+
+  function closeCalendarDetailOnEscape(event) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    calendarDetail = null;
   }
 
   function calendarEventLabel(event) {
@@ -6019,6 +6036,112 @@
       </div>
     {/if}
 
+    {#if calendarDetail}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="markdown-help-layer"
+        on:keydown={closeCalendarDetailOnEscape}
+      >
+        <button
+          aria-label="Close meeting details"
+          class="markdown-help-backdrop"
+          tabindex="-1"
+          type="button"
+          on:click={() => (calendarDetail = null)}
+        ></button>
+        <dialog
+          aria-label="Meetings on {calendarDayLabel(calendarDetail.day)}"
+          class="markdown-help calendar-detail"
+          open
+        >
+          <header>
+            <h2>{calendarDayLabel(calendarDetail.day)}</h2>
+            <button
+              bind:this={calendarDetailClose}
+              aria-label="Close meeting details"
+              title="Close"
+              type="button"
+              on:click={() => (calendarDetail = null)}
+            >
+              {@render icon('close')}
+            </button>
+          </header>
+          <ul>
+            {#each calendarDetail.events as event, index}
+              <li>
+                <details open={index === calendarDetail.open}>
+                  <summary>
+                    <span>{eventTimeRange(event)}</span>
+                    <strong>{event.title}</strong>
+                  </summary>
+                  <dl>
+                    {#if event.url}
+                      <div>
+                        <dt>Join</dt>
+                        <dd>
+                          <a href={event.url} rel="noreferrer" target="_blank"
+                            >{event.url}</a
+                          >
+                        </dd>
+                      </div>
+                    {/if}
+                    {#if event.location}
+                      <div>
+                        <dt>Where</dt>
+                        <dd>
+                          {#each linkParts(event.location) as part}{#if part.url}<a
+                                href={part.url}
+                                rel="noreferrer"
+                                target="_blank">{part.text}</a
+                              >{:else}{part.text}{/if}{/each}
+                        </dd>
+                      </div>
+                    {/if}
+                    {#if event.organizer}
+                      <div>
+                        <dt>Organizer</dt>
+                        <dd>{event.organizer}</dd>
+                      </div>
+                    {/if}
+                    {#if event.attendees?.length}
+                      <div>
+                        <dt>Guests ({event.attendees.length})</dt>
+                        <dd>{event.attendees.join(', ')}</dd>
+                      </div>
+                    {/if}
+                    {#if event.description}
+                      <div>
+                        <dt>Description</dt>
+                        <dd class="calendar-detail-description">
+                          {#each linkParts(event.description) as part}{#if part.url}<a
+                                href={part.url}
+                                rel="noreferrer"
+                                target="_blank">{part.text}</a
+                              >{:else}{part.text}{/if}{/each}
+                        </dd>
+                      </div>
+                    {/if}
+                  </dl>
+                </details>
+              </li>
+            {/each}
+          </ul>
+          <footer>
+            <button
+              type="button"
+              on:click={() => {
+                const { day } = calendarDetail;
+                calendarDetail = null;
+                openDailyNote(day.date);
+              }}
+            >
+              Open the day's note
+            </button>
+          </footer>
+        </dialog>
+      </div>
+    {/if}
+
     {#if markdownHelpOpen}
       <div class="markdown-help-layer">
         <button
@@ -6970,32 +7093,31 @@
                     {#if hasNote}<i aria-label="Note exists"></i>{/if}
                   </button>
                   {#if dayEvents.length}
-                    <!-- Beside the day button, not in it: a link opens the
-                         meeting, the rest of the cell still opens the note. -->
+                    <!-- Beside the day button, not in it: an event opens its
+                         details, the rest of the cell still opens the note. -->
                     <ul
                       class="calendar-events"
                       class:outside-month={!day.currentMonth}
                     >
-                      {#each dayEvents.slice(0, 3) as event}
-                        {@const label = calendarEventLabel(event)}
+                      {#each dayEvents.slice(0, 3) as event, index}
                         <li class:all-day={event.allDay}>
-                          {#if event.url}
-                            <a
-                              href={event.url}
-                              rel="noreferrer"
-                              target="_blank"
-                              title={[label, event.location]
-                                .filter(Boolean)
-                                .join(' — ')}>{label}</a
-                            >
-                          {:else}
-                            {label}
-                          {/if}
+                          <button
+                            type="button"
+                            on:click={() =>
+                              openCalendarDetail(day, dayEvents, index)}
+                          >
+                            {calendarEventLabel(event)}
+                          </button>
                         </li>
                       {/each}
                       {#if dayEvents.length > 3}
                         <li class="calendar-events-more">
-                          +{dayEvents.length - 3} more
+                          <button
+                            type="button"
+                            on:click={() => openCalendarDetail(day, dayEvents)}
+                          >
+                            +{dayEvents.length - 3} more
+                          </button>
                         </li>
                       {/if}
                     </ul>
