@@ -906,7 +906,7 @@ const noteWrites = new Map();
  * event, and a note already tied to the meeting is simply returned. Serialized
  * per workspace so two quick clicks cannot make two notes.
  */
-export async function ensureMeetingNote(workspace, meeting, { noteFolder }) {
+export async function ensureMeetingNote(workspace, meeting, { noteFolder, day }) {
   const previous = noteWrites.get(workspace.root) || Promise.resolve();
   const run = previous
     .catch(() => {})
@@ -926,7 +926,7 @@ export async function ensureMeetingNote(workspace, meeting, { noteFolder }) {
         try {
           await workspace.createFile(
             notePath,
-            meetingNoteMarkdown(meeting, heading)
+            meetingNoteMarkdown(meeting, heading, { day })
           );
           return { path: notePath, created: true };
         } catch (error) {
@@ -960,10 +960,18 @@ export function meetingNoteNames(meeting, suffix = '') {
     .filter((item) => item.name);
 }
 
-/** The note a meeting starts with. After this it belongs to the user. */
+/**
+ * The note a meeting starts with. After this it belongs to the user.
+ *
+ * `day` is the reader's own calendar day for the meeting, sent by the browser,
+ * which is the day whose daily note it belongs in: a Geneva meeting at 08:00
+ * is the evening before in California. The link points there, so the daily
+ * note lists the meeting among its backlinks without WebMD writing into it.
+ */
 export function meetingNoteMarkdown(
   meeting,
-  heading = `${meeting.title} (${meeting.start.date})`
+  heading = `${meeting.title} (${meeting.start.date})`,
+  { day } = {}
 ) {
   const lines = [
     '---',
@@ -976,6 +984,7 @@ export function meetingNoteMarkdown(
     `# ${heading.replace(/\s+/g, ' ').trim()}`,
     '',
     `- **When:** ${noteWhen(meeting)}`,
+    `- **Day:** [[${/^\d{4}-\d{2}-\d{2}$/.test(day ?? '') ? day : meeting.start.date}]]`,
     `- **Indico:** <${meeting.url}>`
   ];
   const place = [meeting.room, meeting.location].filter(Boolean);

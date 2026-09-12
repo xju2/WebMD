@@ -418,7 +418,8 @@ export async function createApp({
       });
       res.json(
         await ensureMeetingNote(workspace, meeting, {
-          noteFolder: config.noteFolder
+          noteFolder: config.noteFolder,
+          day: req.body?.day
         })
       );
     })
@@ -451,7 +452,8 @@ export async function createApp({
     let created = false;
     if (!found.notePath) {
       const note = await ensureMeetingNote(workspace, meeting, {
-        noteFolder: config.noteFolder
+        noteFolder: config.noteFolder,
+        day: body?.day
       });
       found.notePath = note.path;
       created = note.created;

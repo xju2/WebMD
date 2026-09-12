@@ -464,6 +464,42 @@ try {
     s.path
   );
   await page.shot('meetings-summary-note-desktop');
+
+  // 8. The meeting note links to its day; that daily note does not exist yet,
+  // and following the link makes it from the daily template.
+  const day = /\*\*Day:\*\* \[\[(\d{4}-\d{2}-\d{2})\]\]/.exec(s.doc)?.[1];
+  check('the meeting note links to its day', Boolean(day), day);
+  await clickText('button', 'Preview');
+  await page.waitFor(`[...document.querySelectorAll('.wiki-link')].some((el) => el.textContent.includes('${day}'))`);
+  const missing = await page.eval(`
+    const link = [...document.querySelectorAll('.wiki-link')].find((el) => el.textContent.includes('${day}'));
+    link.click();
+    return link.classList.contains('wiki-link-missing');`);
+  await page.waitFor(`document.querySelector('dialog.ask')`);
+  const question = await page.eval(`return document.querySelector('dialog.ask p').textContent;`);
+  check(
+    'a Day link to a missing daily note offers to create it',
+    missing && question === `No daily note for ${day} yet. Create it?`,
+    question
+  );
+  await clickText('dialog.ask button', 'Create');
+  await page.waitFor(`document.querySelector('.current-file')?.textContent.includes('${day}.md')`);
+  await sleep(400);
+  s = await snapshot();
+  const daily = await fs.readFile(path.join(zoom.dir, 'research', `raw/dailynotes/${day}.md`), 'utf8');
+  check(
+    'following it creates that day\'s daily note in the daily folder',
+    s.path.endsWith(`/raw/dailynotes/${day}.md`) && daily.includes(day),
+    `${s.path}: ${daily.split('\n')[0]}`
+  );
+  const back = await page.eval(`
+    const response = await fetch('/api/workspace/backlinks?root=0&path=' + encodeURIComponent('/raw/dailynotes/${day}.md'));
+    return (await response.json()).notes.map((note) => note.path);`);
+  check(
+    'the new daily note lists the meeting note among its backlinks',
+    back.some((item) => item.includes('Last week analysis review')),
+    back.join(' | ')
+  );
 } catch (error) {
   check('meetings scenario run', false, error.stack);
 } finally {

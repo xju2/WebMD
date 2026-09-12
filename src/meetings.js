@@ -115,6 +115,18 @@ export function zoomMeetingId(id = '') {
   return digits;
 }
 
+/** The reader's own calendar day a meeting starts on, as YYYY-MM-DD. */
+export function meetingLocalDay(meeting) {
+  const start = meetingStart(meeting);
+  if (!Number.isFinite(start)) return '';
+  const date = new Date(start);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0')
+  ].join('-');
+}
+
 /** A note path as its name, for a link that opens it. */
 export function noteName(path = '') {
   return String(path).split('/').pop().replace(/\.md$/i, '');

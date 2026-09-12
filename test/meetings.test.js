@@ -536,6 +536,10 @@ test('writes a readable meeting note with a stable association', () => {
   assert.equal(attributes.date, '2026-09-11');
   assert.match(body, /^# Tracking & ML weekly \(2026-09-11\)$/m);
   assert.match(body, /\*\*When:\*\* 2026-09-11 15:00 – 16:00 \(Europe\/Zurich\)/);
+  assert.match(body, /^- \*\*Day:\*\* \[\[2026-09-11\]\]$/m);
+  // The reader's own day wins: 08:00 in Geneva is the evening before in California.
+  assert.match(meetingNoteMarkdown(meeting, 'T', { day: '2026-09-10' }), /\*\*Day:\*\* \[\[2026-09-10\]\]/);
+  assert.match(meetingNoteMarkdown(meeting, 'T', { day: '../x' }), /\*\*Day:\*\* \[\[2026-09-11\]\]/);
   assert.match(body, /\*\*Indico:\*\* <https:\/\/indico\.cern\.ch\/event\/101\/>/);
   assert.match(body, /\*\*Where:\*\* 40\/S2-C01, CERN/);
   assert.match(
@@ -778,6 +782,29 @@ test('creates a meeting note once, then opens it again whatever became of it', a
   assert.equal(other.body.created, true);
   assert.ok(other.body.path.startsWith('/meetings/'));
   await fs.access(path.join(roots[1], other.body.path));
+});
+
+test('a new meeting note shows among its day\'s daily note backlinks', async (t) => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'raw/dailynotes'), { recursive: true });
+  await fs.writeFile(path.join(root, 'raw/dailynotes/2026-09-10.md'), '# 2026-09-10\n');
+  const { server, call } = await startApp({ roots: [root] });
+  t.after(() => server.close());
+
+  const created = await call('POST', '/api/meetings/note', {
+    root: '0', origin: CERN, id: '101', day: '2026-09-10'
+  });
+  assert.equal(created.status, 200);
+  const backlinks = await call(
+    'GET',
+    `/api/workspace/backlinks?root=0&path=${encodeURIComponent('/raw/dailynotes/2026-09-10.md')}`
+  );
+  assert.deepEqual(
+    backlinks.body.notes.map((note) => [note.path, note.mentions[0].text]),
+    [[created.body.path, '- **Day:** [[2026-09-10]]']]
+  );
+  // The daily note itself is left as it was.
+  assert.equal(await fs.readFile(path.join(root, 'raw/dailynotes/2026-09-10.md'), 'utf8'), '# 2026-09-10\n');
 });
 
 test('never overwrites a different note that already has the name', async (t) => {

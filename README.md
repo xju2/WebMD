@@ -632,6 +632,13 @@ tags: [meeting]
 # Tracking weekly (2026-09-11)
 ```
 
+The note's header also links to its day, `- **Day:** [[2026-09-11]]`: the
+day in your browser's timezone that the meeting starts on, which is the one
+whose daily note it belongs with. WebMD never writes into the daily note. The
+meeting shows up there among its backlinks. If that daily note does not exist
+yet, following the link offers to create it, from your daily template and in
+your daily-note folder, as with any date link to a missing daily note.
+
 The `indico:` line is what ties the note to the meeting, so retitling or moving
 the note keeps the link. Creating never overwrites a file: if the name is taken
 by another note, the event id is added to the name. After that the note is

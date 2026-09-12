@@ -14,6 +14,7 @@
     joinState,
     keepSelection,
     meetingBegun,
+    meetingLocalDay,
     meetingPlace,
     meetingsPane,
     noteName,
@@ -228,7 +229,12 @@
       const result = await requestJson('/api/meetings/note', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ root, origin: meeting.origin, id: meeting.eventId })
+        body: JSON.stringify({
+          root,
+          origin: meeting.origin,
+          id: meeting.eventId,
+          day: meetingLocalDay(meeting)
+        })
       });
       markFiles(meeting.key, { notePath: result.path });
       await onOpenNote(result.path, { created: result.created });
@@ -283,6 +289,7 @@
           root,
           origin: meeting.origin,
           id: meeting.eventId,
+          day: meetingLocalDay(meeting),
           ...body
         })
       });

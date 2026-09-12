@@ -8,6 +8,7 @@ import {
   joinState,
   keepSelection,
   meetingBegun,
+  meetingLocalDay,
   meetingSection,
   meetingsPane,
   sourceNotice,
@@ -204,4 +205,10 @@ test('writes a Zoom meeting number the way Zoom does', () => {
   assert.equal(zoomMeetingId('12345678901'), '123 4567 8901');
   assert.equal(zoomMeetingId('1234567890'), '123 456 7890');
   assert.equal(zoomMeetingId('123456789'), '123456789');
+});
+
+test('names the reader\'s own day a meeting starts on', () => {
+  assert.equal(meetingLocalDay(meeting('late', local(2026, 9, 11, 23, 30))), '2026-09-11');
+  assert.equal(meetingLocalDay(meeting('early', local(2026, 1, 2, 0, 5))), '2026-01-02');
+  assert.equal(meetingLocalDay({}), '');
 });

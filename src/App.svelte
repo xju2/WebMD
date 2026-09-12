@@ -1596,6 +1596,12 @@
     return buildDailyNotePath(date, folder);
   }
 
+  /** The local day `path` is the daily note of, or null for any other path. */
+  function dailyNoteDateFor(path) {
+    const date = dailyNoteDateFromPath(path);
+    return date && todayNotePath(date) === path ? date : null;
+  }
+
   const shortcutKey =
     typeof navigator !== 'undefined' &&
     /Mac|iP(hone|ad)/.test(navigator.platform)
@@ -3955,12 +3961,18 @@
     // Opening a note that is not there would show an empty page belonging to no
     // file, so the missing note is offered instead of silently loaded.
     if (!exists) {
+      // A date that names a missing daily note (a meeting note's Day link)
+      // becomes that day's note, from the daily template like any other.
+      const day = dailyNoteDateFor(path);
       const create = await askConfirm(
-        `No note named ${splitWikiTarget(target).path}. Create it?`,
+        day
+          ? `No daily note for ${splitWikiTarget(target).path} yet. Create it?`
+          : `No note named ${splitWikiTarget(target).path}. Create it?`,
         'Create'
       );
       if (!create) return;
-      await createNoteAt(path);
+      if (day) await openDailyNote(day);
+      else await createNoteAt(path);
       return;
     }
 
