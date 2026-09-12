@@ -7,7 +7,10 @@ import {
   DEFAULT_NEWS_CATEGORIES,
   fetchArxivNews,
   newsCategories,
+  newsDay,
+  newsHistory,
   parseArxivRss,
+  readNewsDay,
   resetNewsCache
 } from '../server/news.js';
 import {
@@ -15,6 +18,7 @@ import {
   linkedArxivIds,
   newsCategoryCounts,
   newsClipChange,
+  newsDayLabel,
   newsSegments,
   shortAuthorList
 } from '../src/news.js';
@@ -148,6 +152,67 @@ test('keeps the listing on disk and revalidates it by ETag', async () => {
   });
   assert.deepEqual(requests, [null, '"v1"']);
   assert.deepEqual(revalidated, first, 'a 304 keeps the saved papers');
+});
+
+test('reads the announcement day off arXiv’s date', () => {
+  assert.equal(newsDay('Thu, 10 Sep 2026 00:00:00 -0400'), '2026-09-10');
+  assert.equal(newsDay('Mon, 5 Oct 2026 23:30:00 GMT'), '2026-10-05');
+  assert.equal(newsDay(''), '');
+  assert.match(newsDayLabel('2026-09-10', 'en-GB'), /^Thu 10 Sep/);
+});
+
+test('keeps a month of daily listings, on disk', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  const categories = ['hep-ex', 'cs.LG'];
+  let feed = '';
+  const fetchImpl = async () => new Response(feed, { status: 200 });
+  let clock = 0;
+  const now = () => clock;
+  const listing = (published, title) =>
+    RSS.replace(
+      /<pubDate>[^<]*<\/pubDate>/,
+      `<pubDate>${published}</pubDate>`
+    ).replace('An older paper, revised', title);
+  const fetchOn = async (day, published, title = 'x') => {
+    clock = Date.parse(`${day}T12:00:00Z`);
+    feed = listing(published, title);
+    return fetchArxivNews(categories, { fetchImpl, now, cacheDir });
+  };
+
+  await fetchOn('2026-09-10', 'Thu, 10 Sep 2026 00:00:00 -0400', 'Thursday');
+  await fetchOn('2026-09-11', 'Fri, 11 Sep 2026 00:00:00 -0400', 'Friday');
+  // Weekend feeds carry no papers and are not kept.
+  clock = Date.parse('2026-09-12T12:00:00Z');
+  feed = RSS.replace(/<item>[\s\S]*<\/item>/, '').replace(/10 Sep/g, '12 Sep');
+  await fetchArxivNews(categories, { fetchImpl, now, cacheDir });
+
+  resetNewsCache(); // a server restart
+  assert.deepEqual(await newsHistory(categories, { cacheDir, now }), [
+    '2026-09-11',
+    '2026-09-10'
+  ]);
+  const thursday = await readNewsDay(categories, '2026-09-10', { cacheDir });
+  assert.equal(thursday.papers[1].title, 'Thursday');
+
+  await fetchOn('2026-10-12', 'Mon, 12 Oct 2026 00:00:00 -0400');
+  assert.deepEqual(
+    await newsHistory(categories, { cacheDir, now }),
+    ['2026-10-12', '2026-09-11'],
+    'days past a month are dropped'
+  );
+  await assert.rejects(
+    readNewsDay(categories, '2026-09-10', { cacheDir }),
+    (error) => error.status === 404
+  );
+});
+
+test('keeps the history in memory without a cache directory', async () => {
+  const now = () => Date.parse('2026-09-10T12:00:00Z');
+  const fetchImpl = async () => new Response(RSS, { status: 200 });
+  await fetchArxivNews(['hep-ex'], { fetchImpl, now });
+  assert.deepEqual(await newsHistory(['hep-ex'], { now }), ['2026-09-10']);
+  const kept = await readNewsDay(['hep-ex'], '2026-09-10');
+  assert.equal(kept.papers.length, 2);
 });
 
 test('clips into an existing Reading section', () => {

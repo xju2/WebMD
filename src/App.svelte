@@ -75,6 +75,7 @@
     filterPapers,
     linkedArxivIds,
     newsCategoryCounts,
+    newsDayLabel,
     NEWS_INSTRUCTIONS_PATH,
     NEWS_INSTRUCTIONS_TEMPLATE,
     newsClipChange,
@@ -296,6 +297,11 @@
   let newsPapers = [];
   let newsCategories = [];
   let newsPublished = '';
+  // The announcement day asked for; '' follows the latest listing.
+  let newsDay = '';
+  let newsShownDay = '';
+  let newsLatestDay = '';
+  let newsDays = [];
   let newsStatus = '';
   let newsWarning = '';
   let newsFilter = readNewsFilter();
@@ -642,6 +648,15 @@
     unsaved: unsavedWork
   });
   $: visiblePapers = filterPapers(newsPapers, newsFilter);
+  // A weekend's empty listing is not kept, but it is still today.
+  $: newsDayOptions =
+    newsLatestDay && !newsDays.includes(newsLatestDay)
+      ? [newsLatestDay, ...newsDays]
+      : newsDays;
+  $: newsDayIndex = newsDayOptions.indexOf(newsShownDay);
+  $: olderNewsDay =
+    newsDayIndex >= 0 ? (newsDayOptions[newsDayIndex + 1] ?? '') : '';
+  $: newerNewsDay = newsDayIndex > 0 ? newsDayOptions[newsDayIndex - 1] : '';
   $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
   $: rankIndex = new Map(
     (newsRanking?.order ?? []).map((id, index) => [id, index])
@@ -1925,24 +1940,55 @@
   }
 
   async function loadNews({ refresh = false } = {}) {
+    const day = newsDay;
     newsStatus = refresh ? 'Checking arXiv...' : 'Loading arXiv...';
     try {
+      const params = new URLSearchParams();
+      if (day) params.set('day', day);
+      if (refresh) params.set('refresh', '1');
+      const query = params.toString();
       const news = await requestJson(
-        `/api/news/arxiv${refresh ? '?refresh=1' : ''}`
+        `/api/news/arxiv${query ? `?${query}` : ''}`
       );
+      if (day !== newsDay) return;
       newsPapers = news.papers;
       newsCategories = news.categories;
       newsPublished = news.published;
+      newsShownDay = news.day || '';
+      newsDays = news.days ?? [];
+      if (!day) newsLatestDay = newsShownDay;
       newsWarning = news.warning || '';
       newsStatus = '';
     } catch (err) {
+      if (day !== newsDay) return;
+      // That day has aged out of the month kept; show the latest instead.
+      if (day && err.status === 404) {
+        newsDay = '';
+        await loadNews();
+        return;
+      }
       newsStatus = err.message;
     }
   }
 
   async function refreshNews() {
+    if (newsDay) {
+      newsDay = '';
+      newsRanking = null;
+    }
     await loadNews({ refresh: true });
     await rankNews();
+  }
+
+  /** Shows one kept day's listing, so a missed day can be caught up. */
+  async function selectNewsDay(day) {
+    if (!day || day === newsShownDay) return;
+    newsDay = day === newsLatestDay ? '' : day;
+    newsRanking = null;
+    newsExpanded = new Set();
+    document.querySelector('.news-pane')?.scrollTo?.(0, 0);
+    await loadNews();
+    if (viewMode === 'news' && newsPapers.length) rankNews();
   }
 
   /**
@@ -1952,22 +1998,24 @@
    */
   async function rankNews({ refresh = false } = {}) {
     const root = selectedRoot;
+    const day = newsDay;
+    const current = () => root === selectedRoot && day === newsDay;
     newsRankStatus = refresh
-      ? 'Ranking today’s papers again...'
+      ? 'Ranking these papers again...'
       : 'Picking the papers you would want to read...';
     try {
       const ranking = await requestJson('/api/news/rank', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ root, refresh })
+        body: JSON.stringify({ root, refresh, day: day || undefined })
       });
-      if (root !== selectedRoot) return;
+      if (!current()) return;
       newsRanking = ranking;
     } catch (err) {
-      if (root === selectedRoot)
+      if (current())
         newsRanking = { order: [], picks: [], warning: err.message };
     } finally {
-      if (root === selectedRoot) newsRankStatus = '';
+      if (current()) newsRankStatus = '';
     }
   }
 
@@ -6657,7 +6705,43 @@
             <header class="tasks-toolbar news-toolbar">
               <h2>
                 arXiv
-                {#if newsPublished}
+                {#if newsDayOptions.length > 1}
+                  <span class="news-days" role="group" aria-label="Listing day">
+                    <button
+                      aria-label="Earlier day"
+                      data-tooltip="Earlier day"
+                      disabled={!olderNewsDay}
+                      type="button"
+                      on:click={() => selectNewsDay(olderNewsDay)}
+                    >
+                      {@render icon('chevronLeft')}
+                    </button>
+                    <select
+                      aria-label="Show the listing of"
+                      title="Listings of the last month are kept"
+                      value={newsShownDay}
+                      on:change={(event) =>
+                        selectNewsDay(event.currentTarget.value)}
+                    >
+                      {#each newsDayOptions as day (day)}
+                        <option value={day}
+                          >{newsDayLabel(day)}{day === newsLatestDay
+                            ? ' · latest'
+                            : ''}</option
+                        >
+                      {/each}
+                    </select>
+                    <button
+                      aria-label="Later day"
+                      data-tooltip="Later day"
+                      disabled={!newerNewsDay}
+                      type="button"
+                      on:click={() => selectNewsDay(newerNewsDay)}
+                    >
+                      {@render icon('chevronRight')}
+                    </button>
+                  </span>
+                {:else if newsPublished}
                   <span class="news-date"
                     >{newsPublished.replace(/ \d\d:\d\d:\d\d.*$/, '')}</span
                   >
@@ -6767,7 +6851,7 @@
                 <i aria-hidden="true" class="news-section-rule"></i>
                 <button
                   type="button"
-                  title="Ask the AI to rank today’s papers again"
+                  title="Ask the AI to rank these papers again"
                   disabled={!!newsRankStatus}
                   on:click={() => rankNews({ refresh: true })}
                 >
@@ -6803,7 +6887,7 @@
                   <li class="preview-empty">
                     {newsPapers.length
                       ? 'No paper matches this filter.'
-                      : 'arXiv has no announcements today. It publishes none on weekends.'}
+                      : `arXiv has no announcements today. It publishes none on weekends.${newsDays.length ? ' Earlier days are in the day menu above.' : ''}`}
                   </li>
                 {/if}
               {/each}

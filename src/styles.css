@@ -1653,6 +1653,7 @@ body.resizing-panels .resize-handle::after {
 .task-sections-actions button,
 .task-section-edit button,
 .news-section button,
+.news-days button,
 .calendar-toolbar button,
 .graph-controls button,
 .inline-edit-actions button,
@@ -1675,7 +1676,8 @@ body.resizing-panels .resize-handle::after {
 }
 
 .tasks-summary button .icon,
-.news-section button .icon {
+.news-section button .icon,
+.news-days button .icon {
   width: 16px;
   height: 16px;
 }
@@ -1684,6 +1686,7 @@ body.resizing-panels .resize-handle::after {
 .task-sections-actions button:hover:not(:disabled),
 .task-section-edit button:hover:not(:disabled),
 .news-section button:hover:not(:disabled),
+.news-days button:hover:not(:disabled),
 .calendar-toolbar button:hover:not(:disabled),
 .graph-controls button:hover:not(:disabled),
 .inline-edit-actions button:hover:not(:disabled),
@@ -1711,6 +1714,7 @@ body.resizing-panels .resize-handle::after {
 .tasks-summary button:disabled,
 .task-section-edit button:disabled,
 .news-section button:disabled,
+.news-days button:disabled,
 .inline-edit-actions button:disabled,
 .inline-edit-actions button.primary:disabled {
   border-color: var(--border);
@@ -1728,7 +1732,8 @@ select {
 .calendar-controls select,
 .graph-controls select,
 .reference-toolbar select,
-.task-section-edit select {
+.task-section-edit select,
+.news-days select {
   height: var(--control-height);
   padding: 0 30px 0 10px;
   border: 1px solid var(--border-control);
@@ -1742,7 +1747,8 @@ select {
 .calendar-controls select:hover,
 .graph-controls select:hover,
 .reference-toolbar select:hover,
-.task-section-edit select:hover {
+.task-section-edit select:hover,
+.news-days select:hover {
   border-color: var(--border-strong);
 }
 
@@ -2755,6 +2761,24 @@ input[type='radio'] {
   color: var(--ink-muted);
   font-size: 0.9rem;
   font-weight: 450;
+}
+
+.news-toolbar h2:has(.news-days) {
+  align-items: center;
+}
+
+.news-days {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9rem;
+  font-weight: 450;
+}
+
+.news-days button {
+  width: var(--control-height);
+  padding: 0;
+  color: var(--ink-muted);
 }
 
 .news-toolbar .tasks-summary > span {

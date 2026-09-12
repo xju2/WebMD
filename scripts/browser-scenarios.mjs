@@ -230,6 +230,39 @@ try {
   );
   await page.shot('2-news-ai-open');
 
+  const newsDays = () =>
+    page.eval(`
+      const select = document.querySelector('.news-days select');
+      return {
+        options: [...(select?.options ?? [])].map((option) => option.textContent),
+        value: select?.value,
+        later: document.querySelector('[aria-label="Later day"]')?.disabled,
+        first: document.querySelector('.news-paper .news-title')?.textContent
+      };
+    `);
+  let days = await newsDays();
+  check(
+    'News: the day menu lists the kept days, latest first',
+    days.options.length === 3 && /latest/.test(days.options[0]) && days.later,
+    JSON.stringify(days)
+  );
+  await page.click('[aria-label="Earlier day"]');
+  await page.waitFor(
+    `document.querySelector('.news-paper .news-title')?.textContent.startsWith('Earlier fixture paper')`
+  );
+  days = await newsDays();
+  check(
+    'News: Earlier day shows that day’s listing',
+    days.value !== '' && !days.later && /^Earlier fixture/.test(days.first),
+    JSON.stringify(days)
+  );
+  await page.shot('2-news-earlier-day');
+  await page.click('[aria-label="Later day"]');
+  await page.waitFor(
+    `document.querySelector('.news-paper .news-title')?.textContent.startsWith('Fixture paper')`
+  );
+  check('News: Later day returns to the latest listing', true);
+
   for (const [label, view] of [
     ['Open tasks', 'Tasks'],
     ['Open daily notes calendar', 'Daily Notes']

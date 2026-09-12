@@ -104,8 +104,9 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
-- `WEBMD_CACHE_DIR`: where the News listing, its AI ranking, and the Meetings
-  view's Indico answers are kept across restarts, defaults to `~/.cache/webmd`.
+- `WEBMD_CACHE_DIR`: where the News listings (a month of them), their AI
+  rankings, and the Meetings view's Indico answers are kept across restarts,
+  defaults to `~/.cache/webmd`.
   Meetings shows its last copy at once and refreshes it behind the scenes;
   protected meetings are cached there too, readable only by you. Nothing there
   is needed; delete it any time.
@@ -479,6 +480,20 @@ refetch it, and checked by ETag once stale, so an unchanged feed costs a 304.
 The AI ranking is saved the same way: one model call per listing, until the
 instructions change or you press **Re-rank**.
 
+### Earlier days
+
+Each day's listing is kept for a month (31 days) under `WEBMD_CACHE_DIR`, so
+papers you missed are still there to catch up on. Once there is more than one
+day, the arrows and day menu next to the **arXiv** heading step through them.
+Filters, clipping, and ranking work on an earlier day as they do on today's,
+and a clipped paper still goes to today's daily note. Each day is ranked once,
+the first time you open it. **Refresh** goes back to the latest listing.
+
+The server checks the feed every hour, so a day is kept even when you never
+open News that day. Days when the server was not running are not kept, because
+arXiv's feed only ever carries the latest announcement. Weekends have no
+listing and are skipped.
+
 - **Filter** keeps papers whose title, authors, or abstract contain every word
   you type. The category chips narrow the list to the ones you pick. Both are
   remembered, so tomorrow's listing opens filtered the same way.
@@ -516,7 +531,7 @@ straight away. Without a reachable model the order falls back to the lexical
 score, with a note saying so. **arXiv** switches back to arXiv's own order.
 
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
-weekends.
+weekends; Friday's is in the day menu.
 
 ## Meetings
 

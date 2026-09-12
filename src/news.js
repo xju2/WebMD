@@ -104,6 +104,18 @@ export function newsCategoryCounts(papers = [], categories = [], options = {}) {
   );
 }
 
+/** "Fri 11 Sep" for a kept listing's `YYYY-MM-DD`, whatever the time zone. */
+export function newsDayLabel(day = '', locale) {
+  const date = new Date(`${day}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  return date.toLocaleDateString(locale, {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'UTC'
+  });
+}
+
 /** Collaboration papers list hundreds of names; three say who it is. */
 export function shortAuthorList(authors = [], limit = 3) {
   if (authors.length <= limit) return authors.join(', ');

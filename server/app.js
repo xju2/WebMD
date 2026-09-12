@@ -32,8 +32,13 @@ import {
 import { fetchXPost, isXPostUrl } from './x.js';
 import {
   fetchArxivNews,
+  isNewsDay,
   newsCategories,
+  newsDay,
+  newsHistory,
+  oldestNewsDay,
   readCacheFile,
+  readNewsDay,
   writeCacheFile
 } from './news.js';
 import {
@@ -577,34 +582,51 @@ export async function createApp({
     })
   );
 
-  // Today's arXiv listing for the News view. Proxied for the usual reasons: no
-  // CORS headers on rss.arxiv.org, and one cached copy for every tab.
+  // Today's arXiv listing for the News view, or with `day` one kept from the
+  // last month. Proxied for the usual reasons: no CORS headers on
+  // rss.arxiv.org, and one cached copy for every tab.
   app.get(
     '/api/news/arxiv',
     asyncHandler(async (req, res) => {
-      res.json(
-        await fetchArxivNews(newsCategories(env), {
-          fetchImpl: newsFetch,
-          refresh: req.query.refresh === '1',
-          cacheDir
-        })
-      );
+      const news = await newsListing(req.query.day, {
+        refresh: req.query.refresh === '1'
+      });
+      res.json({
+        ...news,
+        day: newsDay(news.published),
+        days: await newsHistory(newsCategories(env), { cacheDir })
+      });
     })
   );
+
+  async function newsListing(day, { refresh = false } = {}) {
+    const categories = newsCategories(env);
+    if (!day) {
+      return fetchArxivNews(categories, {
+        fetchImpl: newsFetch,
+        refresh,
+        cacheDir
+      });
+    }
+    if (!isNewsDay(day)) {
+      throw new WorkspaceError(400, 'The day must be written YYYY-MM-DD.');
+    }
+    return readNewsDay(categories, day, { cacheDir });
+  }
 
   // One ranking per workspace per listing: a model call reads the whole day's
   // shortlist, so it runs once and every tab, reload, and restart reuses it.
   // Clipping a paper does not reshuffle the page under you; Re-rank asks again.
+  // Rankings of earlier days are kept as long as their listings are.
   const newsRankings = new Map();
+  const MAX_NEWS_RANKINGS = 64;
+  const rankFileWrites = new Map();
 
   app.post(
     '/api/news/rank',
     asyncHandler(async (req, res) => {
       const workspace = workspaces.get(req.body?.root);
-      const news = await fetchArxivNews(newsCategories(env), {
-        fetchImpl: newsFetch,
-        cacheDir
-      });
+      const news = await newsListing(req.body?.day);
       // Editing the instructions note earns a fresh ranking; clipping a paper
       // (which also feeds the profile) does not.
       const instructions =
@@ -626,26 +648,58 @@ export async function createApp({
         ranking = (async () => {
           const saved =
             file && !req.body?.refresh ? await readCacheFile(file) : null;
-          if (saved?.listing === listing && saved.ranking) return saved.ranking;
+          const hit =
+            saved?.rankings?.[listing]?.ranking ??
+            (saved?.listing === listing ? saved.ranking : null);
+          if (hit) return hit;
           const fresh = await rankNews(workspace, news, instructions);
           // Only a model answer costs anything to redo.
           if (file && fresh.method === 'ai')
-            await writeCacheFile(file, { listing, ranking: fresh });
+            await saveNewsRanking(
+              file,
+              listing,
+              newsDay(news.published),
+              fresh
+            );
           return fresh;
         })().catch((error) => {
           newsRankings.delete(key);
           throw error;
         });
         newsRankings.set(key, ranking);
-        // Only the latest listing per workspace is worth keeping.
         for (const stale of newsRankings.keys()) {
-          if (stale !== key && stale.startsWith(`${req.body?.root ?? '0'}|`))
-            newsRankings.delete(stale);
+          if (newsRankings.size <= MAX_NEWS_RANKINGS) break;
+          newsRankings.delete(stale);
         }
       }
       res.json(await ranking);
     })
   );
+
+  /**
+   * Adds one listing's ranking to the workspace's file and drops the days no
+   * longer kept. Writes to one file queue up, so two days ranked at once
+   * cannot overwrite each other.
+   */
+  function saveNewsRanking(file, listing, day, ranking) {
+    const write = (rankFileWrites.get(file) ?? Promise.resolve()).then(
+      async () => {
+        const saved = (await readCacheFile(file)) || {};
+        const rankings = saved.rankings ?? {};
+        const oldest = oldestNewsDay();
+        for (const [kept, entry] of Object.entries(rankings)) {
+          if (!(entry?.day >= oldest)) delete rankings[kept];
+        }
+        rankings[listing] = { day, ranking };
+        await writeCacheFile(file, { rankings });
+      }
+    );
+    rankFileWrites.set(
+      file,
+      write.catch(() => {})
+    );
+    return write;
+  }
 
   async function rankNews(workspace, news, instructions) {
     const profile = buildInterestProfile({

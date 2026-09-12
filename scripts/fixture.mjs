@@ -19,6 +19,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createApp } from '../server/app.js';
+import { newsCategories, parseArxivRss } from '../server/news.js';
 
 const port = Number(process.env.PORT || 3197);
 const aiMode = process.env.AI_MODE || 'ok';
@@ -182,6 +183,41 @@ const rss = channel(
     )
     .join('')
 );
+
+// Two earlier weekdays of listings, so the News day picker has a month to
+// page through. Each keeps the fixture's papers under that day's own ids.
+const cacheDir = path.join(base, '.cache');
+const newsKey = newsCategories({
+  ARXIV_NEWS_CATEGORIES: 'hep-ex,hep-ph,cs.LG,physics.data-an'
+}).join('+');
+for (const [offset, label] of [
+  [-3, 'Earlier'],
+  [-4, 'Earliest']
+]) {
+  const date = new Date(today.getTime() + offset * 24 * 60 * 60 * 1000);
+  const listing = parseArxivRss(
+    rss
+      .replace(/<pubDate>[^<]*/, `<pubDate>${date.toUTCString()}`)
+      .replace(/2609\.000(\d\d)/g, `2608.${String(-offset)}00$1`)
+      .replace(/Fixture paper/g, `${label} fixture paper`)
+  );
+  const file = path.join(
+    cacheDir,
+    'arxiv-news',
+    'history',
+    newsKey,
+    `${date.toISOString().slice(0, 10)}.json`
+  );
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(
+    file,
+    JSON.stringify({
+      categories: newsKey.split('+'),
+      ...listing,
+      fetchedAt: date.getTime()
+    })
+  );
+}
 
 async function newsFetch() {
   if (newsMode === 'error') throw new Error('fixture network is offline');
@@ -484,6 +520,7 @@ const app = await createApp({
   citationFetch: offline,
   indicoFetch,
   xFetch: offline,
+  cacheDir,
   env
 });
 app.listen(port, '127.0.0.1', () =>

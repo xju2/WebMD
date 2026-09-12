@@ -1,5 +1,6 @@
 import { createApp } from './app.js';
 import { startAutoCommit } from './autocommit.js';
+import { newsCategories, startNewsArchive } from './news.js';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -20,12 +21,11 @@ if (!workspaceRoots.length) {
   process.exit(1);
 }
 
+const cacheDir =
+  process.env.WEBMD_CACHE_DIR || path.join(os.homedir(), '.cache', 'webmd');
+
 try {
-  const app = await createApp({
-    workspaceRoots,
-    cacheDir:
-      process.env.WEBMD_CACHE_DIR || path.join(os.homedir(), '.cache', 'webmd')
-  });
+  const app = await createApp({ workspaceRoots, cacheDir });
   const server = app.listen(port, '127.0.0.1', () => {
     // EADDRINUSE lands just after this callback, so defer and let the error handler win.
     setImmediate(() => console.log(`WebMD listening on http://127.0.0.1:${port}`));
@@ -41,6 +41,14 @@ try {
     console.log(`Auto-committing every ${autoCommitMinutes} min.`);
   }
 
+  // Keeps a month of arXiv listings even on days News is never opened.
+  const newsArchive = startNewsArchive({
+    categories: newsCategories(),
+    cacheDir,
+    onError: (error) =>
+      console.warn(`Could not check the arXiv feed: ${error.message}`)
+  });
+
   // listen() reports failures as an async event, so the try/catch never sees them.
   server.on('error', (error) => {
     console.error(
@@ -55,6 +63,7 @@ try {
   // the edits made since the previous tick.
   process.on('SIGTERM', async () => {
     autoCommit.stop();
+    newsArchive.stop();
     await autoCommit.runOnce();
     server.close(() => process.exit(0));
   });

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createApp } from '../server/app.js';
-import { resetNewsCache } from '../server/news.js';
+import { DEFAULT_NEWS_CATEGORIES, resetNewsCache } from '../server/news.js';
 import {
   buildInterestProfile,
   buildRankMessages,
@@ -280,4 +280,99 @@ test('a saved AI ranking outlives a server restart', async () => {
 
   await rankOnce({ refresh: true });
   assert.equal(calls, 2, 'Re-rank still asks the model');
+});
+
+test('serves and ranks the listings of earlier days', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'webmd-news-'));
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd', 'news.md'),
+    'Rank by HL-LHC tracking.\n'
+  );
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const today = new Date();
+  const feedOf = (date, title) =>
+    RSS.replace(/<pubDate>[^<]*/, `<pubDate>${date.toUTCString()}`).replace(
+      PAPERS[0].title,
+      title
+    );
+  const isoDay = (date) => date.toISOString().slice(0, 10);
+
+  const prompts = [];
+  const serve = async (feed, run) => {
+    const app = await createApp({
+      workspaceRoots: [root],
+      env: {},
+      cacheDir,
+      newsFetch: async () => new Response(feed, { status: 200 }),
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async (_url, options) => {
+        prompts.push(JSON.parse(options.body).messages[1].content);
+        return ollamaReply(
+          '[{"id": "2609.00002", "score": 9, "connection": "HEP tracking", "reason": "GNN tracking."}]'
+        );
+      }
+    });
+    const server = app.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const url = `http://127.0.0.1:${server.address().port}`;
+    try {
+      return await run({
+        get: async (query = '') => {
+          const response = await fetch(`${url}/api/news/arxiv${query}`);
+          return { status: response.status, body: await response.json() };
+        },
+        rank: async (body = {}) =>
+          (
+            await fetch(`${url}/api/news/rank`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ root: '0', ...body })
+            })
+          ).json()
+      });
+    } finally {
+      server.close();
+      resetNewsCache();
+    }
+  };
+
+  await serve(feedOf(yesterday, 'Yesterday paper'), async ({ get }) => {
+    const { body } = await get();
+    assert.equal(body.day, isoDay(yesterday));
+    assert.deepEqual(body.days, [isoDay(yesterday)]);
+  });
+  // The next day's feed, past the cached copy.
+  await fs.rm(
+    path.join(
+      cacheDir,
+      'arxiv-news',
+      `${DEFAULT_NEWS_CATEGORIES.join('+')}.json`
+    )
+  );
+  await serve(feedOf(today, 'Today paper'), async ({ get, rank }) => {
+    const latest = await get();
+    assert.equal(latest.body.day, isoDay(today));
+    assert.deepEqual(latest.body.days, [isoDay(today), isoDay(yesterday)]);
+
+    const earlier = await get(`?day=${isoDay(yesterday)}`);
+    assert.equal(earlier.body.day, isoDay(yesterday));
+    assert.equal(earlier.body.papers[0].title, 'Yesterday paper');
+    assert.deepEqual(earlier.body.days, latest.body.days);
+    assert.equal((await get('?day=soon')).status, 400);
+    assert.equal((await get('?day=2001-01-01')).status, 404);
+
+    assert.equal((await rank({ day: isoDay(yesterday) })).method, 'ai');
+    assert.match(prompts[0], /Yesterday paper/);
+    assert.equal((await rank()).method, 'ai');
+    assert.match(prompts[1], /Today paper/);
+    await rank({ day: isoDay(yesterday) });
+    assert.equal(prompts.length, 2, 'each day is ranked once');
+  });
+  await serve(feedOf(today, 'Today paper'), async ({ rank }) => {
+    await rank({ day: isoDay(yesterday) });
+    await rank();
+    assert.equal(prompts.length, 2, 'both rankings are saved on disk');
+  });
 });
