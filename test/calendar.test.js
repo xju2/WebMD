@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   calendarDays,
-  countTasksByDueDate,
   dailyNoteContent,
   dailyNoteDate,
   dailyNoteDateFromPath,
@@ -154,19 +153,3 @@ test('picks the reference note beside the open file', () => {
   );
 });
 
-test('counts open tasks by due date', () => {
-  const counts = countTasksByDueDate([
-    { due: '2026-08-20', checked: false },
-    { due: '2026-08-20', checked: false },
-    { due: '2026-08-21', checked: false },
-    // Finished work is nobody's workload, and neither is an undated task.
-    { due: '2026-08-20', checked: true },
-    { due: '', checked: false }
-  ]);
-
-  assert.equal(counts.get('2026-08-20'), 2);
-  assert.equal(counts.get('2026-08-21'), 1);
-  assert.equal(counts.get('2026-08-22'), undefined);
-  assert.equal(counts.size, 2);
-  assert.equal(countTasksByDueDate().size, 0);
-});

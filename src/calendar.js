@@ -15,22 +15,6 @@ export function calendarDays(month) {
 }
 
 /**
- * How much work lands on each day: open tasks counted by due date, keyed
- * 'YYYY-MM-DD'. The Tasks view buckets anything past next week into one "Later"
- * pile, so the month grid is the only place the shape of a busy Thursday shows.
- * Ticked tasks and tasks with no due date are nobody's workload.
- */
-export function countTasksByDueDate(tasks = []) {
-  const counts = new Map();
-  for (const task of tasks) {
-    // `due` is validated where it is parsed, so its presence is enough here.
-    if (!task?.due || task.checked) continue;
-    counts.set(task.due, (counts.get(task.due) ?? 0) + 1);
-  }
-  return counts;
-}
-
-/**
  * Calendar events keyed 'YYYY-MM-DD' by the reader's own day: a timed event
  * on the day it starts, an all-day one on every day it spans (its endDate is
  * exclusive, as in iCal). All-day events lead, the rest keep start order.

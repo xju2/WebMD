@@ -3211,31 +3211,6 @@ input[type='radio'] {
   background: var(--ink-subtle);
 }
 
-/* Sits top left, opposite the date number and clear of the note dot. Its colour
-   comes from the same urgency palette the task rows use, so red means the same
-   thing in both places. */
-.calendar-due {
-  position: absolute;
-  top: 7px;
-  left: 7px;
-  min-width: 20px;
-  border: none;
-  cursor: pointer;
-  font-size: 0.74rem;
-  font-weight: 650;
-  text-align: center;
-}
-
-.calendar-due:hover,
-.calendar-due:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.calendar-due.outside-month {
-  opacity: 0.6;
-}
-
 /* Meetings from Google Calendar, under the date. Only the links take clicks;
    the rest of the cell still opens the day's note. */
 .calendar-events {
@@ -3276,21 +3251,6 @@ input[type='radio'] {
 
 .calendar-events.outside-month {
   opacity: 0.6;
-}
-
-.tasks-due-filter {
-  border: 1px solid var(--border-control);
-  border-radius: 999px;
-  background: var(--surface-hover);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 0.78rem;
-  padding: 2px 10px;
-  white-space: nowrap;
-}
-
-.tasks-due-filter:hover {
-  border-color: var(--accent);
 }
 
 .graph-pane {
@@ -5164,12 +5124,6 @@ input[type='radio'] {
   .calendar-day i {
     right: 6px;
     bottom: 6px;
-  }
-
-  .calendar-due {
-    top: 4px;
-    left: 4px;
-    padding: 0 5px;
   }
 
   .calendar-events {

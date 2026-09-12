@@ -10,7 +10,6 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import {
     calendarDays as buildCalendarDays,
-    countTasksByDueDate,
     dailyNoteContent as buildDailyNoteContent,
     dailyNoteDate,
     dailyNoteDateFromPath,
@@ -318,9 +317,6 @@
   let taskGrouping = 'board';
   let taskFilter = '';
   let taskFilterInput = null;
-  // Set only by clicking a calendar day's due badge, and cleared whenever the
-  // Tasks view is opened any other way, so it can never sit there unexplained.
-  let taskDueFilter = '';
   let collapsedLanes = [];
   let showCompletedTasks = false;
   let editingSections = false;
@@ -432,7 +428,6 @@
     activeDailyNoteTemplatePath &&
     !markdownFiles.some((file) => file.path === activeDailyNoteTemplatePath);
   $: calendarDays = buildCalendarDays(calendarMonth);
-  $: dueTaskCounts = countTasksByDueDate(workspaceTasks);
   // Google Calendar events for the month on screen, when a feed is configured.
   let calendarEvents = [];
   let calendarEventsError = '';
@@ -569,10 +564,7 @@
   );
   // The filter box narrows the list once, before any of the three views slice
   // it, so switching between them keeps whatever you were looking for.
-  $: dueFilteredTasks = taskDueFilter
-    ? workspaceTasks.filter((task) => task.due === taskDueFilter)
-    : workspaceTasks;
-  $: matchingTasks = filterTasks(dueFilteredTasks, taskFilter);
+  $: matchingTasks = filterTasks(workspaceTasks, taskFilter);
   $: taskGroups = groupTasksByUrgency(matchingTasks, todayText);
   $: taskBoard = groupTasksIntoBoard(matchingTasks, taskSections, {
     today: todayText,
@@ -1878,23 +1870,12 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
-    // The day badges count due tasks, so the grid needs the same list the Tasks
-    // view reads. Failures land in tasksStatus, which the calendar ignores: a
-    // month without badges is still a usable month.
-    await loadTasks(selectedRoot);
-  }
-
-  /** Follows a calendar day's badge into the Tasks view, narrowed to that day. */
-  async function showTasksDueOn(dateText) {
-    await showTasks();
-    taskDueFilter = dateText;
   }
 
   async function showTasks({ remember = true } = {}) {
     if (selectedPath && hasUnsavedChanges()) await saveNow();
     if (remember) rememberViewNavigation('tasks');
     viewMode = 'tasks';
-    taskDueFilter = '';
     todayText = dailyNoteDate(new Date());
     selectedText = '';
     selectedRange = null;
@@ -6299,16 +6280,6 @@
                     ? ` · ${hiddenTaskCount} filtered out`
                     : ''}
                 </span>
-                {#if taskDueFilter}
-                  <button
-                    class="tasks-due-filter"
-                    type="button"
-                    title="Show tasks due on any date"
-                    on:click={() => (taskDueFilter = '')}
-                  >
-                    Due {formatDueLabel(taskDueFilter)} ✕
-                  </button>
-                {/if}
                 <div class="search-field">
                   {@render icon('search')}
                   <input
@@ -6983,7 +6954,6 @@
                 {@const path = calendarDayPath(day)}
                 {@const hasNote = dailyNotePaths.has(path)}
                 {@const dateText = dailyNoteDate(day.date)}
-                {@const dueCount = dueTaskCounts.get(dateText) ?? 0}
                 {@const dayEvents = calendarEventsOnDay.get(dateText) ?? []}
                 <div class="calendar-cell">
                   <button
@@ -6999,23 +6969,6 @@
                     <span>{day.date.getDate()}</span>
                     {#if hasNote}<i aria-label="Note exists"></i>{/if}
                   </button>
-                  {#if dueCount}
-                    <!-- Its own target, so counting the day's work and opening
-                         the day's note stay two different clicks. -->
-                    <button
-                      aria-label={`Show ${dueCount} task${dueCount === 1 ? '' : 's'} due ${calendarDayLabel(day)}`}
-                      class="calendar-due task-due task-due-{taskUrgency(
-                        dateText,
-                        todayText
-                      )}"
-                      class:outside-month={!day.currentMonth}
-                      title={`${dueCount} task${dueCount === 1 ? '' : 's'} due ${dateText}`}
-                      type="button"
-                      on:click={() => showTasksDueOn(dateText)}
-                    >
-                      {dueCount}
-                    </button>
-                  {/if}
                   {#if dayEvents.length}
                     <!-- Beside the day button, not in it: a link opens the
                          meeting, the rest of the cell still opens the note. -->
