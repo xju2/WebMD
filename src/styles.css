@@ -3203,20 +3203,6 @@ input[type='radio'] {
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
-.calendar-day i {
-  position: absolute;
-  right: 10px;
-  bottom: 9px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.calendar-day.outside-month i {
-  background: var(--ink-subtle);
-}
-
 /* Meetings from Google Calendar, under the date. Only the links take clicks;
    the rest of the cell still opens the day's note. */
 .calendar-events {
@@ -5201,11 +5187,6 @@ input[type='radio'] {
 
   .calendar-day {
     padding: 6px;
-  }
-
-  .calendar-day i {
-    right: 6px;
-    bottom: 6px;
   }
 
   .calendar-events {

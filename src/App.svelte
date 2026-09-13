@@ -7219,7 +7219,6 @@
                     on:click={() => openDailyNote(day.date)}
                   >
                     <span>{day.date.getDate()}</span>
-                    {#if hasNote}<i aria-label="Note exists"></i>{/if}
                   </button>
                   {#if dayEvents.length}
                     <!-- Beside the day button, not in it: an event opens its
