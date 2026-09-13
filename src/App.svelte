@@ -2227,21 +2227,25 @@
     setTimeout(() => target.classList.remove('line-flash'), 1200);
   }
 
-  async function loadCalendarEvents(days) {
+  // A copy up to a week old shows at once (the answer says `stale`); the
+  // fresh one the server fetched behind it is then asked for quietly.
+  async function loadCalendarEvents(days, { fresh = false } = {}) {
     const request = ++calendarEventsRequest;
     const from = dailyNoteDate(days[0].date);
     const to = dailyNoteDate(days[days.length - 1].date);
     try {
       const response = await fetch(
-        `/api/calendar/events?from=${from}&to=${to}`
+        `/api/calendar/events?from=${from}&to=${to}${fresh ? '&fresh=1' : ''}`
       );
       const body = await response.json();
       if (request !== calendarEventsRequest) return;
       if (!response.ok) throw new Error(body.error || 'Calendar failed.');
       calendarEvents = body.events;
       calendarEventsError = body.errors.join(' ');
+      if (body.stale && !fresh) loadCalendarEvents(days, { fresh: true });
     } catch (err) {
-      if (request !== calendarEventsRequest) return;
+      // The quiet follow-up failing leaves the stale copy on screen.
+      if (request !== calendarEventsRequest || fresh) return;
       calendarEvents = [];
       calendarEventsError = err.message;
     }

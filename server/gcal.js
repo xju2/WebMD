@@ -1,4 +1,11 @@
-import { htmlToText, webLink, zonedToEpoch } from './meetings.js';
+import { createHash } from 'node:crypto';
+import {
+  cached,
+  htmlToText,
+  resetMeetingsCache,
+  webLink,
+  zonedToEpoch
+} from './meetings.js';
 import { WorkspaceError } from './workspace.js';
 
 /**
@@ -23,15 +30,26 @@ export function calendarFeeds(env = process.env) {
     });
 }
 
-const CACHE_MS = 10 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15000;
 const DAY = 24 * 60 * 60 * 1000;
-const cache = new Map();
 
-/** Every occurrence in the feeds that touches [from, to), sorted by start. */
+/**
+ * Every occurrence in the feeds that touches [from, to), sorted by start.
+ * Feeds are cached like Indico's answers: `allowStale` answers at once from a
+ * copy up to a week old (saying `stale`) and fetches a new one behind it, and
+ * `cacheDir` keeps the copy across a restart.
+ */
 export async function calendarEvents(
   feeds,
-  { from, to, fetchImpl = fetch, refresh = false }
+  {
+    from,
+    to,
+    fetchImpl = fetch,
+    refresh = false,
+    allowStale = false,
+    cacheDir,
+    now = Date.now
+  }
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
     throw new WorkspaceError(400, 'from and to must be YYYY-MM-DD dates.');
@@ -48,10 +66,16 @@ export async function calendarEvents(
       'Ask for at most about three months at once.'
     );
   }
+  const stale = allowStale && !refresh ? { served: false } : undefined;
+  const terms = { refresh, cacheDir, folder: 'gcal', stale, now };
   const results = await Promise.all(
     feeds.map(async (feed) => {
       try {
-        const events = await feedEvents(feed, { fetchImpl, refresh });
+        // Keyed by a hash: the key is written to disk, the address is secret.
+        const key = `gcal ${createHash('sha256').update(feed).digest('hex')}`;
+        const events = await cached(key, terms, () =>
+          feedEvents(feed, fetchImpl)
+        );
         return { occurrences: expandEvents(events, window) };
       } catch (error) {
         return { error: error.message || 'Calendar request failed.' };
@@ -63,13 +87,12 @@ export async function calendarEvents(
       .flatMap((result) => result.occurrences || [])
       .sort((a, b) => a.sortAt - b.sortAt || a.title.localeCompare(b.title))
       .map(({ sortAt: _s, ...event }) => event),
-    errors: results.map((result) => result.error).filter(Boolean)
+    errors: results.map((result) => result.error).filter(Boolean),
+    ...(stale?.served ? { stale: true } : {})
   };
 }
 
-async function feedEvents(feed, { fetchImpl, refresh }) {
-  const hit = cache.get(feed);
-  if (!refresh && hit && hit.expiresAt > Date.now()) return hit.events;
+async function feedEvents(feed, fetchImpl) {
   let response;
   try {
     response = await fetchImpl(feed, {
@@ -85,9 +108,7 @@ async function feedEvents(feed, { fetchImpl, refresh }) {
       `${new URL(feed).hostname} answered ${response.status}. Check GOOGLE_CALENDAR_ICS is the secret (not public) iCal address, and restart WebMD after changing it.`
     );
   }
-  const events = parseIcs(await response.text());
-  cache.set(feed, { events, expiresAt: Date.now() + CACHE_MS });
-  return events;
+  return parseIcs(await response.text());
 }
 
 /* ------------------------------------------------------------------ parsing */
@@ -500,5 +521,5 @@ function isoDay(at) {
 
 /** Test seam: the feed cache outlives a single test. */
 export function resetCalendarCache() {
-  cache.clear();
+  resetMeetingsCache();
 }

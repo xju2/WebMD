@@ -594,17 +594,24 @@ export async function eventPageZoom(
 
 /**
  * One cached, shared request per key. `terms` carries the caller's terms:
- * `refresh` asks again; `cacheDir` keeps answers across a restart; `stale`,
- * an object, accepts an out-of-date answer at once (setting `stale.served`)
- * while a new one is fetched behind it for the next caller.
+ * `refresh` asks again; `cacheDir` keeps answers across a restart, under
+ * `folder`; `stale`, an object, accepts an out-of-date answer at once (setting
+ * `stale.served`) while a new one is fetched behind it for the next caller.
+ * The key is written into the file, so it must not be a secret.
  */
-async function cached(key, terms, load) {
-  const { refresh = false, cacheDir, stale, now = Date.now } = terms || {};
+export async function cached(key, terms, load) {
+  const {
+    refresh = false,
+    cacheDir,
+    folder = 'indico',
+    stale,
+    now = Date.now
+  } = terms || {};
   const file =
     cacheDir &&
     path.join(
       cacheDir,
-      'indico',
+      folder,
       `${createHash('sha1').update(key).digest('hex')}.json`
     );
   if (!refresh) {
@@ -632,7 +639,8 @@ function fetchInto(key, load, file, now) {
       const entry = { key, value, fetchedAt: now(), expiresAt: now() + CACHE_MS };
       remember(key, entry);
       if (file) {
-        // Protected meetings (and their Zoom passcodes) land here too.
+        // Protected meetings (and their Zoom passcodes), and private
+        // calendars, land here too.
         await writeCacheFile(file, entry, { mode: 0o600 });
         await pruneCacheDir(path.dirname(file));
       }

@@ -105,11 +105,11 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
 - `WEBMD_CACHE_DIR`: where the News listings (a month of them), their AI
-  rankings, and the Meetings view's Indico answers are kept across restarts,
-  defaults to `~/.cache/webmd`.
-  Meetings shows its last copy at once and refreshes it behind the scenes;
-  protected meetings are cached there too, readable only by you. Nothing there
-  is needed; delete it any time.
+  rankings, the Meetings view's Indico answers, and the Calendar's Google
+  Calendar events are kept across restarts, defaults to `~/.cache/webmd`.
+  Meetings and the Calendar show their last copy at once and refresh it behind
+  the scenes; protected meetings and private calendars are cached there too,
+  readable only by you. Nothing there is needed; delete it any time.
 
 ## Prompt presets
 
@@ -409,8 +409,9 @@ GOOGLE_CALENDAR_ICS=https://calendar.google.com/calendar/ical/.../private-.../ba
 ```
 
 Restart WebMD after setting it. The address works like a password, so it stays
-on the server. Google refreshes the feed every few hours and WebMD rereads it
-every 10 minutes, so a new invite can take a while to appear.
+on the server (its cache file is named by a hash of it). Google refreshes the
+feed every few hours and WebMD rereads it every 10 minutes, showing its last
+copy meanwhile, so a new invite can take a while to appear.
 
 ### Daily note template
 

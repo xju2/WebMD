@@ -332,13 +332,14 @@ export async function createApp({
     '/api/calendar/events',
     asyncHandler(async (req, res) => {
       if (!feeds.length) return res.json({ configured: false, events: [], errors: [] });
-      const { events, errors } = await calendarEvents(feeds, {
+      const listing = await calendarEvents(feeds, {
         from: String(req.query.from || ''),
         to: String(req.query.to || ''),
         fetchImpl: calendarFetch,
-        refresh: req.query.refresh === '1'
+        cacheDir,
+        ...meetingFreshness(req.query)
       });
-      res.json({ configured: true, events, errors });
+      res.json({ configured: true, ...listing });
     })
   );
 

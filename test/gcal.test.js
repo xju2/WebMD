@@ -321,3 +321,48 @@ test('eventTimeRange: a range, all day, and all day across days', () => {
     'All day, until Sep 23'
   );
 });
+
+test('feeds are cached on disk without their address, and a stale copy is served', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-gcal-cache-'));
+  const range = { from: '2026-10-25', to: '2026-11-05', cacheDir };
+  try {
+    const first = await calendarEvents([FEED], {
+      ...range,
+      fetchImpl: async () => {
+        return new Response(ICS);
+      }
+    });
+    assert.equal(first.events.length, 2);
+
+    const [file] = await fs.readdir(path.join(cacheDir, 'gcal'));
+    const saved = path.join(cacheDir, 'gcal', file);
+    assert.ok(!(await fs.readFile(saved, 'utf8')).includes('SECRET'));
+    assert.equal((await fs.stat(saved)).mode & 0o777, 0o600);
+
+    // A restart, an hour later, with Google unreachable.
+    resetCalendarCache();
+    const later = () => Date.now() + 60 * 60 * 1000;
+    const down = async () => {
+      throw new Error('offline');
+    };
+    const stale = await calendarEvents([FEED], {
+      ...range,
+      fetchImpl: down,
+      allowStale: true,
+      now: later
+    });
+    assert.equal(stale.stale, true);
+    assert.equal(stale.events.length, 2);
+    assert.deepEqual(stale.errors, []);
+
+    const fresh = await calendarEvents([FEED], {
+      ...range,
+      fetchImpl: down,
+      now: later
+    });
+    assert.equal(fresh.events.length, 0);
+    assert.equal(fresh.errors.length, 1);
+  } finally {
+    await fs.rm(cacheDir, { recursive: true, force: true });
+  }
+});
