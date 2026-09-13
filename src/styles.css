@@ -1658,7 +1658,8 @@ body.resizing-panels .resize-handle::after {
 .graph-controls button,
 .inline-edit-actions button,
 .ask footer button,
-.calendar-detail footer button {
+.calendar-detail footer button,
+.calendar-detail-add {
   display: inline-flex;
   height: var(--control-height);
   align-items: center;
@@ -1692,7 +1693,8 @@ body.resizing-panels .resize-handle::after {
 .graph-controls button:hover:not(:disabled),
 .inline-edit-actions button:hover:not(:disabled),
 .ask footer button:hover:not(:disabled),
-.calendar-detail footer button:hover:not(:disabled) {
+.calendar-detail footer button:hover:not(:disabled),
+.calendar-detail-add:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
@@ -4798,6 +4800,10 @@ input[type='radio'] {
   max-height: 16em;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.calendar-detail-add {
+  margin: 0 16px 14px 32px;
 }
 
 .calendar-detail footer {

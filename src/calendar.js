@@ -61,6 +61,27 @@ export function eventTimeRange(event, locale = []) {
   return new Intl.DateTimeFormat(locale, options).formatRange(start, end);
 }
 
+const MAX_NOTE_GUESTS = 12;
+
+/**
+ * The heading and starter lines a meeting gets in the day's note. `label` is
+ * what the calendar shows for it ("10:00 AM Group sync"), so the heading reads
+ * the same in both places and a second click can find it.
+ */
+export function meetingNoteSection(event, label) {
+  const heading = `## ${label.replace(/\s+/g, ' ').trim()}`;
+  const lines = [heading, ''];
+  const guests = event.attendees || [];
+  if (guests.length) {
+    const shown = guests.slice(0, MAX_NOTE_GUESTS).join(', ');
+    const more = guests.length - MAX_NOTE_GUESTS;
+    lines.push(`- Guests: ${shown}${more > 0 ? `, and ${more} more` : ''}`);
+  }
+  if (event.url) lines.push(`- Join: <${event.url}>`);
+  if (lines.length > 2) lines.push('');
+  return { heading, text: `${lines.join('\n')}\n` };
+}
+
 /** Text split into plain runs and `{ url }` runs, so links can be clickable. */
 export function linkParts(text = '') {
   const parts = [];

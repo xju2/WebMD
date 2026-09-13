@@ -12,7 +12,12 @@ import {
   parseIcs,
   resetCalendarCache
 } from '../server/gcal.js';
-import { eventsByDay, eventTimeRange, linkParts } from '../src/calendar.js';
+import {
+  eventsByDay,
+  eventTimeRange,
+  linkParts,
+  meetingNoteSection
+} from '../src/calendar.js';
 
 test.beforeEach(() => resetCalendarCache());
 
@@ -365,4 +370,18 @@ test('feeds are cached on disk without their address, and a stale copy is served
   } finally {
     await fs.rm(cacheDir, { recursive: true, force: true });
   }
+});
+
+test('meetingNoteSection: heading from the label, guests capped, join link', () => {
+  const guests = Array.from({ length: 14 }, (_, index) => `P${index + 1}`);
+  const { heading, text } = meetingNoteSection(
+    { attendees: guests, url: 'https://meet.google.com/abc' },
+    '10:00 AM  Group sync'
+  );
+  assert.equal(heading, '## 10:00 AM Group sync');
+  assert.equal(
+    text,
+    '## 10:00 AM Group sync\n\n- Guests: P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, and 2 more\n- Join: <https://meet.google.com/abc>\n\n'
+  );
+  assert.equal(meetingNoteSection({}, 'Trip').text, '## Trip\n\n');
 });

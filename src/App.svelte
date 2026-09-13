@@ -19,6 +19,7 @@
     eventsByDay,
     eventTimeRange,
     linkParts,
+    meetingNoteSection,
     shiftMonth,
     stepDailyNote,
     templateNeedsQuote
@@ -2255,6 +2256,41 @@
     calendarDetail = { day, events, open };
     await tick();
     calendarDetailClose?.focus();
+  }
+
+  /**
+   * Opens the day's note (creating it as usual) and leaves the cursor under a
+   * heading for the meeting, adding the section only the first time.
+   */
+  async function addMeetingToDayNote(day, event) {
+    calendarDetail = null;
+    const path = todayNotePath(day.date);
+    await openDailyNote(day.date);
+    if (selectedPath !== path || !editorView) return;
+    if (viewMode === 'preview') setViewMode('edit');
+
+    const { heading, text } = meetingNoteSection(
+      event,
+      calendarEventLabel(event)
+    );
+    const doc = editorView.state.doc.toString();
+    const found = doc.split('\n').indexOf(heading);
+    if (found >= 0) {
+      const line = editorView.state.doc.line(found + 1);
+      editorView.dispatch({
+        selection: { anchor: line.to },
+        scrollIntoView: true
+      });
+    } else {
+      const gap = !doc ? '' : doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
+      const insert = `${gap}${text}`;
+      editorView.dispatch({
+        changes: { from: doc.length, insert },
+        selection: { anchor: doc.length + insert.length },
+        scrollIntoView: true
+      });
+    }
+    editorView.focus();
   }
 
   function closeCalendarDetailOnEscape(event) {
@@ -6126,6 +6162,14 @@
                       </div>
                     {/if}
                   </dl>
+                  <button
+                    class="calendar-detail-add"
+                    type="button"
+                    on:click={() =>
+                      addMeetingToDayNote(calendarDetail.day, event)}
+                  >
+                    Add to the day's note
+                  </button>
                 </details>
               </li>
             {/each}
