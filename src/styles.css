@@ -2413,10 +2413,10 @@ input[type='radio'] {
 
 .task-row {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 5px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 12px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -2431,16 +2431,41 @@ input[type='radio'] {
 }
 
 .task-row-text {
-  flex: 1 1 auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
 }
 
-/* The note a task lives in is context, not the headline, so it stays quiet and
-   is the first thing to give up room on a narrow pane. */
-.task-row-path {
+.task-row:focus-within .task-row-text {
+  -webkit-line-clamp: unset;
+}
+
+.task-row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  color: var(--ink-subtle);
+  font-size: 0.8rem;
+}
+
+.task-row-meta:empty {
+  display: none;
+}
+
+.task-row-meta .task-due {
+  margin-left: auto;
+  background: transparent;
+  color: var(--ink-subtle);
+  font-weight: 400;
+}
+
+.task-row-source {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;

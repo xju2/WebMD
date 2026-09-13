@@ -8,7 +8,8 @@ import {
   parseTermList,
   sanitizeSections,
   taskMatchesSection,
-  taskTerms
+  taskTerms,
+  taskSourceLabel
 } from '../src/task-sections.js';
 
 const task = (fields = {}) => ({
@@ -245,4 +246,23 @@ test('reads a comma-separated term list the way the editor writes it', () => {
     'paper',
     'coding'
   ]);
+});
+
+test('compact task sources use project and date or a readable filename', () => {
+  assert.equal(taskSourceLabel(task()), 'plan');
+  const daily = task({
+    path: '/notes/2026-08-18.md',
+    headings: ['', '', 'IAAS']
+  });
+  const date = new Date(2026, 7, 18).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric'
+  });
+  assert.equal(taskSourceLabel(daily, '/notes'), `IAAS · ${date}`);
+  assert.equal(taskSourceLabel({ ...daily, headings: [] }, '/notes'), date);
+  assert.equal(taskSourceLabel(daily, '/journal'), '2026-08-18');
+  assert.equal(
+    taskSourceLabel(task({ path: '/notes/My plan.markdown' })),
+    'My plan'
+  );
 });

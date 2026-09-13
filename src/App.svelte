@@ -123,7 +123,8 @@
     formatTermList,
     groupTasksIntoSections,
     parseTermList,
-    sanitizeSections
+    sanitizeSections,
+    taskSourceLabel
   } from './task-sections.js';
   import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
   import {
@@ -566,7 +567,7 @@
   $: hiddenTaskCount = workspaceTasks.length - matchingTasks.length;
   // The two list ways of slicing render through one shape: panes of piles.
   // Urgency has nothing to say about where a task came from, so its piles are
-  // unlabelled and the rows show their own path.
+  // unlabelled and the rows show compact source context.
   $: taskPanes =
     taskGrouping === 'urgency'
       ? taskGroups.map((group) => ({
@@ -6783,15 +6784,6 @@
                             on:click={(event) => openTask(task, event)}
                             on:keydown={(event) => openTaskOnKey(task, event)}
                           >
-                            {#if task.priority}
-                              <span
-                                aria-label={`${task.priority} priority`}
-                                class={`task-priority task-priority-${task.priority}`}
-                                title={`${task.priority} priority`}
-                              >
-                                {priorityGlyph(task.priority)}
-                              </span>
-                            {/if}
                             <span class="task-row-text">
                               {#each taskTextSegments(task.displayText || task.text) as segment}
                                 {#if segment.type === 'link'}
@@ -6817,28 +6809,41 @@
                                 {/if}
                               {/each}
                             </span>
-                            {#each task.tags || [] as tag}
-                              <button
-                                class="task-tag"
-                                class:task-tag-active={taskFilter === `#${tag}`}
-                                title={`Filter by #${tag}`}
-                                type="button"
-                                on:click={(event) => filterByTag(tag, event)}
-                              >
-                                #{tag}
-                              </button>
-                            {/each}
-                            {#if task.due}
-                              <span
-                                class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
-                                title={`Due ${task.due}`}
-                              >
-                                {formatDueChip(task.due, todayText)}
-                              </span>
-                            {/if}
-                            {#if group.kind !== 'file'}
-                              <span class="task-row-path">{task.path}</span>
-                            {/if}
+                            <span class="task-row-meta">
+                              {#if task.priority}
+                                <span
+                                  aria-label={`${task.priority} priority`}
+                                  class={`task-priority task-priority-${task.priority}`}
+                                  title={`${task.priority} priority`}
+                                >
+                                  {priorityGlyph(task.priority)}
+                                </span>
+                              {/if}
+                              {#if group.kind !== 'file'}
+                                <span class="task-row-source" title={task.path}>
+                                  {taskSourceLabel(task, activeDailyNoteFolder)}
+                                </span>
+                              {/if}
+                              {#each task.tags || [] as tag}
+                                <button
+                                  class="task-tag"
+                                  class:task-tag-active={taskFilter === `#${tag}`}
+                                  title={`Filter by #${tag}`}
+                                  type="button"
+                                  on:click={(event) => filterByTag(tag, event)}
+                                >
+                                  #{tag}
+                                </button>
+                              {/each}
+                              {#if task.due}
+                                <span
+                                  class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
+                                  title={`Due ${task.due}`}
+                                >
+                                  {formatDueChip(task.due, todayText)}
+                                </span>
+                              {/if}
+                            </span>
                           </div>
                         </li>
                       {/each}

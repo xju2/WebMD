@@ -1,4 +1,4 @@
-import { sortTasks } from './tasks.js';
+import { formatDueLabel, sortTasks } from './tasks.js';
 
 // The Tasks view is a dashboard of sections, each one a small filter over the
 // workspace's tasks. It replaces the Dataview queries a note like this needs in
@@ -161,6 +161,22 @@ export function sectionGroupKey(task = {}, dailyNoteFolder = '') {
     };
   }
   return { key: `file:${path}`, label: path, kind: 'file' };
+}
+
+/** Compact source context; the row keeps the full path in its tooltip. */
+export function taskSourceLabel(task = {}, dailyNoteFolder = '') {
+  const name = (task.path || '')
+    .split('/')
+    .pop()
+    .replace(/\.(md|markdown)$/i, '');
+  if (!isDailyNotePath(task.path, dailyNoteFolder)) return name;
+  const source = sectionGroupKey(task, dailyNoteFolder);
+  return [
+    source.kind === 'project' ? source.label : '',
+    formatDueLabel(name) || name
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /**
