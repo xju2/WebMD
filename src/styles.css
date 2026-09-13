@@ -193,13 +193,16 @@ body.resizing-panels {
   border: 0;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--ink-muted);
+  color: #3a4450;
   cursor: pointer;
 }
 
+/* A touch darker and firmer than the shared icon stroke, so the rail's thin
+   glyphs (calendar, tasks, AI) hold up against its pale ground. */
 .global-action .icon {
   width: 20px;
   height: 20px;
+  stroke-width: 1.8;
 }
 
 .global-action:hover:not(:disabled) {
@@ -592,19 +595,31 @@ body.resizing-panels .resize-handle::after {
   font-size: 0.88rem;
 }
 
+/* In the sidebar the box sits back: a faint fill and a hairline edge, so it
+   does not outweigh the file list around it. */
+.sidebar-search input {
+  border-color: var(--border);
+  background: var(--surface-muted);
+}
+
 .sidebar-search input::placeholder,
 .search-field input::placeholder {
   color: var(--ink-subtle);
 }
 
-.sidebar-search input:hover,
 .search-field input:hover {
   border-color: var(--border-strong);
+}
+
+.sidebar-search input:hover {
+  border-color: var(--border-control);
+  background: var(--surface);
 }
 
 .sidebar-search input:focus,
 .search-field input:focus {
   border-color: var(--accent);
+  background: var(--surface);
   outline: 2px solid var(--accent-soft-strong);
   outline-offset: 0;
 }
@@ -1448,48 +1463,6 @@ body.resizing-panels .resize-handle::after {
   outline-offset: 3px;
 }
 
-.toolbar-button {
-  height: var(--control-height);
-  padding: 0 12px;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 0.86rem;
-  font-weight: 550;
-}
-
-.toolbar-button:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-}
-
-.toolbar-button:disabled {
-  border-color: var(--border);
-  background: var(--surface-muted);
-  color: var(--ink-disabled);
-  cursor: default;
-}
-
-/* Destructive, so it says so in its text — but only its text, so it does not
-   shout from the toolbar when nobody is deleting anything. */
-.delete-button {
-  color: var(--danger);
-}
-
-.delete-button:hover:not(:disabled) {
-  border-color: #e8b4ae;
-  background: var(--danger-soft);
-}
-
-.reference-button.active,
-.reference-button.active:hover:not(:disabled) {
-  border-color: var(--accent-soft-strong);
-  background: var(--accent-soft);
-  color: var(--accent-ink);
-}
-
 /* Segmented control: a quiet track, the selected half lit in pale teal. */
 .view-toggle,
 .tasks-grouping {
@@ -1614,6 +1587,14 @@ body.resizing-panels .resize-handle::after {
 .view-menu-list button.active {
   background: var(--accent-soft);
   color: var(--accent-ink);
+}
+
+.view-menu-list button.view-menu-danger:not(:disabled) {
+  color: var(--danger);
+}
+
+.view-menu-list button.view-menu-danger:hover:not(:disabled) {
+  background: var(--danger-soft);
 }
 
 .view-menu-list button:disabled {
@@ -3546,18 +3527,29 @@ input[type='radio'] {
   line-height: 1.25;
 }
 
+/* Weight steps down with size, so the small headings read as sections under
+   the big ones instead of all shouting at the same bold. */
 .preview-pane h1 {
   font-size: 1.65rem;
+  font-weight: 700;
 }
 
 .preview-pane h2 {
   padding-bottom: 0.25em;
   border-bottom: 1px solid var(--border);
   font-size: 1.35rem;
+  font-weight: 650;
 }
 
 .preview-pane h3 {
   font-size: 1.12rem;
+  font-weight: 600;
+}
+
+.preview-pane h4,
+.preview-pane h5,
+.preview-pane h6 {
+  font-weight: 550;
 }
 
 .preview-pane p,
@@ -5064,16 +5056,14 @@ input[type='radio'] {
   font-size: 0.85rem;
 }
 
-.saved {
-  color: #24663e;
+.statusbar-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.syncing {
-  color: #8a5b00;
-}
-
-.offline {
-  color: #a13b2d;
+.statusbar-selection {
+  margin-left: auto;
 }
 
 @media (max-width: 760px) {

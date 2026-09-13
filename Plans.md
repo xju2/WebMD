@@ -238,8 +238,8 @@ Tasks:
 - [x] Narrow screens (≤760px): panels become overlays with a backdrop, an
       inert workspace, Escape to close, and focus returned to where it was.
       Temporary collapse never overwrites the desktop preference.
-- [x] Document toolbar folds Upload, Delete, and Reference into the ... menu by
-      the center's width, so docked panels on a laptop do not crowd it.
+- [x] Document toolbar keeps only Day and Edit/Preview; Upload, Delete (red),
+      and Reference always live in the ... menu.
 - [x] Fix: the editor's active-line wash hid the selection highlight.
 - [x] `npm run fixture` (seeded workspace, stub AI and arXiv) and
       `npm run scenarios` (headless Chrome acceptance checks at five widths).

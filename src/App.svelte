@@ -169,11 +169,6 @@
   }
 
   const MERMAID_REDRAW_DELAY = 250;
-  // Must match the single breakpoint in styles.css so the markup and the
-  // stylesheet always agree on what counts as a narrow screen.
-  const NARROW_LAYOUT_QUERY = '(max-width: 760px)';
-  // Below this center width the full document toolbar no longer fits in one row.
-  const COMPACT_TOOLBAR_WIDTH = 820;
 
   // Mermaid renders asynchronously, so diagrams are drawn by an action rather
   // than inline markup. The preview reparses the whole note on every keystroke,
@@ -333,9 +328,6 @@
   let referenceRun = 0;
   let markdownHelpOpen = false;
   let viewMenuOpen = false;
-  // Phone-width layout. The toolbar has no room for every action there, so the
-  // rarely used ones move into the ... menu instead of overflowing off-screen.
-  let narrowLayout = false;
   let diffFiles = [];
   let diffStatus = '';
   // Panel layout. Prefs are the remembered desktop choices; transient state is
@@ -504,18 +496,6 @@
   ]
     .filter(Boolean)
     .join(' ');
-  // Docked panels can leave a narrow center on a wide screen, so the toolbar
-  // folds Upload, Delete, and Reference into the ... menu by the center's width,
-  // not the window's.
-  $: centerWidth =
-    viewportWidth -
-    RAIL_WIDTH -
-    (layout.files === 'docked' ? layout.filesWidth : 0) -
-    (layout.ai === 'docked' ? layout.aiWidth : 0);
-  $: compactToolbar = narrowLayout || centerWidth < COMPACT_TOOLBAR_WIDTH;
-  // The ... menu carries different items in each mode, so a change should not
-  // leave a half-stale menu open.
-  $: compactToolbar, closeViewMenu();
   $: flatTree = flattenTree(workspaceTree, expandedDirs);
   $: fileCount = workspaceFiles.length;
   // Resume follows the notes this browser has changed, not the ones it merely
@@ -696,35 +676,18 @@
       : [];
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: if (paletteOpen) queuePaletteSearch(paletteQuery.trim(), selectedRoot);
-  $: statusClass = status.includes('Offline')
-    ? 'offline'
-    : status.includes('Syncing')
-      ? 'syncing'
-      : 'saved';
-
-  let narrowLayoutQuery = null;
-
-  function syncNarrowLayout() {
-    const next = Boolean(narrowLayoutQuery?.matches);
-    if (next === narrowLayout) return;
-    narrowLayout = next;
-  }
 
   onMount(async () => {
     searchHistory = readSearchHistory();
     taskSections = readTaskSections();
     readTaskBoard();
     createEditor('');
-    narrowLayoutQuery = window.matchMedia(NARROW_LAYOUT_QUERY);
-    syncNarrowLayout();
-    narrowLayoutQuery.addEventListener('change', syncNarrowLayout);
     document.addEventListener('selectionchange', updateBrowserSelectedText);
     window.addEventListener('popstate', openNavigationState);
     await loadRoots();
   });
 
   onDestroy(() => {
-    narrowLayoutQuery?.removeEventListener('change', syncNarrowLayout);
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
     closeDocumentEvents();
@@ -5944,36 +5907,6 @@
               {@render icon('chevronRight')}
             </button>
           </div>
-          {#if !compactToolbar}
-            <button
-              class="upload-button toolbar-button"
-              disabled={!workspaceRoots.length}
-              type="button"
-              on:click={() => uploadInput?.click()}
-            >
-              Upload
-            </button>
-            {#if selectedPath}
-              <button
-                class="delete-button toolbar-button"
-                type="button"
-                on:click={deleteSelectedFile}
-              >
-                Delete
-              </button>
-            {/if}
-            <button
-              aria-pressed={referenceOpen}
-              class:active={referenceOpen}
-              class="reference-button toolbar-button"
-              disabled={!markdownFiles.length}
-              title={`Reference note (${shortcutKey}+Shift+\\)`}
-              type="button"
-              on:click={toggleReferencePane}
-            >
-              Reference
-            </button>
-          {/if}
           {#if selectedPath}
             <div class="view-toggle" aria-label="View mode">
               <button
@@ -6044,7 +5977,7 @@
               <button role="menuitem" type="button" on:click={openMarkdownHelp}>
                 Markdown help
               </button>
-              {#if compactToolbar && documentControls}
+              {#if documentControls}
                 <hr class="view-menu-divider" />
                 <button
                   disabled={!workspaceRoots.length}
@@ -6055,6 +5988,7 @@
                   Upload
                 </button>
                 <button
+                  class="view-menu-danger"
                   disabled={!selectedPath}
                   role="menuitem"
                   type="button"
@@ -7688,8 +7622,17 @@
     </div>
 
     <footer class="statusbar">
-      <span class={statusClass}>{status}</span>
-      <span>Selected text: {selectedText.length}</span>
+      <!-- The sidebar footer owns the save status; it only moves down here
+           while the sidebar is hidden, so one is ever on screen. -->
+      {#if !filesShown}
+        <span class={`statusbar-save sidebar-status-${saveView.tone}`}>
+          <span aria-hidden="true" class="sidebar-status-dot"></span>
+          <span role="status">{saveView.label}</span>
+        </span>
+      {/if}
+      <span class="statusbar-selection"
+        >Selected text: {selectedText.length}</span
+      >
     </footer>
   </section>
 

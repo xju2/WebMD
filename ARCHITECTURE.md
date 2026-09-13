@@ -115,12 +115,13 @@ mounted.
 * **Widths.** Files 180–480px (240 initial), AI 280–720px (340 initial).
   Handles are `role="separator"` window splitters: drag, arrow keys (Shift
   for larger steps), Home/End, and double-click to reset.
-* **Toolbar by center width.** The document toolbar folds Upload, Delete,
-  and Reference into the ... menu when the center is under 820px wide, not
-  only when the window is.
+* **Quiet toolbar.** The document toolbar keeps only the Day stepper and
+  the Edit/Preview toggle; Upload, Delete (in red), and Reference live in the
+  ... menu at every width.
 * **Honest status.** The sidebar footer (`src/save-status.js`) says saved
   only for an open note with nothing pending; offline, saving, and read-only
-  states say so.
+  states say so. It is the one save status: the bottom bar shows it only
+  while the sidebar is hidden.
 
 ### 2.2 Backend Matrix
 * **Runtime Environment:** **Node.js LTS**. Provides standard event-driven I/O loop performance perfect for handling parallel low-overhead streaming connections.
@@ -449,7 +450,7 @@ The final event is authoritative. Code fences can only be stripped once the whol
 To prevent continuous structural remote writing cycles on every physical keystroke event while ensuring complete protection against terminal window drop events:
 
 * **Keystroke De-bouncing Engine:** Instantiates explicit `3000ms` mutation delay pipelines for whole-file fallback saves. Collaborative sessions stream smaller CM6 updates immediately and let the server snapshot them to disk.
-* **State Flag Architecture:** Explicitly displays atomic tracking visual layout indicators (`[Saved]`, `[Syncing...]`, `[Offline - Retrying]`) reflecting actual synchronization status.
+* **State Flag Architecture:** The editor tracks `[Saved]`, `[Syncing...]`, and `[Offline - Retrying]` internally; `src/save-status.js` turns them into the sidebar footer's wording.
 
 ### 7.2 Disconnection Recovery Strategy
 
