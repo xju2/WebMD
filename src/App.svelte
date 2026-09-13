@@ -2266,7 +2266,7 @@
     calendarDetail = null;
     const path = todayNotePath(day.date);
     await openDailyNote(day.date);
-    if (selectedPath !== path || !editorView) return;
+    if (selectedPath !== path || !editorView) return null;
     if (viewMode === 'preview') setViewMode('edit');
 
     const { heading, text } = meetingNoteSection(
@@ -2291,6 +2291,61 @@
       });
     }
     editorView.focus();
+    return { path, heading };
+  }
+
+  /**
+   * The meeting's section in the day's note, saved, so the server can write
+   * a transcript link or summary into it; then `body` is posted to `url`.
+   */
+  async function postForCalendarMeeting(day, event, url, body = {}) {
+    const root = selectedRoot;
+    const section = await addMeetingToDayNote(day, event);
+    if (!section) return null;
+    if (hasUnsavedChanges()) await saveNow();
+    return requestJson(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        root,
+        ...section,
+        title: event.title,
+        date: dailyNoteDate(day.date),
+        ...body
+      })
+    });
+  }
+
+  async function addCalendarTranscript(day, event, input) {
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const saved = await postForCalendarMeeting(
+        day,
+        event,
+        '/api/calendar/transcript',
+        { name: file.name, text }
+      );
+      if (saved) status = `[Transcript saved: ${saved.turns} turns]`;
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  async function summarizeCalendarMeeting(day, event) {
+    try {
+      const pending = postForCalendarMeeting(day, event, '/api/calendar/summary');
+      status = '[Summarizing meeting…]';
+      const done = await pending;
+      if (done) {
+        status = `[Summary written: ${done.actions} action item${done.actions === 1 ? '' : 's'}]`;
+      }
+    } catch (err) {
+      status = '[Saved]';
+      error = err.message;
+    }
   }
 
   function closeCalendarDetailOnEscape(event) {
@@ -6162,14 +6217,40 @@
                       </div>
                     {/if}
                   </dl>
-                  <button
-                    class="calendar-detail-add"
-                    type="button"
-                    on:click={() =>
-                      addMeetingToDayNote(calendarDetail.day, event)}
-                  >
-                    Add to the day's note
-                  </button>
+                  <div class="calendar-detail-actions">
+                    <button
+                      type="button"
+                      on:click={() =>
+                        addMeetingToDayNote(calendarDetail.day, event)}
+                    >
+                      Add to the day's note
+                    </button>
+                    <!-- A label, so the native file picker opens without script. -->
+                    <label
+                      title="Zoom's audio transcript (.vtt), or .srt / .txt captions"
+                    >
+                      Add transcript…
+                      <input
+                        accept=".vtt,.srt,.txt,text/vtt,text/plain"
+                        hidden
+                        type="file"
+                        on:change={(changed) =>
+                          addCalendarTranscript(
+                            calendarDetail.day,
+                            event,
+                            changed.currentTarget
+                          )}
+                      />
+                    </label>
+                    <button
+                      title="AI minutes and action items from the transcript"
+                      type="button"
+                      on:click={() =>
+                        summarizeCalendarMeeting(calendarDetail.day, event)}
+                    >
+                      Summarize
+                    </button>
+                  </div>
                 </details>
               </li>
             {/each}

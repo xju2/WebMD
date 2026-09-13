@@ -413,6 +413,19 @@ on the server (its cache file is named by a hash of it). Google refreshes the
 feed every few hours and WebMD rereads it every 10 minutes, showing its last
 copy meanwhile, so a new invite can take a while to appear.
 
+Click a meeting on the Calendar for its details. **Add to the day's note**
+puts a `## 10:00 AM Title` section with its guests and Join link in that day's
+note, with the cursor under it; a second click jumps back to it.
+
+For a meeting recorded on Zoom, download the recording page's *Audio
+transcript* (`.vtt`) and choose it with **Add transcript…**. It becomes a note
+of its own in the Meetings note folder (`/meetings` by default), linked from
+the meeting's section as `- Transcript: [[…]]`; choosing another file replaces
+it. **Summarize** then asks the AI provider for the minutes and writes them at
+the end of that section: `### Summary`, any decisions, and `### Action items` in
+task syntax, which the Tasks view lists. A meeting's summary is never replaced;
+delete it to write a new one.
+
 ### Daily note template
 
 A new daily note starts from the template picked in the Calendar header, which

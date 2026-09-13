@@ -168,7 +168,8 @@ export function transcriptNoteMarkdown({
   return [
     '---',
     'type: transcript',
-    `indico: ${meeting.key}`,
+    // A Google Calendar meeting has no Indico event; its day's note links here.
+    ...(meeting.key ? [`indico: ${meeting.key}`] : []),
     `date: ${meeting.start.date}`,
     'tags: [meeting, transcript]',
     '---',

@@ -20,6 +20,13 @@ import {
 } from './meetings.js';
 import { calendarEvents, calendarFeeds } from './gcal.js';
 import {
+  assertNoSectionSummary,
+  insertSectionSummary,
+  linkedPath,
+  saveCalendarTranscript,
+  sectionTranscript
+} from './calendar-notes.js';
+import {
   assertNoSummary,
   buildSummaryMessages,
   insertSummary,
@@ -340,6 +347,79 @@ export async function createApp({
         ...meetingFreshness(req.query)
       });
       res.json({ configured: true, ...listing });
+    })
+  );
+
+  // A calendar meeting's transcript and summary, kept with its section in the
+  // day's note. The transcript note goes in the Meetings note folder.
+  function calendarMeeting(body) {
+    const title = String(body?.title ?? '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    const date = String(body?.date ?? '');
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new WorkspaceError(400, 'A meeting title and date are required.');
+    }
+    return {
+      workspace: workspaces.get(body.root),
+      path: String(body.path ?? ''),
+      heading: String(body.heading ?? ''),
+      title,
+      date
+    };
+  }
+
+  app.post(
+    '/api/calendar/transcript',
+    asyncHandler(async (req, res) => {
+      const meeting = calendarMeeting(req.body);
+      const { noteFolder } = await readMeetingsConfig(meeting.workspace, sites);
+      res.json(
+        await saveCalendarTranscript(meeting.workspace, {
+          ...meeting,
+          folder: noteFolder,
+          name: String(req.body?.name ?? '').slice(0, 200),
+          text: req.body?.text
+        })
+      );
+    })
+  );
+
+  app.post(
+    '/api/calendar/summary',
+    asyncHandler(async (req, res) => {
+      const { workspace, path, heading, title, date } = calendarMeeting(req.body);
+      const day = await workspace.loadFile(path);
+      // Checked before the model is asked, so a refusal costs nothing.
+      assertNoSectionSummary(day.content, heading);
+      const files = await workspace.markdownFiles();
+      const target = sectionTranscript(day.content, heading);
+      const transcriptPath = linkedPath(target, path, files);
+      if (!transcriptPath) {
+        throw new WorkspaceError(400, 'Add the meeting’s transcript first.');
+      }
+      const transcript = transcriptForModel(
+        (await workspace.loadFile(transcriptPath)).content
+      );
+      const reply = await runAiCompletion({
+        messages: buildSummaryMessages({
+          meeting: { title, start: { date } },
+          transcript: transcript.text,
+          truncated: transcript.truncated
+        }),
+        env: aiEnv,
+        fetchImpl: aiFetch
+      });
+      const summary = parseSummary(reply);
+      await workspace.editFile(path, (content) =>
+        insertSectionSummary(content, heading, summary, {
+          source: `[[${target}]]${transcript.truncated ? ' (its first part only)' : ''}`
+        })
+      );
+      res.json({
+        transcriptPath,
+        points: summary.summary.length,
+        actions: summary.actions.length,
+        truncated: transcript.truncated
+      });
     })
   );
 
