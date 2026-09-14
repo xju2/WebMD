@@ -159,10 +159,8 @@
   // return to them.
   const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news', 'meetings']);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
-  const DAILY_NOTE_FOLDER_KEY = 'webmd:daily-note-folder';
-  const DAILY_NOTE_TEMPLATE_KEY = 'webmd:daily-note-template';
-  const LEGACY_DAILY_NOTE_FOLDER_PREFIX = `${DAILY_NOTE_FOLDER_KEY}:`;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
+  const DEFAULT_IMAGE_ASSET_FOLDER = '/assets';
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
@@ -351,14 +349,15 @@
   let chatInput;
   let filesMenuOpen = false;
   let markdownViewsHidden = false;
+  // Workspace layout from .webmd/settings.json, set once there and then
+  // forgotten, so the UI has no controls for any of it.
   let dailyNoteFolder = DEFAULT_DAILY_NOTE_FOLDER;
-  // null until the reader picks one by hand, which is what lets a conventionally
-  // named template in the workspace stand in. '' is the deliberate "None".
+  let dailyNoteFolderConfigured = false;
+  // null lets a conventionally named template in the workspace stand in;
+  // '' is the deliberate "None".
   let dailyNoteTemplatePath = null;
-  let dailyNoteFolderStored = false;
-  // Server-side setting (IMAGE_ASSET_FOLDER in ~/.webmd.conf), not a per-browser
-  // choice, so there is no control for it in the UI.
-  let imageAssetFolder = '/assets';
+  let imageAssetFolder = DEFAULT_IMAGE_ASSET_FOLDER;
+  let settingsWarning = '';
   let calendarMonth = new Date(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -414,9 +413,6 @@
       : '/';
   $: dailyNoteFolderMissing =
     dailyNoteFolder !== '/' && activeDailyNoteFolder !== dailyNoteFolder;
-  $: dailyNoteFolderOptions = dailyNoteFolderMissing
-    ? [dailyNoteFolder, ...dailyNoteFolders]
-    : dailyNoteFolders;
   $: activeDailyNoteTemplatePath =
     dailyNoteTemplatePath === null
       ? defaultDailyNoteTemplatePath(
@@ -1241,16 +1237,23 @@
     editorView?.focus();
   }
 
-  // The asset folder lives in the server config, so ask for it once at startup
-  // and fall back to the default if the request fails.
-  async function loadSettings() {
+  // Each workspace carries its own layout, so this runs on every switch.
+  async function loadSettings(root = selectedRoot) {
+    let settings = {};
     try {
-      const settings = await requestJson('/api/settings');
-      if (settings.imageAssetFolder)
-        imageAssetFolder = settings.imageAssetFolder;
+      settings = await requestJson(
+        `/api/settings?root=${encodeURIComponent(root)}`
+      );
     } catch {
-      // Keep the default; uploads still land somewhere sensible.
+      // Fall back to the defaults; uploads and daily notes still land somewhere
+      // sensible.
     }
+    if (root !== selectedRoot) return;
+    imageAssetFolder = settings.imageAssetFolder || DEFAULT_IMAGE_ASSET_FOLDER;
+    dailyNoteFolder = settings.dailyNoteFolder || DEFAULT_DAILY_NOTE_FOLDER;
+    dailyNoteFolderConfigured = Boolean(settings.dailyNoteFolderConfigured);
+    dailyNoteTemplatePath = settings.dailyNoteTemplate ?? null;
+    settingsWarning = settings.warning ?? '';
   }
 
   async function loadRoots() {
@@ -1258,10 +1261,7 @@
       workspaceRoots = await requestJson('/api/workspace/roots');
       selectedRoot = workspaceRoots[0]?.id ?? '0';
       viewMode = readWorkspaceViewMode(selectedRoot);
-      ({ folder: dailyNoteFolder, stored: dailyNoteFolderStored } =
-        readDailyNoteFolder());
-      dailyNoteTemplatePath = readDailyNoteTemplatePath();
-      await loadSettings();
+      await loadSettings(selectedRoot);
       editedPaths = readEditedFiles(selectedRoot);
       loadAiPresets(selectedRoot);
       await loadTree(selectedRoot);
@@ -1394,6 +1394,7 @@
     loadAiPresets(root);
     dailyQuote = '';
     dailyQuoteKey = '';
+    await loadSettings(root);
     await loadTree();
     await loadReferences(root);
     reconcileDailyNoteFolder();
@@ -4613,58 +4614,11 @@
     });
   }
 
-  function chooseDailyNoteFolder(folder) {
-    dailyNoteFolder = folder;
-    dailyNoteFolderStored = true;
-    calendarMonth = new Date(calendarMonth);
-    try {
-      localStorage.setItem(DAILY_NOTE_FOLDER_KEY, folder);
-    } catch {
-      // Ignore storage failures; the selected folder still works this session.
-    }
-  }
-
-  function chooseDailyNoteTemplate(templatePath) {
-    dailyNoteTemplatePath = templatePath;
-    try {
-      localStorage.setItem(DAILY_NOTE_TEMPLATE_KEY, templatePath);
-    } catch {
-      // Ignore storage failures; the selected template still works this session.
-    }
-  }
-
-  function readDailyNoteFolder() {
-    try {
-      const folder =
-        localStorage.getItem(DAILY_NOTE_FOLDER_KEY) ||
-        workspaceRoots
-          .map((root) =>
-            localStorage.getItem(`${LEGACY_DAILY_NOTE_FOLDER_PREFIX}${root.id}`)
-          )
-          .find((folder) => folder && folder !== '/') ||
-        '';
-      return {
-        folder: folder || DEFAULT_DAILY_NOTE_FOLDER,
-        stored: Boolean(folder)
-      };
-    } catch {
-      return { folder: DEFAULT_DAILY_NOTE_FOLDER, stored: false };
-    }
-  }
-
-  // null when nothing has been picked, so the workspace's own template can win.
-  function readDailyNoteTemplatePath() {
-    try {
-      const templatePath = localStorage.getItem(DAILY_NOTE_TEMPLATE_KEY);
-      if (templatePath === null) return null;
-      return templatePath ? normalizeMarkdownPath(templatePath) : '';
-    } catch {
-      return null;
-    }
-  }
-
   function reconcileDailyNoteFolder() {
-    if (!dailyNoteFolderStored && !dailyNoteFolders.includes(dailyNoteFolder))
+    if (
+      !dailyNoteFolderConfigured &&
+      !dailyNoteFolders.includes(dailyNoteFolder)
+    )
       dailyNoteFolder = '/';
   }
 
@@ -7135,53 +7089,22 @@
                 </button>
               </div>
               <div class="calendar-controls">
-                <label>
-                  Folder
-                  <select
-                    aria-label="Daily notes folder"
-                    value={dailyNoteFolder}
-                    on:change={(event) =>
-                      chooseDailyNoteFolder(event.currentTarget.value)}
-                  >
-                    {#each dailyNoteFolderOptions as folder}
-                      <option
-                        value={folder}
-                        disabled={folder === dailyNoteFolder &&
-                          dailyNoteFolderMissing}
-                      >
-                        {folder}{folder === dailyNoteFolder &&
-                        dailyNoteFolderMissing
-                          ? ' (missing here)'
-                          : ''}
-                      </option>
-                    {/each}
-                  </select>
-                </label>
-                <label>
-                  Template
-                  <select
-                    aria-label="Daily note template"
-                    value={activeDailyNoteTemplatePath}
-                    on:change={(event) =>
-                      chooseDailyNoteTemplate(event.currentTarget.value)}
-                  >
-                    <option value="">None</option>
-                    {#if dailyNoteTemplateMissing}
-                      <option value={activeDailyNoteTemplatePath} disabled>
-                        {activeDailyNoteTemplatePath} (missing)
-                      </option>
-                    {/if}
-                    {#each markdownFiles as file}
-                      <option value={file.path}>{file.path}</option>
-                    {/each}
-                  </select>
-                </label>
                 <button type="button" on:click={showCurrentMonth}>Today</button>
               </div>
               {#if dailyNoteFolderMissing}
                 <p class="calendar-folder-warning">
-                  Using / because {dailyNoteFolder} is not in this connection.
+                  Using / because {dailyNoteFolder}, set in
+                  .webmd/settings.json, is not in this workspace.
                 </p>
+              {/if}
+              {#if dailyNoteTemplateMissing && dailyNoteTemplatePath}
+                <p class="calendar-folder-warning">
+                  New daily notes start empty because {dailyNoteTemplatePath},
+                  set in .webmd/settings.json, does not exist.
+                </p>
+              {/if}
+              {#if settingsWarning}
+                <p class="calendar-folder-warning">{settingsWarning}</p>
               {/if}
               {#if calendarEventsError}
                 <p class="calendar-folder-warning">{calendarEventsError}</p>

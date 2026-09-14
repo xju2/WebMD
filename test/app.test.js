@@ -61,7 +61,7 @@ test('searches through the selected workspace root', async () => {
   );
 });
 
-test('serves the configured image asset folder as a setting', async () => {
+test('falls back to IMAGE_ASSET_FOLDER when the workspace sets no folder', async () => {
   const root = await tempRoot();
 
   const { server, url } = await listen(
@@ -74,7 +74,12 @@ test('serves the configured image asset folder as a setting', async () => {
   try {
     const response = await fetch(`${url}/api/settings`);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { imageAssetFolder: '/files/img' });
+    assert.deepEqual(await response.json(), {
+      imageAssetFolder: '/files/img',
+      dailyNoteFolder: '/raw/dailynotes',
+      dailyNoteFolderConfigured: false,
+      dailyNoteTemplate: null
+    });
   } finally {
     server.close();
   }
@@ -90,6 +95,74 @@ test('falls back to /assets when no image asset folder is configured', async () 
   try {
     const settings = await (await fetch(`${url}/api/settings`)).json();
     assert.equal(settings.imageAssetFolder, '/assets');
+    await assert.rejects(fs.access(path.join(root, '.webmd')));
+  } finally {
+    server.close();
+  }
+});
+
+test('reads settings from each workspace .webmd/settings.json', async () => {
+  const first = await tempRoot();
+  const second = await tempRoot();
+  await fs.mkdir(path.join(first, '.webmd'));
+  await fs.writeFile(
+    path.join(first, '.webmd/settings.json'),
+    JSON.stringify({
+      imageAssetFolder: 'static/img/',
+      dailyNoteFolder: '/journal',
+      dailyNoteTemplate: 'journal/template.md'
+    })
+  );
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [first, second],
+      env: { IMAGE_ASSET_FOLDER: '/files/img' }
+    })
+  );
+
+  try {
+    assert.deepEqual(await (await fetch(`${url}/api/settings?root=0`)).json(), {
+      imageAssetFolder: '/static/img',
+      dailyNoteFolder: '/journal',
+      dailyNoteFolderConfigured: true,
+      dailyNoteTemplate: '/journal/template.md'
+    });
+    const other = await (await fetch(`${url}/api/settings?root=1`)).json();
+    assert.equal(other.imageAssetFolder, '/files/img');
+    assert.equal(other.dailyNoteFolderConfigured, false);
+  } finally {
+    server.close();
+  }
+});
+
+test('keeps good settings and warns about bad ones', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd/settings.json'),
+    JSON.stringify({
+      imageAssetFolder: '../outside',
+      dailyNoteFolder: '/daily',
+      dailyNoteTemplate: ''
+    })
+  );
+
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root], env: {} })
+  );
+
+  try {
+    const settings = await (await fetch(`${url}/api/settings`)).json();
+    assert.equal(settings.imageAssetFolder, '/assets');
+    assert.equal(settings.dailyNoteFolder, '/daily');
+    assert.equal(settings.dailyNoteTemplate, '');
+    assert.match(settings.warning, /imageAssetFolder/);
+
+    await fs.writeFile(path.join(root, '.webmd/settings.json'), '{ nope');
+    const broken = await (await fetch(`${url}/api/settings`)).json();
+    assert.equal(broken.dailyNoteFolder, '/raw/dailynotes');
+    assert.match(broken.warning, /not valid JSON/);
   } finally {
     server.close();
   }

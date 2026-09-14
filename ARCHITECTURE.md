@@ -266,7 +266,7 @@ changes. Workspace-wide AI summaries, charts, and activity metrics remain
 deferred until their underlying data exists.
 
 Daily notes have a separate Calendar view launched from the global rail. It
-uses the selected daily-note folder and browser-local dates, marks existing
+uses the workspace's daily-note folder (`GET /api/settings`) and browser-local dates, marks existing
 date-named Markdown files, and lets a date either open its note or create it.
 
 `GET /api/workspace/graph` builds a server-side index of Markdown notes and
@@ -274,6 +274,19 @@ resolved wiki links, caches it until the workspace changes, and returns only
 compact node and edge metadata. The client renders Wiki, Local, and All scopes
 as an interactive native SVG graph, so note bodies and large workspace assets
 do not cross a high-latency SSH tunnel.
+
+#### Workspace Settings
+* **Endpoint:** `GET /api/settings?root=<id>`
+* **Role:** The workspace's layout, read from `$WORKSPACE_ROOT/.webmd/settings.json` on every request and never created by it. `imageAssetFolder` falls back to `IMAGE_ASSET_FOLDER`, then `/assets`. `dailyNoteFolderConfigured` is false when the default `/raw/dailynotes` is in use, so the client may fall back to `/` if that folder does not exist. `dailyNoteTemplate` is `null` when unset (use a conventionally named template) and `""` for none. The UI has no controls for any of these; a value that cannot be used is dropped and named in `warning`.
+* **Success Signature (`200 OK`):**
+```json
+{
+  "imageAssetFolder": "/assets",
+  "dailyNoteFolder": "/raw/dailynotes",
+  "dailyNoteFolderConfigured": true,
+  "dailyNoteTemplate": null
+}
+```
 
 #### File Tree Retrieval
 * **Endpoint:** `GET /api/workspace/tree`

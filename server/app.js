@@ -77,11 +77,8 @@ import {
   rankRelatedCandidates
 } from './related.js';
 import { shortestWikiTarget } from '../src/related-links.js';
-import {
-  createWorkspace,
-  normalizeWorkspaceFolder,
-  WorkspaceError
-} from './workspace.js';
+import { readWorkspaceSettings } from './settings.js';
+import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, '..', 'dist');
@@ -108,19 +105,18 @@ export async function createApp({
 
   app.use(express.json({ limit: '100mb' }));
 
-  // Workspace-wide settings the client cannot pick for itself. Configured in
-  // the environment or ~/.webmd.conf so the UI does not have to spend toolbar
-  // space on a control that is set once and then forgotten.
-  const imageAssetFolder = normalizeWorkspaceFolder(
-    env.IMAGE_ASSET_FOLDER || '/assets'
-  );
   // Indico tokens, each bound to one exact origin. Read once, like the rest
   // of the environment; they never leave this process.
   const sites = indicoSites(env);
 
-  app.get('/api/settings', (_req, res) => {
-    res.json({ imageAssetFolder });
-  });
+  // Per-workspace layout settings from .webmd/settings.json, read on every
+  // request so an edit to the file applies on the next workspace load.
+  app.get(
+    '/api/settings',
+    asyncHandler(async (req, res) => {
+      res.json(await readWorkspaceSettings(workspaces.get(req.query.root), env));
+    })
+  );
 
   app.get('/api/workspace/roots', (_req, res) => {
     res.json(workspaces.options);

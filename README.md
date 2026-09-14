@@ -83,8 +83,9 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `WORKSPACE_ROOT`: required absolute path to the Markdown workspace.
 - `WORKSPACE_ROOTS`: optional path-delimited list of Markdown workspaces.
 - `PORT`: backend port, defaults to `3000`.
-- `IMAGE_ASSET_FOLDER`: workspace folder for pasted and uploaded images and
-  PDFs, defaults to `/assets`. It is created on the first upload if missing.
+- `IMAGE_ASSET_FOLDER`: fallback folder for pasted and uploaded images and
+  PDFs in workspaces whose `.webmd/settings.json` does not set
+  `imageAssetFolder`; defaults to `/assets`. See [Workspace settings](#workspace-settings).
 - `VITE_API_PROXY_TARGET`: optional dev proxy target, set by `npm run dev`.
 - `AI_PROVIDER`: optional `ollama` or `openai`, defaults to `openai` when `OPENAI_API_KEY` is set and `ollama` otherwise.
 - `AI_MODEL`: optional model override. Ollama defaults to `llama3.2`; OpenAI defaults to `gpt-5.6`.
@@ -110,6 +111,36 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   Meetings and the Calendar show their last copy at once and refresh it behind
   the scenes; protected meetings and private calendars are cached there too,
   readable only by you. Nothing there is needed; delete it any time.
+
+## Workspace settings
+
+How a workspace is laid out belongs to that workspace, so each one can carry a
+`.webmd/settings.json`. Commit it with your notes and every machine gets the
+same layout. There are no controls for these in the UI. Edit the file, then
+switch to the workspace again or reload the page.
+
+```json
+{
+  "imageAssetFolder": "/assets",
+  "dailyNoteFolder": "/raw/dailynotes",
+  "dailyNoteTemplate": "/raw/dailynotes/template.md"
+}
+```
+
+Every key is optional:
+
+- `imageAssetFolder`: where pasted and uploaded images and PDFs go. It is
+  created on the first upload. If you leave it out, WebMD uses
+  `IMAGE_ASSET_FOLDER` from the environment or `~/.webmd.conf`, and then
+  `/assets`.
+- `dailyNoteFolder`: where the Calendar, Tasks, and date links look for daily
+  notes. If you leave it out, WebMD uses `/raw/dailynotes`, or `/` when the
+  workspace has no such folder.
+- `dailyNoteTemplate`: the note a new daily note starts from (see
+  [Daily note template](#daily-note-template)). `""` means no template.
+
+WebMD skips a value it cannot use, keeps the rest, and names the problem at
+the top of the Calendar.
 
 ## Prompt presets
 
@@ -437,12 +468,13 @@ delete it to write a new one.
 
 ### Daily note template
 
-A new daily note starts from the template picked in the Calendar header, which
-may use `{{date}}`, `{{title}}`, `{{weekday}}`, and `{{quote}}`. With nothing picked, WebMD
-uses a conventionally named template — `dailynote_template.md`,
-`daily-template.md`, or `template.md` — from the daily-note folder, or failing
-that from the workspace root. Choosing **None** keeps the bare `# YYYY-MM-DD`
-heading.
+A new daily note starts from the `dailyNoteTemplate` set in
+[`.webmd/settings.json`](#workspace-settings). The template may use `{{date}}`,
+`{{title}}`, `{{weekday}}`, and `{{quote}}`. If no template is set, WebMD
+looks for a conventionally named one (`dailynote_template.md`,
+`daily-template.md`, or `template.md`) in the daily-note folder, then in the
+workspace root. Setting `"dailyNoteTemplate": ""` keeps just the
+`# YYYY-MM-DD` heading.
 
 ### Quote of the day
 
