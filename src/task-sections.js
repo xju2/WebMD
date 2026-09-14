@@ -316,3 +316,13 @@ export function formatTermList(terms = []) {
 export function parseTermList(text = '') {
   return toTermList(text);
 }
+
+/** Last two path components, with the exact path retained by the UI tooltip. */
+export function readableTaskSource(path = '') {
+  return String(path)
+    .split('/')
+    .filter(Boolean)
+    .slice(-2)
+    .map((part) => part.replace(/\.(md|markdown)$/i, '').replace(/[_-]/g, ' '))
+    .join(' › ');
+}

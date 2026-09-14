@@ -126,7 +126,10 @@ textarea:focus-visible {
 .app-shell {
   position: relative;
   display: grid;
-  grid-template-columns: var(--rail-width) var(--files-width, 240px) minmax(0, 1fr);
+  grid-template-columns: var(--rail-width) var(--files-width, 240px) minmax(
+      0,
+      1fr
+    );
   grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100dvh;
@@ -2612,119 +2615,6 @@ input[type='radio'] {
   border-top: 1px solid var(--surface-hover);
 }
 
-.task-card {
-  padding: 10px 14px 12px;
-  cursor: pointer;
-}
-
-.task-card:hover {
-  background: var(--surface-muted);
-}
-
-.task-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-/* Which section claimed the task and, in a daily note, the `##` it sat under.
-   The sections view needs a heading row for this; a card can carry it. */
-.task-card-eyebrow {
-  display: flex;
-  gap: 6px;
-  margin: 0 0 4px;
-  color: var(--ink-subtle);
-  font-size: 0.68rem;
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-/* Both halves shrink, so a narrow column loses the ends of two labels rather
-   than the whole of the second one. */
-.task-card-eyebrow span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-card-project {
-  flex: 0 1 auto;
-}
-
-.task-card-project::before {
-  content: '·';
-  padding-right: 6px;
-}
-
-/* The one change worth the whole board: a task wraps and can be read, instead
-   of ending in an ellipsis three words in. Three lines is enough for any task
-   worth writing down and short enough to keep the column scannable. */
-.task-card-text {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  margin: 0;
-  overflow: hidden;
-  /* A bare URL in a task is one long word. Better to break it mid-string than
-     to let it push the whole column sideways. */
-  overflow-wrap: anywhere;
-  color: var(--ink);
-  font-size: 0.92rem;
-  line-height: 1.45;
-}
-
-/* Age has no pill of its own — it is said by letting old work go pale. A task
-   from this week reads at full strength; one from last spring has faded to the
-   weight of a caption, which is about what it deserves. */
-.task-card-warm .task-card-text {
-  color: #3c4761;
-}
-
-.task-card-cool .task-card-text {
-  color: var(--ink-muted);
-}
-
-.task-card-cold .task-card-text {
-  color: var(--ink-subtle);
-}
-
-.task-card-done .task-card-text {
-  color: var(--ink-subtle);
-  text-decoration: line-through;
-}
-
-.task-card-text a {
-  color: inherit;
-  text-decoration: underline;
-  text-decoration-color: var(--ink-disabled);
-  text-underline-offset: 2px;
-}
-
-.task-card-text a:hover {
-  color: var(--accent);
-  text-decoration-color: currentColor;
-}
-
-.task-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin: 6px 0 0;
-  font-size: 0.75rem;
-}
-
-.task-card-meta:empty {
-  display: none;
-}
-
-.task-card-age {
-  color: var(--ink-subtle);
-  font-size: 0.72rem;
-}
-
 .search-field {
   width: 190px;
 }
@@ -5092,7 +4982,6 @@ input[type='radio'] {
 }
 
 @media (max-width: 760px) {
-
   /* Side by side has no room here, so the editor keeps the whole column. */
   .editor-split.split {
     grid-template-columns: minmax(0, 1fr);
@@ -5985,4 +5874,166 @@ input[type='radio'] {
 .meetings-pane.compact .meetings-list,
 .meetings-pane.compact .meetings-detail {
   overflow-y: visible;
+}
+
+/* One readable row across the board, sections, and urgency views. */
+.tasks-collections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px 24px 0;
+}
+.tasks-collections .active {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.tasks-options {
+  position: relative;
+  margin-left: auto;
+}
+.tasks-options > summary {
+  cursor: pointer;
+  padding: 8px;
+}
+.tasks-options > div {
+  position: absolute;
+  right: 0;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.tasks-pane .tasks-summary {
+  width: 100%;
+}
+.task-row {
+  flex-direction: row;
+  gap: 12px;
+  cursor: default;
+}
+.task-complete {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 5px 0 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.task-row-content {
+  flex: 1;
+  min-width: 0;
+}
+.task-title {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-strong);
+  text-align: left;
+  font: inherit;
+  font-weight: 500;
+}
+.task-title:hover {
+  background: transparent;
+  color: var(--accent);
+}
+.task-row-meta {
+  margin-top: 6px;
+  font-size: 0.75rem;
+}
+.task-source-link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.task-kind {
+  color: var(--ink-muted);
+}
+.task-details {
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.task-details summary {
+  color: var(--ink-muted);
+  cursor: pointer;
+  width: fit-content;
+}
+.task-details p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.task-row-meta .task-due {
+  margin-left: 0;
+  color: var(--ink);
+}
+.task-row-meta .task-due-overdue {
+  color: #a8261c;
+}
+.task-group {
+  margin: 24px 24px 0;
+}
+.task-group > summary {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 1rem;
+}
+.task-lane .task-row {
+  padding: 12px 8px;
+}
+.task-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.8rem;
+}
+.task-links:empty {
+  display: none;
+}
+.task-row-done .task-title {
+  color: var(--ink-subtle);
+}
+.tasks-collections button {
+  padding: 7px 12px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.tasks-collections button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.tasks-pane .search-field {
+  flex: 1 1 220px;
+  max-width: 380px;
+  width: auto;
+}
+.task-links a,
+.task-details a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+.tasks-options > summary {
+  list-style: none;
+}
+.tasks-options > summary::-webkit-details-marker {
+  display: none;
 }

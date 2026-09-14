@@ -107,6 +107,8 @@
   import { relatedInsertion } from './related-links.js';
   import {
     collectTasks,
+    taskDisplayTitle,
+    taskCompletionEdit,
     formatDueChip,
     formatDueLabel,
     groupTasksByUrgency,
@@ -124,7 +126,7 @@
     groupTasksIntoSections,
     parseTermList,
     sanitizeSections,
-    taskSourceLabel
+    readableTaskSource
   } from './task-sections.js';
   import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
   import {
@@ -319,6 +321,8 @@
   let collapsedLanes = [];
   let showCompletedTasks = false;
   let editingSections = false;
+  let completingTask = false;
+  let taskCollection = 'all';
   let referenceOpen = false;
   let referencePath = '';
   let referenceContent = '';
@@ -551,8 +555,30 @@
   );
   // The filter box narrows the list once, before any of the three views slice
   // it, so switching between them keeps whatever you were looking for.
-  $: matchingTasks = filterTasks(workspaceTasks, taskFilter);
-  $: taskGroups = groupTasksByUrgency(matchingTasks, todayText);
+  $: referenceTasks = new Set(
+    groupTasksIntoSections(workspaceTasks, taskSections, { includeDone: true })
+      .filter(
+        (group) =>
+          taskSections.find((section) => section.id === group.id)?.shelf
+      )
+      .flatMap((group) => group.groups.flatMap((source) => source.tasks))
+      .filter((task) => !task.due && !task.priority)
+  );
+  $: matchingTasks = filterTasks(
+    workspaceTasks.filter(
+      (task) =>
+        taskCollection === 'all' ||
+        (taskCollection === 'references') === referenceTasks.has(task)
+    ),
+    taskFilter
+  );
+  $: referenceCount = matchingTasks.filter(
+    (task) => !task.checked && referenceTasks.has(task)
+  ).length;
+  $: taskGroups = groupTasksByUrgency(
+    matchingTasks.filter((task) => showCompletedTasks || !task.checked),
+    todayText
+  );
   $: taskBoard = groupTasksIntoBoard(matchingTasks, taskSections, {
     today: todayText,
     dailyNoteFolder: activeDailyNoteFolder,
@@ -576,7 +602,7 @@
           count: group.tasks.length,
           groups: [{ key: group.key || 'none', label: '', tasks: group.tasks }]
         }))
-      : taskSectionGroups;
+      : taskSectionGroups.filter((group) => group.count);
   // The views that take over the whole frame instead of showing the open file.
   $: workspacePaneOpen =
     viewMode === 'graph' ||
@@ -595,8 +621,8 @@
         : viewMode === 'meetings'
           ? 'Meetings'
           : viewMode === 'tasks'
-          ? 'Tasks'
-          : selectedPath || 'Workspace Home';
+            ? 'Tasks'
+            : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -2156,6 +2182,42 @@
     }
   }
 
+  async function completeTaskItem(task) {
+    if (completingTask) return;
+    completingTask = true;
+    const root = selectedRoot;
+    try {
+      if (hasUnsavedChanges()) await saveNow();
+      if (hasUnsavedChanges())
+        throw new Error('Save your current note before completing an item.');
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(task.path)}`
+      );
+      const edit = taskCompletionEdit(file.content, task, todayText);
+      await requestJson('/api/workspace/updates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          path: task.path,
+          version: file.version,
+          updates: [
+            {
+              clientID: 'task-list',
+              changes: ChangeSet.of(edit, file.content.length).toJSON()
+            }
+          ]
+        })
+      });
+      fileCache.delete(rootPathKey(root, task.path));
+      await loadTasks(root);
+    } catch (err) {
+      tasksStatus = err.message;
+    } finally {
+      completingTask = false;
+    }
+  }
+
   /** Opens the note a task lives in and puts the cursor on its line. */
   async function openTask(task, event) {
     // A link in the task text belongs to the link, not to the row.
@@ -2171,13 +2233,6 @@
     setViewMode('preview', { remember: false });
     await tick();
     revealPreviewLine(task.line);
-  }
-
-  function openTaskOnKey(task, event) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    if (event.target?.closest?.('a')) return;
-    event.preventDefault();
-    openTask(task);
   }
 
   /** Scrolls a source line into view in the preview and marks it briefly. */
@@ -2246,7 +2301,13 @@
         scrollIntoView: true
       });
     } else {
-      const gap = !doc ? '' : doc.endsWith('\n\n') ? '' : doc.endsWith('\n') ? '\n' : '\n\n';
+      const gap = !doc
+        ? ''
+        : doc.endsWith('\n\n')
+          ? ''
+          : doc.endsWith('\n')
+            ? '\n'
+            : '\n\n';
       const insert = `${gap}${text}`;
       editorView.dispatch({
         changes: { from: doc.length, insert },
@@ -2300,7 +2361,11 @@
 
   async function summarizeCalendarMeeting(day, event) {
     try {
-      const pending = postForCalendarMeeting(day, event, '/api/calendar/summary');
+      const pending = postForCalendarMeeting(
+        day,
+        event,
+        '/api/calendar/summary'
+      );
       status = '[Summarizing meeting…]';
       const done = await pending;
       if (done) {
@@ -3675,7 +3740,9 @@
   }
 
   function railButton(panel) {
-    return document.querySelector(`[aria-controls="${panel}-panel"].global-action`);
+    return document.querySelector(
+      `[aria-controls="${panel}-panel"].global-action`
+    );
   }
 
   async function focusPanel(panel) {
@@ -3697,14 +3764,17 @@
     const shown = layout[panel] !== 'hidden';
     if (shown) return hideLayoutPanel(panel);
     const active = document.activeElement;
-    panelReturnFocus[panel] =
-      lastWorkspaceFocus?.isConnected
-        ? lastWorkspaceFocus
-        : active && !panelElement(panel)?.contains(active)
-          ? active
-          : null;
+    panelReturnFocus[panel] = lastWorkspaceFocus?.isConnected
+      ? lastWorkspaceFocus
+      : active && !panelElement(panel)?.contains(active)
+        ? active
+        : null;
     applyLayoutState(
-      togglePanel(panel, { layout, prefs: layoutPrefs, transient: layoutTransient })
+      togglePanel(panel, {
+        layout,
+        prefs: layoutPrefs,
+        transient: layoutTransient
+      })
     );
     await focusPanel(panel);
   }
@@ -3712,7 +3782,11 @@
   async function hideLayoutPanel(panel) {
     const hadFocus = panelElement(panel)?.contains(document.activeElement);
     applyLayoutState(
-      closePanel(panel, { layout, prefs: layoutPrefs, transient: layoutTransient })
+      closePanel(panel, {
+        layout,
+        prefs: layoutPrefs,
+        transient: layoutTransient
+      })
     );
     if (panel === 'ai') markdownViewsHidden = false;
     if (panel === 'files') filesMenuOpen = false;
@@ -5035,6 +5109,85 @@
   }
 </script>
 
+{#snippet taskItem(task)}
+  <div class="task-row" class:task-row-done={task.checked}>
+    <input
+      class="task-complete"
+      type="checkbox"
+      checked={task.checked}
+      disabled={completingTask}
+      aria-label={`${task.checked ? 'Reopen' : 'Complete'}: ${task.displayText || task.text}`}
+      on:change={() => completeTaskItem(task)}
+    />
+    <div class="task-row-content">
+      <button
+        type="button"
+        class="task-title"
+        title="Open source note"
+        on:click={() => openTask(task)}
+      >
+        <span class="task-row-text">{taskDisplayTitle(task)}</span>
+      </button>
+      <div class="task-row-meta">
+        <span class="task-kind"
+          >{referenceTasks.has(task) ? 'Reference / idea' : 'Task'}</span
+        >
+        <button
+          type="button"
+          class="task-source-link"
+          title={task.path}
+          on:click={() => openTask(task)}
+        >
+          {readableTaskSource(task.path)} ↗
+        </button>
+        {#each task.assignees || [] as name}
+          <button
+            class="task-tag"
+            on:click={(event) => filterByAssignee(name, event)}
+            >Assigned to {name === 'me' ? 'you' : name}</button
+          >
+        {/each}
+        {#if task.created}<span>Added {formatDueLabel(task.created)}</span>{/if}
+        {#if task.priority}<span
+            class={`task-priority task-priority-${task.priority}`}
+            >{task.priority} priority</span
+          >{/if}
+        {#if task.due}<span
+            class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
+            >Due {formatDueChip(task.due, todayText)}</span
+          >{/if}
+        {#if task.checked && task.done}<span
+            >Completed {formatDueLabel(task.done)}</span
+          >{/if}
+      </div>
+      <div class="task-links">
+        {#each taskTextSegments(task.displayText || task.text).filter((segment) => segment.type === 'link') as link}
+          <a href={link.href} target="_blank" rel="noreferrer"
+            >{link.href.includes('arxiv.org/') ? 'Open paper' : link.text} ↗</a
+          >
+        {/each}
+      </div>
+      <details class="task-details">
+        <summary>Full note & tags</summary>
+        <p>
+          {#each taskTextSegments(task.displayText || task.text) as segment}
+            {#if segment.type === 'link'}<a
+                href={segment.href}
+                target="_blank"
+                rel="noreferrer">{segment.text} ↗</a
+              >
+            {:else}{segment.text}{/if}
+          {/each}
+        </p>
+        {#each task.tags || [] as tag}<button
+            class="task-tag"
+            on:click={(event) => filterByTag(tag, event)}>#{tag}</button
+          >{/each}
+      </details>
+    </div>
+  </div>
+{/snippet}
+
 {#snippet icon(name)}
   <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
     {#each ICONS[name] as d}
@@ -5793,7 +5946,9 @@
                 )}{/if}</span
             >
             <span aria-hidden="true" class="tree-icon"
-              >{@render icon(node.type === 'directory' ? 'folder' : 'file')}</span
+              >{@render icon(
+                node.type === 'directory' ? 'folder' : 'file'
+              )}</span
             >
             <span class="tree-name">{node.name}</span>
             {#if node.type === 'directory'}
@@ -6068,10 +6223,7 @@
 
     {#if calendarDetail}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="markdown-help-layer"
-        on:keydown={closeCalendarDetailOnEscape}
-      >
+      <div class="markdown-help-layer" on:keydown={closeCalendarDetailOnEscape}>
         <button
           aria-label="Close meeting details"
           class="markdown-help-backdrop"
@@ -6458,10 +6610,12 @@
         {#if viewMode === 'tasks'}
           <section class="tasks-pane" aria-label="Workspace tasks">
             <header class="tasks-toolbar">
-              <h2>Tasks</h2>
               <div class="tasks-summary">
                 <span>
-                  {openTaskCount} open{showCompletedTasks
+                  {openTaskCount - referenceCount} open tasks · {referenceCount}
+                  {referenceCount === 1
+                    ? 'reference'
+                    : 'references'}{showCompletedTasks
                     ? `, ${doneTaskCount} done`
                     : ''}{hiddenTaskCount
                     ? ` · ${hiddenTaskCount} filtered out`
@@ -6472,7 +6626,7 @@
                   <input
                     class="tasks-filter"
                     type="search"
-                    placeholder="Filter  /"
+                    placeholder="Search tasks and references"
                     aria-label="Filter tasks"
                     title={'Filter by text, #tag, or who:name — who: alone shows everything assigned'}
                     bind:this={taskFilterInput}
@@ -6523,20 +6677,35 @@
                   />
                   Completed
                 </label>
-                {#if taskGrouping !== 'urgency'}
-                  <button
-                    type="button"
-                    aria-expanded={editingSections}
-                    on:click={() => (editingSections = !editingSections)}
-                  >
-                    {editingSections ? 'Done' : 'Edit sections'}
-                  </button>
-                {/if}
-                <button type="button" on:click={() => loadTasks(selectedRoot)}>
-                  Refresh
-                </button>
+                <details class="tasks-options">
+                  <summary aria-label="Task options">•••</summary>
+                  <div>
+                    <button
+                      type="button"
+                      on:click={() => (editingSections = !editingSections)}
+                    >
+                      {editingSections
+                        ? 'Done editing sections'
+                        : 'Edit sections'}
+                    </button>
+                    <button
+                      type="button"
+                      on:click={() => loadTasks(selectedRoot)}>Refresh</button
+                    >
+                  </div>
+                </details>
               </div>
             </header>
+            <div class="tasks-collections" role="group" aria-label="Item type">
+              {#each [['all', 'All items'], ['tasks', 'Tasks'], ['references', 'References & ideas']] as [value, label]}
+                <button
+                  type="button"
+                  class:active={taskCollection === value}
+                  aria-pressed={taskCollection === value}
+                  on:click={() => (taskCollection = value)}>{label}</button
+                >
+              {/each}
+            </div>
             {#if tasksStatus}
               <p class="tasks-note">{tasksStatus}</p>
             {/if}
@@ -6661,92 +6830,7 @@
                         <ul class="task-lane-cards">
                           {#each lane.cards as card (`${card.task.path}:${card.task.line}`)}
                             <li>
-                              <!-- A div rather than a button: the text can
-                                 contain links, and an anchor inside a button is
-                                 invalid. -->
-                              <div
-                                class={`task-card task-card-${card.age || 'undated'}`}
-                                class:task-card-done={card.task.checked}
-                                title={`${card.task.path}:${card.task.line + 1}`}
-                                role="button"
-                                tabindex="0"
-                                on:click={(event) => openTask(card.task, event)}
-                                on:keydown={(event) =>
-                                  openTaskOnKey(card.task, event)}
-                              >
-                                <p class="task-card-eyebrow">
-                                  <span>{card.sectionLabel}</span>
-                                  {#if card.projectLabel}
-                                    <span class="task-card-project">
-                                      {card.projectLabel}
-                                    </span>
-                                  {/if}
-                                </p>
-                                <p class="task-card-text">
-                                  {#each taskTextSegments(card.task.displayText || card.task.text) as segment}
-                                    {#if segment.type === 'link'}
-                                      <a
-                                        href={segment.href}
-                                        rel="noreferrer"
-                                        target="_blank">{segment.text}</a
-                                      >
-                                    {:else if segment.type === 'assignee'}
-                                      <button
-                                        class="task-who"
-                                        class:task-who-active={taskFilter ===
-                                          `who:${segment.name}`}
-                                        title={`Filter by who:${segment.name}`}
-                                        type="button"
-                                        on:click={(event) =>
-                                          filterByAssignee(segment.name, event)}
-                                      >
-                                        {segment.text}
-                                      </button>
-                                    {:else}
-                                      {segment.text}
-                                    {/if}
-                                  {/each}
-                                </p>
-                                <p class="task-card-meta">
-                                  {#if card.task.priority}
-                                    <span
-                                      aria-label={`${card.task.priority} priority`}
-                                      class={`task-priority task-priority-${card.task.priority}`}
-                                      title={`${card.task.priority} priority`}
-                                    >
-                                      {priorityGlyph(card.task.priority)}
-                                    </span>
-                                  {/if}
-                                  {#if card.task.due}
-                                    <span
-                                      class={`task-due task-due-${taskUrgency(card.task.due, todayText)}`}
-                                      title={`Due ${card.task.due}`}
-                                    >
-                                      {formatDueChip(card.task.due, todayText)}
-                                    </span>
-                                  {/if}
-                                  {#each card.task.tags || [] as tag}
-                                    <button
-                                      class="task-tag"
-                                      class:task-tag-active={taskFilter ===
-                                        `#${tag}`}
-                                      title={`Filter by #${tag}`}
-                                      type="button"
-                                      on:click={(event) =>
-                                        filterByTag(tag, event)}
-                                    >
-                                      #{tag}
-                                    </button>
-                                  {/each}
-                                  {#if card.ageDays !== null}
-                                    <span class="task-card-age">
-                                      {card.ageDays === 0
-                                        ? 'today'
-                                        : `${card.ageDays}d`}
-                                    </span>
-                                  {/if}
-                                </p>
-                              </div>
+                              {@render taskItem(card.task)}
                             </li>
                           {/each}
                         </ul>
@@ -6767,84 +6851,15 @@
                   {#each pane.groups as group (group.key)}
                     {#if group.label}
                       <h4 class="task-source" title={group.label}>
-                        {group.label}
+                        {group.kind === 'file'
+                          ? readableTaskSource(group.label)
+                          : group.label}
                       </h4>
                     {/if}
                     <ul>
                       {#each group.tasks as task}
                         <li>
-                          <!-- A div rather than a button: the text can contain
-                             links, and an anchor inside a button is invalid. -->
-                          <div
-                            class="task-row"
-                            class:task-row-done={task.checked}
-                            title={`${task.path}:${task.line + 1}`}
-                            role="button"
-                            tabindex="0"
-                            on:click={(event) => openTask(task, event)}
-                            on:keydown={(event) => openTaskOnKey(task, event)}
-                          >
-                            <span class="task-row-text">
-                              {#each taskTextSegments(task.displayText || task.text) as segment}
-                                {#if segment.type === 'link'}
-                                  <a
-                                    href={segment.href}
-                                    rel="noreferrer"
-                                    target="_blank">{segment.text}</a
-                                  >
-                                {:else if segment.type === 'assignee'}
-                                  <button
-                                    class="task-who"
-                                    class:task-who-active={taskFilter ===
-                                      `who:${segment.name}`}
-                                    title={`Filter by who:${segment.name}`}
-                                    type="button"
-                                    on:click={(event) =>
-                                      filterByAssignee(segment.name, event)}
-                                  >
-                                    {segment.text}
-                                  </button>
-                                {:else}
-                                  {segment.text}
-                                {/if}
-                              {/each}
-                            </span>
-                            <span class="task-row-meta">
-                              {#if task.priority}
-                                <span
-                                  aria-label={`${task.priority} priority`}
-                                  class={`task-priority task-priority-${task.priority}`}
-                                  title={`${task.priority} priority`}
-                                >
-                                  {priorityGlyph(task.priority)}
-                                </span>
-                              {/if}
-                              {#if group.kind !== 'file'}
-                                <span class="task-row-source" title={task.path}>
-                                  {taskSourceLabel(task, activeDailyNoteFolder)}
-                                </span>
-                              {/if}
-                              {#each task.tags || [] as tag}
-                                <button
-                                  class="task-tag"
-                                  class:task-tag-active={taskFilter === `#${tag}`}
-                                  title={`Filter by #${tag}`}
-                                  type="button"
-                                  on:click={(event) => filterByTag(tag, event)}
-                                >
-                                  #{tag}
-                                </button>
-                              {/each}
-                              {#if task.due}
-                                <span
-                                  class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
-                                  title={`Due ${task.due}`}
-                                >
-                                  {formatDueChip(task.due, todayText)}
-                                </span>
-                              {/if}
-                            </span>
-                          </div>
+                          {@render taskItem(task)}
                         </li>
                       {/each}
                     </ul>
@@ -6856,8 +6871,9 @@
               {/each}
             {:else if !tasksStatus}
               <p class="preview-empty">
-                No open tasks. Write <code>- [ ] something</code> in a note to start
-                one.
+                No matching items. Clear your filters or write <code
+                  >- [ ] something</code
+                > in a note.
               </p>
             {/if}
           </section>
@@ -7809,8 +7825,8 @@
             <blockquote>{aiContext.excerpt}</blockquote>
           {/if}
           <p class="ai-context-edit">
-            The pencil drafts a rewrite of the editor selection only, shown
-            as a diff; the note changes only if you accept it.
+            The pencil drafts a rewrite of the editor selection only, shown as a
+            diff; the note changes only if you accept it.
           </p>
         </div>
       </details>
@@ -7872,7 +7888,8 @@
       class="panel-backdrop"
       tabindex="-1"
       type="button"
-      on:click={() => hideLayoutPanel(layout.files === 'overlay' ? 'files' : 'ai')}
+      on:click={() =>
+        hideLayoutPanel(layout.files === 'overlay' ? 'files' : 'ai')}
     ></button>
   {/if}
 </main>

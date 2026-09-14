@@ -629,3 +629,40 @@ function isDateText(value) {
     date.getUTCDate() === day
   );
 }
+
+/** A concise citation label; ordinary prose remains verbatim in the details. */
+export function taskDisplayTitle(task = {}) {
+  const text = task.displayText || task.text || '';
+  // ponytail: only conventional quoted arXiv citations; other formats keep their prose.
+  const citation =
+    /^([^"“]*?)(?:"([^"\n]+)"|“([^”\n]+)”)[\s—–-]*\[arXiv:[^\]]+\]\(https?:\/\/arxiv\.org\/[^)]+\)\s*$/i.exec(
+      text
+    );
+  const title =
+    citation && /^[\p{L}'’.-]+ et al\.,?\s*$/u.test(citation[1].trim())
+      ? citation[2] || citation[3]
+      : text;
+  return taskTextSegments(title)
+    .map((segment) => segment.text)
+    .join('');
+}
+
+/** Refuse stale rows rather than completing a different task after a note edit. */
+export function taskCompletionEdit(content, task, today) {
+  const current = collectTasks(content).find((item) => item.line === task.line);
+  if (
+    !current ||
+    current.text !== task.text ||
+    current.checked !== task.checked
+  )
+    throw new Error('This item changed. Refresh the list and try again.');
+  const lines = content.split('\n');
+  const from = lines
+    .slice(0, task.line)
+    .reduce((length, line) => length + line.length + 1, 0);
+  return {
+    from,
+    to: from + lines[task.line].length,
+    insert: toggleTaskLine(lines[task.line], today)
+  };
+}

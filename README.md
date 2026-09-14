@@ -328,8 +328,8 @@ words.
 ### Tasks view
 
 The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
-task in the workspace. Clicking a row opens its note in preview, scrolled to
-that task and ready to tick. A `[text](url)` link in a task shows as just its
+task in the workspace. Clicking a title or source label opens its note in
+preview, scrolled to that task. The checkbox completes it directly. A `[text](url)` link in a task shows as just its
 text and opens in a new tab, without opening the note. Tasks inside fenced code
 blocks are ignored, so an example in a how-to never turns into work.
 
@@ -350,15 +350,23 @@ A task's place comes from three things a note already carries: its **due date**
 **priority** mark, and **how long ago it was written**, taken from its daily
 note's filename or its `➕` created date. Age cuts both ways: something written
 this week is surfaced, and something written two months ago and never dated
-sinks, which is what keeps Now short. It also sets the card's ink, so old work
-fades rather than earning another badge. Each card shows the section that
-claimed it and, in a daily note, the `##` it sits under.
+sinks, which is what keeps Now short. Rows use the same readable layout in
+every view, with the source note available separately from external links.
 
 **Shelf** holds the sections marked as reading rather than work — Ideas,
 Interesting papers and Interesting software, by default. Those skip the ranking
 entirely, because scoring a paper against a deadline it never had would only
 bury the actual backlog. Any section can be shelved or unshelved under **Edit
 sections**; the catch-all never can.
+
+Use **All items**, **Tasks**, or **References & ideas** to separate actionable
+work from the shelf. Shelved items with a due date or priority still count as
+tasks. The summary counts open tasks and references separately. Check a row to
+complete it without leaving the list; **Completed** lets you reopen it.
+Conventional quoted arXiv citations show the paper title and an **Open paper**
+link. **Full note & tags** preserves the original prose and citation. Readable
+source labels retain full paths in tooltips. **Edit sections** and **Refresh**
+are in the **•••** menu.
 
 **Filter** narrows the list before any of the three views slice it, matching a
 task's prose, tags, headings and path alike, so `gnl` finds "GNLarge" halfway
