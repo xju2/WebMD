@@ -2457,17 +2457,6 @@ input[type='radio'] {
   font-size: 0.8rem;
 }
 
-.task-row-meta:empty {
-  display: none;
-}
-
-.task-row-meta .task-due {
-  margin-left: auto;
-  background: transparent;
-  color: var(--ink-subtle);
-  font-weight: 400;
-}
-
 .task-row-source {
   flex: 0 1 auto;
   min-width: 0;
@@ -5876,38 +5865,8 @@ input[type='radio'] {
   overflow-y: visible;
 }
 
-/* One readable row across the board, sections, and urgency views. */
-.tasks-collections {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 16px 24px 0;
-}
-.tasks-collections .active {
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-.tasks-options {
-  position: relative;
-  margin-left: auto;
-}
-.tasks-options > summary {
-  cursor: pointer;
-  padding: 8px;
-}
-.tasks-options > div {
-  position: absolute;
-  right: 0;
-  z-index: 5;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  min-width: 180px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
+/* One readable row across the board, sections, and urgency views: a box to
+   tick, the task as written, and one line of what it carries. */
 .tasks-pane .tasks-summary {
   width: 100%;
 }
@@ -5920,7 +5879,7 @@ input[type='radio'] {
   flex: 0 0 auto;
   width: 18px;
   height: 18px;
-  margin: 5px 0 0;
+  margin: 2px 0 0;
   accent-color: var(--accent);
   cursor: pointer;
 }
@@ -5929,58 +5888,48 @@ input[type='radio'] {
   min-width: 0;
 }
 .task-title {
-  display: block;
-  width: 100%;
-  height: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
   color: var(--ink-strong);
-  text-align: left;
-  font: inherit;
-  font-weight: 500;
+  cursor: pointer;
 }
 .task-title:hover {
-  background: transparent;
   color: var(--accent);
 }
+.task-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* Age has no pill of its own on the board — it is said by letting old work go
+   pale. A task from this week reads at full strength; one from last spring has
+   faded to the weight of a caption, which is about what it deserves. */
+.task-age-warm .task-title {
+  color: #3c4761;
+}
+.task-age-cool .task-title {
+  color: var(--ink-muted);
+}
+.task-age-cold .task-title {
+  color: var(--ink-subtle);
+}
+.task-row-done .task-title {
+  color: var(--ink-subtle);
+}
 .task-row-meta {
-  margin-top: 6px;
+  margin-top: 4px;
   font-size: 0.75rem;
 }
-.task-source-link {
-  height: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink-muted);
-  font: inherit;
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-.task-kind {
-  color: var(--ink-muted);
-}
-.task-details {
-  margin-top: 6px;
-  font-size: 0.8rem;
-}
-.task-details summary {
-  color: var(--ink-muted);
-  cursor: pointer;
-  width: fit-content;
-}
-.task-details p {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
+.task-row-meta:empty {
+  display: none;
 }
 .task-row-meta .task-due {
   margin-left: 0;
-  color: var(--ink);
 }
-.task-row-meta .task-due-overdue {
-  color: #a8261c;
+.task-row-meta .task-priority {
+  font-size: 0.9em;
+}
+.task-paper-link {
+  color: var(--accent);
+  text-underline-offset: 3px;
 }
 .task-group {
   margin: 24px 24px 0;
@@ -5991,49 +5940,10 @@ input[type='radio'] {
   font-size: 1rem;
 }
 .task-lane .task-row {
-  padding: 12px 8px;
-}
-.task-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-  font-size: 0.8rem;
-}
-.task-links:empty {
-  display: none;
-}
-.task-row-done .task-title {
-  color: var(--ink-subtle);
-}
-.tasks-collections button {
-  padding: 7px 12px;
-  border: 1px solid var(--border-control);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink-muted);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.tasks-collections button.active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  padding: 10px 8px;
 }
 .tasks-pane .search-field {
   flex: 1 1 220px;
   max-width: 380px;
   width: auto;
-}
-.task-links a,
-.task-details a {
-  color: var(--accent);
-  text-underline-offset: 3px;
-}
-.tasks-options > summary {
-  list-style: none;
-}
-.tasks-options > summary::-webkit-details-marker {
-  display: none;
 }

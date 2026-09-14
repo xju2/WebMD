@@ -630,21 +630,21 @@ function isDateText(value) {
   );
 }
 
-/** A concise citation label; ordinary prose remains verbatim in the details. */
-export function taskDisplayTitle(task = {}) {
+/**
+ * A reading-list entry written as a conventional citation — `Yu et al.,
+ * "Title" — [arXiv:…](…)` — reads better as its title plus a link to the paper.
+ * Anything else, including a citation with an action in front of it, is null
+ * and keeps its own prose.
+ */
+export function taskCitation(task = {}) {
   const text = task.displayText || task.text || '';
-  // ponytail: only conventional quoted arXiv citations; other formats keep their prose.
   const citation =
-    /^([^"“]*?)(?:"([^"\n]+)"|“([^”\n]+)”)[\s—–-]*\[arXiv:[^\]]+\]\(https?:\/\/arxiv\.org\/[^)]+\)\s*$/i.exec(
+    /^([^"“]*?)(?:"([^"\n]+)"|“([^”\n]+)”)[\s—–-]*\[arXiv:[^\]]+\]\((https?:\/\/arxiv\.org\/[^)]+)\)\s*$/i.exec(
       text
     );
-  const title =
-    citation && /^[\p{L}'’.-]+ et al\.,?\s*$/u.test(citation[1].trim())
-      ? citation[2] || citation[3]
-      : text;
-  return taskTextSegments(title)
-    .map((segment) => segment.text)
-    .join('');
+  if (!citation || !/^[\p{L}'’.-]+ et al\.,?\s*$/u.test(citation[1].trim()))
+    return null;
+  return { title: citation[2] || citation[3], href: citation[4] };
 }
 
 /** Refuse stale rows rather than completing a different task after a note edit. */

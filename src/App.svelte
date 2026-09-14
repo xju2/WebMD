@@ -107,7 +107,7 @@
   import { relatedInsertion } from './related-links.js';
   import {
     collectTasks,
-    taskDisplayTitle,
+    taskCitation,
     taskCompletionEdit,
     formatDueChip,
     formatDueLabel,
@@ -126,7 +126,8 @@
     groupTasksIntoSections,
     parseTermList,
     sanitizeSections,
-    readableTaskSource
+    readableTaskSource,
+    taskSourceLabel
   } from './task-sections.js';
   import { LANES, filterTasks, groupTasksIntoBoard } from './task-score.js';
   import {
@@ -322,7 +323,6 @@
   let showCompletedTasks = false;
   let editingSections = false;
   let completingTask = false;
-  let taskCollection = 'all';
   let referenceOpen = false;
   let referencePath = '';
   let referenceContent = '';
@@ -553,8 +553,7 @@
     selectedPath,
     workspaceFiles
   );
-  // The filter box narrows the list once, before any of the three views slice
-  // it, so switching between them keeps whatever you were looking for.
+  // Shelved reading without a date or priority, counted apart from the work.
   $: referenceTasks = new Set(
     groupTasksIntoSections(workspaceTasks, taskSections, { includeDone: true })
       .filter(
@@ -564,14 +563,9 @@
       .flatMap((group) => group.groups.flatMap((source) => source.tasks))
       .filter((task) => !task.due && !task.priority)
   );
-  $: matchingTasks = filterTasks(
-    workspaceTasks.filter(
-      (task) =>
-        taskCollection === 'all' ||
-        (taskCollection === 'references') === referenceTasks.has(task)
-    ),
-    taskFilter
-  );
+  // The filter box narrows the list once, before any of the three views slice
+  // it, so switching between them keeps whatever you were looking for.
+  $: matchingTasks = filterTasks(workspaceTasks, taskFilter);
   $: referenceCount = matchingTasks.filter(
     (task) => !task.checked && referenceTasks.has(task)
   ).length;
@@ -2233,6 +2227,14 @@
     setViewMode('preview', { remember: false });
     await tick();
     revealPreviewLine(task.line);
+  }
+
+  // Keys on a link or a who: chip inside the title belong to that control.
+  function openTaskOnKey(task, event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (event.target !== event.currentTarget) return;
+    event.preventDefault();
+    openTask(task);
   }
 
   /** Scrolls a source line into view in the preview and marks it briefly. */
@@ -5109,8 +5111,14 @@
   }
 </script>
 
-{#snippet taskItem(task)}
-  <div class="task-row" class:task-row-done={task.checked}>
+<!-- One row for the board, sections and urgency views. `age` fades old work on
+     the board; `showSource` is off under a heading that already names the file. -->
+{#snippet taskItem(task, age, showSource)}
+  {@const citation = taskCitation(task)}
+  <div
+    class={`task-row task-age-${age || 'undated'}`}
+    class:task-row-done={task.checked}
+  >
     <input
       class="task-complete"
       type="checkbox"
@@ -5120,70 +5128,88 @@
       on:change={() => completeTaskItem(task)}
     />
     <div class="task-row-content">
-      <button
-        type="button"
+      <!-- A div rather than a button: the text can contain links and who:
+           chips, and neither may sit inside a button. -->
+      <div
         class="task-title"
-        title="Open source note"
-        on:click={() => openTask(task)}
+        role="button"
+        tabindex="0"
+        title={`Open ${task.path}:${task.line + 1}`}
+        on:click={(event) => openTask(task, event)}
+        on:keydown={(event) => openTaskOnKey(task, event)}
       >
-        <span class="task-row-text">{taskDisplayTitle(task)}</span>
-      </button>
+        <span class="task-row-text">
+          {#if citation}
+            {citation.title}
+          {:else}
+            {#each taskTextSegments(task.displayText || task.text) as segment}
+              {#if segment.type === 'link'}
+                <a href={segment.href} rel="noreferrer" target="_blank"
+                  >{segment.text}</a
+                >
+              {:else if segment.type === 'assignee'}
+                <button
+                  class="task-who"
+                  class:task-who-active={taskFilter === `who:${segment.name}`}
+                  title={`Filter by who:${segment.name}`}
+                  type="button"
+                  on:click={(event) => filterByAssignee(segment.name, event)}
+                >
+                  {segment.text}
+                </button>
+              {:else}
+                {segment.text}
+              {/if}
+            {/each}
+          {/if}
+        </span>
+      </div>
       <div class="task-row-meta">
-        <span class="task-kind"
-          >{referenceTasks.has(task) ? 'Reference / idea' : 'Task'}</span
-        >
-        <button
-          type="button"
-          class="task-source-link"
-          title={task.path}
-          on:click={() => openTask(task)}
-        >
-          {readableTaskSource(task.path)} ↗
-        </button>
-        {#each task.assignees || [] as name}
+        {#if task.priority}
+          <span
+            aria-label={`${task.priority} priority`}
+            class={`task-priority task-priority-${task.priority}`}
+            title={`${task.priority} priority`}
+          >
+            {priorityGlyph(task.priority)}
+          </span>
+        {/if}
+        {#if showSource}
+          <span class="task-row-source" title={task.path}>
+            {taskSourceLabel(task, activeDailyNoteFolder)}
+          </span>
+        {/if}
+        {#if citation}
+          <a
+            class="task-paper-link"
+            href={citation.href}
+            rel="noreferrer"
+            target="_blank">Open paper ↗</a
+          >
+        {/if}
+        {#each task.tags || [] as tag}
           <button
             class="task-tag"
-            on:click={(event) => filterByAssignee(name, event)}
-            >Assigned to {name === 'me' ? 'you' : name}</button
+            class:task-tag-active={taskFilter === `#${tag}`}
+            title={`Filter by #${tag}`}
+            type="button"
+            on:click={(event) => filterByTag(tag, event)}
           >
+            #{tag}
+          </button>
         {/each}
-        {#if task.created}<span>Added {formatDueLabel(task.created)}</span>{/if}
-        {#if task.priority}<span
-            class={`task-priority task-priority-${task.priority}`}
-            >{task.priority} priority</span
-          >{/if}
-        {#if task.due}<span
+        {#if task.due}
+          <span
             class={`task-due task-due-${taskUrgency(task.due, todayText)}`}
-            >Due {formatDueChip(task.due, todayText)}</span
-          >{/if}
-        {#if task.checked && task.done}<span
-            >Completed {formatDueLabel(task.done)}</span
-          >{/if}
-      </div>
-      <div class="task-links">
-        {#each taskTextSegments(task.displayText || task.text).filter((segment) => segment.type === 'link') as link}
-          <a href={link.href} target="_blank" rel="noreferrer"
-            >{link.href.includes('arxiv.org/') ? 'Open paper' : link.text} ↗</a
+            title={`Due ${task.due}`}
           >
-        {/each}
+            {formatDueChip(task.due, todayText)}
+          </span>
+        {/if}
+        {#if task.checked && task.done}
+          <span>Done {formatDueLabel(task.done)}</span>
+        {/if}
       </div>
-      <details class="task-details">
-        <summary>Full note & tags</summary>
-        <p>
-          {#each taskTextSegments(task.displayText || task.text) as segment}
-            {#if segment.type === 'link'}<a
-                href={segment.href}
-                target="_blank"
-                rel="noreferrer">{segment.text} ↗</a
-              >
-            {:else}{segment.text}{/if}
-          {/each}
-        </p>
-        {#each task.tags || [] as tag}<button
-            class="task-tag"
-            on:click={(event) => filterByTag(tag, event)}>#{tag}</button
-          >{/each}
-      </details>
     </div>
   </div>
 {/snippet}
@@ -6133,6 +6159,33 @@
               <button role="menuitem" type="button" on:click={openMarkdownHelp}>
                 Markdown help
               </button>
+              {#if viewMode === 'tasks'}
+                <hr class="view-menu-divider" />
+                {#if taskGrouping !== 'urgency'}
+                  <button
+                    aria-pressed={editingSections}
+                    class:active={editingSections}
+                    role="menuitem"
+                    type="button"
+                    on:click={() => {
+                      closeViewMenu();
+                      editingSections = !editingSections;
+                    }}
+                  >
+                    Edit sections
+                  </button>
+                {/if}
+                <button
+                  role="menuitem"
+                  type="button"
+                  on:click={() => {
+                    closeViewMenu();
+                    loadTasks(selectedRoot);
+                  }}
+                >
+                  Refresh tasks
+                </button>
+              {/if}
               {#if documentControls}
                 <hr class="view-menu-divider" />
                 <button
@@ -6677,35 +6730,16 @@
                   />
                   Completed
                 </label>
-                <details class="tasks-options">
-                  <summary aria-label="Task options">•••</summary>
-                  <div>
-                    <button
-                      type="button"
-                      on:click={() => (editingSections = !editingSections)}
-                    >
-                      {editingSections
-                        ? 'Done editing sections'
-                        : 'Edit sections'}
-                    </button>
-                    <button
-                      type="button"
-                      on:click={() => loadTasks(selectedRoot)}>Refresh</button
-                    >
-                  </div>
-                </details>
+                {#if editingSections && taskGrouping !== 'urgency'}
+                  <button
+                    type="button"
+                    on:click={() => (editingSections = false)}
+                  >
+                    Done editing
+                  </button>
+                {/if}
               </div>
             </header>
-            <div class="tasks-collections" role="group" aria-label="Item type">
-              {#each [['all', 'All items'], ['tasks', 'Tasks'], ['references', 'References & ideas']] as [value, label]}
-                <button
-                  type="button"
-                  class:active={taskCollection === value}
-                  aria-pressed={taskCollection === value}
-                  on:click={() => (taskCollection = value)}>{label}</button
-                >
-              {/each}
-            </div>
             {#if tasksStatus}
               <p class="tasks-note">{tasksStatus}</p>
             {/if}
@@ -6830,7 +6864,7 @@
                         <ul class="task-lane-cards">
                           {#each lane.cards as card (`${card.task.path}:${card.task.line}`)}
                             <li>
-                              {@render taskItem(card.task)}
+                              {@render taskItem(card.task, card.age, true)}
                             </li>
                           {/each}
                         </ul>
@@ -6859,7 +6893,7 @@
                     <ul>
                       {#each group.tasks as task}
                         <li>
-                          {@render taskItem(task)}
+                          {@render taskItem(task, '', group.kind !== 'file')}
                         </li>
                       {/each}
                     </ul>

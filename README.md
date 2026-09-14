@@ -328,9 +328,14 @@ words.
 ### Tasks view
 
 The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
-task in the workspace. Clicking a title or source label opens its note in
-preview, scrolled to that task. The checkbox completes it directly. A `[text](url)` link in a task shows as just its
-text and opens in a new tab, without opening the note. Tasks inside fenced code
+task in the workspace. Clicking a task's text opens its note in preview,
+scrolled to that task; ticking its box completes it without leaving the list,
+and **Completed** shows finished tasks so one can be reopened. A `[text](url)`
+link in a task shows as just its text and opens in a new tab, without opening
+the note. A `who:me` reads as a highlighted **Me** in the sentence, and
+clicking it — or a `#tag` chip — filters to that person or tag.
+A reading-list entry written as a conventional citation, `Yu et al., "Title" —
+[arXiv:…](…)`, shows the paper's title and an **Open paper** link. Tasks inside fenced code
 blocks are ignored, so an example in a how-to never turns into work.
 
 There are three ways to look at the same list.
@@ -350,8 +355,9 @@ A task's place comes from three things a note already carries: its **due date**
 **priority** mark, and **how long ago it was written**, taken from its daily
 note's filename or its `➕` created date. Age cuts both ways: something written
 this week is surfaced, and something written two months ago and never dated
-sinks, which is what keeps Now short. Rows use the same readable layout in
-every view, with the source note available separately from external links.
+sinks, which is what keeps Now short. It also sets the task's ink, so old
+work fades rather than earning another badge. Each row shows the note it came
+from and, in a daily note, the `##` it sits under.
 
 **Shelf** holds the sections marked as reading rather than work — Ideas,
 Interesting papers and Interesting software, by default. Those skip the ranking
@@ -359,14 +365,9 @@ entirely, because scoring a paper against a deadline it never had would only
 bury the actual backlog. Any section can be shelved or unshelved under **Edit
 sections**; the catch-all never can.
 
-Use **All items**, **Tasks**, or **References & ideas** to separate actionable
-work from the shelf. Shelved items with a due date or priority still count as
-tasks. The summary counts open tasks and references separately. Check a row to
-complete it without leaving the list; **Completed** lets you reopen it.
-Conventional quoted arXiv citations show the paper title and an **Open paper**
-link. **Full note & tags** preserves the original prose and citation. Readable
-source labels retain full paths in tooltips. **Edit sections** and **Refresh**
-are in the **•••** menu.
+The summary counts open tasks and shelved references separately; a shelved
+item with a due date or priority counts as a task. **Edit sections** and
+**Refresh tasks** are in the toolbar's **⋯** menu.
 
 **Filter** narrows the list before any of the three views slice it, matching a
 task's prose, tags, headings and path alike, so `gnl` finds "GNLarge" halfway

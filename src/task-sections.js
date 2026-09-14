@@ -317,12 +317,19 @@ export function parseTermList(text = '') {
   return toTermList(text);
 }
 
-/** Last two path components, with the exact path retained by the UI tooltip. */
+/**
+ * Last two path components, with the exact path retained by the UI tooltip.
+ * Separators become spaces, except between digits, so a date keeps its shape.
+ */
 export function readableTaskSource(path = '') {
   return String(path)
     .split('/')
     .filter(Boolean)
     .slice(-2)
-    .map((part) => part.replace(/\.(md|markdown)$/i, '').replace(/[_-]/g, ' '))
+    .map((part) =>
+      part
+        .replace(/\.(md|markdown)$/i, '')
+        .replace(/(?<!\d)[_-]|[_-](?!\d)/g, ' ')
+    )
     .join(' › ');
 }

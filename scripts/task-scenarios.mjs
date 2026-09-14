@@ -12,7 +12,7 @@ const { child: chrome, page, profile } = await launchChrome();
 try {
   await fs.writeFile(
     path.join(fixture.dir, 'research', 'Reading.md'),
-    '# Papers\n\n- [ ] Yu et al., "MEGABYTE: Predicting sequences" — [arXiv:2305.07185](https://arxiv.org/abs/2305.07185) #paper\n'
+    '# Papers\n\n- [ ] Yu et al., "MEGABYTE: Predicting sequences" — [arXiv:2305.07185](https://arxiv.org/abs/2305.07185) #paper\n- [ ] who:me sort the reading list\n'
   );
   await page.viewport(1280, 900);
   await page.goto(fixture.url);
@@ -31,26 +31,30 @@ try {
   check(
     'Readable citation and separate paper link',
     await page.eval(
-      'return [...document.querySelectorAll(".task-title")].some(b => b.textContent.trim() === "MEGABYTE: Predicting sequences") && !!document.querySelector(".task-links a");'
+      'return [...document.querySelectorAll(".task-title")].some(b => b.textContent.trim() === "MEGABYTE: Predicting sequences") && !!document.querySelector(".task-paper-link");'
+    )
+  );
+  check(
+    'Rows carry tags and no repeated labels',
+    await page.eval(
+      'return !!document.querySelector(".task-row-meta .task-tag") && !document.querySelector(".task-details, .task-kind, .tasks-collections, .tasks-options");'
     )
   );
   await page.eval(
-    '[...document.querySelectorAll(".tasks-collections button")].find(b => b.textContent.trim() === "References & ideas").click();'
+    '[...document.querySelectorAll(".task-title .task-who")].find(b => b.textContent.trim() === "Me").click();'
   );
+  check(
+    'who:me is a clickable Me in the sentence',
+    await page.eval(
+      'return document.querySelector(".tasks-filter").value === "who:me" && document.querySelector(".tasks-pane") && [...document.querySelectorAll(".task-title")].every(t => t.textContent.includes("Me"));'
+    )
+  );
+  await page.click('.tasks-filter');
+  await page.eval(
+    'const f = document.querySelector(".tasks-filter"); f.value = ""; f.dispatchEvent(new Event("input", { bubbles: true }));'
+  );
+  await page.type('MEGABYTE');
   await page.waitFor('document.querySelectorAll(".task-row").length === 1');
-  check(
-    'Reference filter separates the reading list',
-    await page.eval(
-      'return document.querySelectorAll(".task-row").length === 1 && document.querySelector(".task-title").textContent.includes("MEGABYTE");'
-    )
-  );
-  await page.click('.task-details summary');
-  check(
-    'Details retain original citation',
-    await page.eval(
-      'return document.querySelector(".task-details[open]").textContent.includes("Yu et al.");'
-    )
-  );
   await page.shot('tasks-references');
   await page.click('.task-complete');
   await page.waitFor('!document.querySelector(".task-row")');
@@ -78,7 +82,7 @@ try {
     ).includes('- [ ] Yu et al.')
   );
   await page.eval(
-    '[...document.querySelectorAll(".tasks-collections button")].find(b => b.textContent.trim() === "All items").click();'
+    'const f = document.querySelector(".tasks-filter"); f.value = ""; f.dispatchEvent(new Event("input", { bubbles: true }));'
   );
   await page.viewport(390, 844);
   await page.shot('tasks-mobile');
