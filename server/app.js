@@ -206,7 +206,10 @@ export async function createApp({
         .get(req.query.root)
         .loadMediaFile(req.query.path);
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.sendFile(file.absolute);
+      // The path is already confined to the workspace and to media types, so
+      // a workspace inside a dot folder (the sandbox under ~/.local) must not
+      // make send() refuse every image in it.
+      res.sendFile(file.absolute, { dotfiles: 'allow' });
     })
   );
 

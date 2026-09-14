@@ -1,0 +1,11 @@
+{
+  "presets": [
+    {
+      "id": "plain-english",
+      "label": "Plain English",
+      "group": "Sandbox",
+      "instruction": "Rewrite in plain English",
+      "system": "Rewrite the selected Markdown in plain, direct English. Keep its meaning, structure, links, and citations. Return only the replacement Markdown, with no explanation and no code fences."
+    }
+  ]
+}

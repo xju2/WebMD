@@ -84,3 +84,38 @@ test('server process starts against a temp workspace', async () => {
     await stopChild(child);
   }
 });
+
+test('server process opens the sandbox when no workspace is configured', async () => {
+  // A throwaway home, so neither ~/.webmd.conf nor a real sandbox is touched.
+  const home = await tempRoot();
+  const port = await freePort();
+
+  const stderr = [];
+  const child = spawn(process.execPath, ['server/index.js'], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      HOME: home,
+      WORKSPACE_ROOT: '',
+      WORKSPACE_ROOTS: '',
+      WEBMD_SANDBOX_DIR: '',
+      AUTO_COMMIT_MINUTES: '',
+      PORT: String(port)
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  child.stderr.on('data', (chunk) => stderr.push(chunk.toString()));
+
+  try {
+    const roots = await waitForJson(
+      `http://127.0.0.1:${port}/api/workspace/roots`,
+      child,
+      stderr
+    );
+    assert.equal(roots.length, 1);
+    assert.equal(roots[0].name, 'sandbox');
+    await fs.access(path.join(home, '.local/share/webmd/sandbox/Welcome.md'));
+  } finally {
+    await stopChild(child);
+  }
+});

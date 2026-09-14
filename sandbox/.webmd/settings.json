@@ -1,0 +1,5 @@
+{
+  "imageAssetFolder": "/assets",
+  "dailyNoteFolder": "/daily",
+  "dailyNoteTemplate": "/daily/template.md"
+}

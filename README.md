@@ -6,6 +6,20 @@ A remote-first Markdown workspace for editing notes through an SSH tunnel.
 
 ```bash
 npm install
+npm run dev
+```
+
+With no workspace configured, WebMD opens its **sandbox**: a small example
+workspace with a guided tour of links, tasks, citations, and daily notes.
+Change anything you like there. On the first run the sandbox is copied from
+`sandbox/` in this repository to `~/.local/share/webmd/sandbox` (or
+`WEBMD_SANDBOX_DIR`), and that copy is what you edit, so the repository stays
+clean. Your edits are kept across restarts. Delete the copy to start over. The
+sandbox is never auto-committed.
+
+To open your own notes instead:
+
+```bash
 WORKSPACE_ROOT=/absolute/path/to/notes npm run dev
 ```
 
@@ -15,7 +29,7 @@ To switch between server folders from the sidebar, pass a path-delimited list:
 WORKSPACE_ROOTS="/absolute/path/to/notes:/absolute/path/to/other-notes" npm run dev
 ```
 
-The backend refuses to start without `WORKSPACE_ROOT` or `WORKSPACE_ROOTS` and always binds to `127.0.0.1`.
+The backend always binds to `127.0.0.1`.
 The Vite dev server also binds to `127.0.0.1` and proxies `/api` to the backend.
 
 Instead of passing env vars on the command line, put them in `~/.webmd.conf` (`KEY=VALUE` per line, same format as `.env`). The backend loads it automatically on startup; real environment variables still take precedence:
@@ -80,8 +94,11 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 
 ## Environment
 
-- `WORKSPACE_ROOT`: required absolute path to the Markdown workspace.
+- `WORKSPACE_ROOT`: absolute path to the Markdown workspace. Without it (or
+  `WORKSPACE_ROOTS`), WebMD opens the sandbox.
 - `WORKSPACE_ROOTS`: optional path-delimited list of Markdown workspaces.
+- `WEBMD_SANDBOX_DIR`: where the sandbox copy lives, defaults to
+  `~/.local/share/webmd/sandbox`.
 - `PORT`: backend port, defaults to `3000`.
 - `IMAGE_ASSET_FOLDER`: fallback folder for pasted and uploaded images and
   PDFs in workspaces whose `.webmd/settings.json` does not set
