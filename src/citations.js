@@ -9,13 +9,18 @@ const DOI_URL =
   /^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)(10\.\d{4,9}\/\S+)$/i;
 const INSPIRE_URL =
   /^(?:https?:\/\/)?(?:www\.)?inspirehep\.net\/(?:literature|record)\/(\d+)\/?$/i;
+// Every Nature Portfolio article's DOI is `10.1038/` plus its URL slug.
+const NATURE_URL =
+  /^(?:https?:\/\/)?(?:www\.)?nature\.com\/articles\/([A-Za-z0-9.-]+?)(?:\.pdf)?\/?(?:[?#]\S*)?$/i;
+// Springer, Wiley, APS, IOP, ACS, Science, ACM and others put the DOI itself
+// in the article URL, sometimes followed by the page kind being shown.
+const PUBLISHER_DOI_URL =
+  /^https?:\/\/[^/\s]+\/(?:[^?#\s]*\/)?(10\.\d{4,9}\/[^?#\s]+?)(?:\/(?:pdf|epdf|full|abstract|fulltext))?(?:\.pdf)?\/?(?:[?#]\S*)?$/i;
 
 export function citationPasteSource(text, { beforeCursor = '' } = {}) {
   if (/[(<]$/.test(beforeCursor)) return null;
   const value = String(text ?? '').trim();
-  return ARXIV_URL.test(value) || DOI_URL.test(value) || INSPIRE_URL.test(value)
-    ? value
-    : null;
+  return citationSource(value) ? value : null;
 }
 
 export function citationSource(value) {
@@ -27,7 +32,19 @@ export function citationSource(value) {
   match = DOI_URL.exec(text);
   if (match) return { kind: 'doi', id: match[1].replace(/[.,;]+$/, '') };
   match = INSPIRE_URL.exec(text);
-  return match ? { kind: 'inspire', id: match[1] } : null;
+  if (match) return { kind: 'inspire', id: match[1] };
+  match = NATURE_URL.exec(text);
+  if (match) return { kind: 'doi', id: `10.1038/${match[1]}` };
+  match = PUBLISHER_DOI_URL.exec(text);
+  return match ? { kind: 'doi', id: decodeUrlPart(match[1]) } : null;
+}
+
+function decodeUrlPart(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }
 
 export function parseBibtex(source = '') {

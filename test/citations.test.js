@@ -133,6 +133,45 @@ test('drops an arXiv version suffix before looking a paper up', () => {
   });
 });
 
+test('reads the DOI out of journal article links', () => {
+  for (const [url, id] of [
+    [
+      'https://www.nature.com/articles/s41586-023-06924-6',
+      '10.1038/s41586-023-06924-6'
+    ],
+    ['https://www.nature.com/articles/nature14539.pdf', '10.1038/nature14539'],
+    [
+      'https://link.springer.com/article/10.1007/s10994-021-06056-w',
+      '10.1007/s10994-021-06056-w'
+    ],
+    [
+      'https://onlinelibrary.wiley.com/doi/full/10.1002/anie.202012345?af=R',
+      '10.1002/anie.202012345'
+    ],
+    [
+      'https://journals.aps.org/prl/abstract/10.1103/PhysRevLett.116.061102',
+      '10.1103/PhysRevLett.116.061102'
+    ],
+    [
+      'https://iopscience.iop.org/article/10.1088/1742-6596/898/4/042046/pdf',
+      '10.1088/1742-6596/898/4/042046'
+    ],
+    [
+      'https://www.science.org/doi/10.1126/science.aar6404',
+      '10.1126/science.aar6404'
+    ],
+    [
+      'https://dl.acm.org/doi/pdf/10.1145/3292500.3330701',
+      '10.1145/3292500.3330701'
+    ]
+  ]) {
+    assert.equal(citationPasteSource(url), url, url);
+    assert.deepEqual(citationSource(url), { kind: 'doi', id }, url);
+  }
+  assert.equal(citationPasteSource('https://www.nature.com/nature'), null);
+  assert.equal(citationPasteSource('https://example.com/blog/10-tips'), null);
+});
+
 test('ignores tracking queries and anchors on an arXiv link', () => {
   for (const url of [
     'https://arxiv.org/html/2506.13131?utm_source=chatgpt.com',

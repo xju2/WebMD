@@ -266,7 +266,8 @@ them with Pandoc syntax such as `[@Ju:2026abc]`. Typing `@` completes known
 BibTeX keys. Preview shows inline citations, hover metadata, and a generated
 References section; the graph connects notes to the papers they cite.
 
-Pasting an arXiv, DOI, or INSPIRE literature link imports its BibTeX entry and
+Pasting an arXiv, DOI, or INSPIRE literature link, a nature.com article, or a
+journal article link with the DOI in its URL imports its BibTeX entry and
 replaces the link with its `[@key]` citation. DOI metadata comes from doi.org;
 arXiv and INSPIRE metadata comes from INSPIRE-HEP.
 
