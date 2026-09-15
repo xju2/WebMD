@@ -1,7 +1,7 @@
 const ARXIV_ID = /(\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(v\d+)?/
   .source;
 const ARXIV_URL = new RegExp(
-  `^(?:https?://)?(?:www\\.)?arxiv\\.org/(?:abs|pdf|html)/${ARXIV_ID}(?:\\.pdf)?/?$`,
+  `^(?:https?://)?(?:www\\.)?arxiv\\.org/(?:abs|pdf|html)/${ARXIV_ID}(?:\\.pdf)?/?(?:[?#]\\S*)?$`,
   'i'
 );
 /** The identifier on its own, as arXiv prints it: `arXiv:2511.15684`. */

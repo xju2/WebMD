@@ -2,7 +2,7 @@ const CITE_KEY = String.raw`[^\s\[\],@;]+`;
 const CITE = new RegExp(String.raw`\[@(${CITE_KEY})\]`, 'g');
 const ARXIV_ID = String.raw`(?:\d{4}\.\d{4,5}|[a-z][a-z-]*(?:\.[A-Za-z]{2})?\/\d{7})(?:v\d+)?`;
 const ARXIV_URL = new RegExp(
-  String.raw`^(?:https?://)?(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(${ARXIV_ID})(?:\.pdf)?\/?$`,
+  String.raw`^(?:https?://)?(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(${ARXIV_ID})(?:\.pdf)?\/?(?:[?#]\S*)?$`,
   'i'
 );
 const DOI_URL =

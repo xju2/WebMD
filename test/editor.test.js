@@ -47,7 +47,9 @@ test('accepts arXiv link variants', () => {
     'https://www.arxiv.org/abs/2608.00146',
     'https://arxiv.org/pdf/2608.00146.pdf',
     'https://arxiv.org/abs/2608.00146/',
-    '  https://arxiv.org/pdf/2608.00146\n'
+    '  https://arxiv.org/pdf/2608.00146\n',
+    'https://arxiv.org/html/2608.00146?utm_source=chatgpt.com',
+    'https://arxiv.org/html/2608.00146#S2'
   ]) {
     assert.equal(arxivLinkPaste(url), ABS_LINK, url);
   }

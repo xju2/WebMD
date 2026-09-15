@@ -133,6 +133,17 @@ test('drops an arXiv version suffix before looking a paper up', () => {
   });
 });
 
+test('ignores tracking queries and anchors on an arXiv link', () => {
+  for (const url of [
+    'https://arxiv.org/html/2506.13131?utm_source=chatgpt.com',
+    'https://arxiv.org/html/2506.13131v2#S3',
+    'https://arxiv.org/abs/2506.13131?context=cs'
+  ]) {
+    assert.equal(citationPasteSource(url), url, url);
+    assert.deepEqual(citationSource(url), { kind: 'arxiv', id: '2506.13131' });
+  }
+});
+
 test('falls back to arXiv’s DOI when INSPIRE has no such paper', async () => {
   const requests = [];
   const { bibtex, entry } = await fetchCitationBibtex(
