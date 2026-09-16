@@ -416,7 +416,7 @@ test('expands typed shorthand into the emoji convention', () => {
       '- [ ] Submit the abstract due:2026-08-20 :p2:',
       FRIDAY
     ),
-    '- [ ] Submit the abstract ⏫ 📅 2026-08-20'
+    '- [ ] Submit the abstract who:me ⏫ 📅 2026-08-20'
   );
 });
 
@@ -429,7 +429,7 @@ test('keeps a task line that carries no shorthand byte for byte', () => {
 test('shorthand overrides a field the line already carries', () => {
   assert.equal(
     expandTaskShorthand('- [ ] Ship it 📅 2026-08-30 due:today', FRIDAY),
-    '- [ ] Ship it 📅 2026-08-14'
+    '- [ ] Ship it who:me 📅 2026-08-14'
   );
 });
 
@@ -463,12 +463,12 @@ test('resolves a year-less month-day shorthand date', () => {
 test('expands a year-less due date on a task line', () => {
   assert.equal(
     expandTaskShorthand('- [ ] Ship it due:10-01', FRIDAY),
-    '- [ ] Ship it 📅 2026-10-01'
+    '- [ ] Ship it who:me 📅 2026-10-01'
   );
 });
 
 test('leaves unrecognised shorthand in the task text', () => {
-  const line = '- [ ] Ask about due:someday :p9:';
+  const line = '- [ ] Ask about due:someday :p9: who:julien';
   assert.equal(expandTaskShorthand(line, FRIDAY), line);
 });
 
@@ -476,7 +476,7 @@ test('leaves a bare priority word alone in the task text', () => {
   const line = '- [ ] Fix the p2 bug due:today';
   assert.equal(
     expandTaskShorthand(line, FRIDAY),
-    '- [ ] Fix the p2 bug 📅 2026-08-14'
+    '- [ ] Fix the p2 bug who:me 📅 2026-08-14'
   );
 });
 
@@ -491,7 +491,7 @@ test('ignores shorthand outside tasks and inside code fences', () => {
     '- [ ] Real work due:tomorrow'
   ].join('\n');
   assert.deepEqual(taskShorthandEdits(content, FRIDAY), [
-    { line: 6, text: '- [ ] Real work 📅 2026-08-15' }
+    { line: 6, text: '- [ ] Real work who:me 📅 2026-08-15' }
   ]);
 });
 
@@ -506,9 +506,27 @@ test('expands shorthand under frontmatter and keeps the origin link last', () =>
   assert.deepEqual(taskShorthandEdits(content, FRIDAY), [
     {
       line: 4,
-      text: '- [ ] Email Sarah 🔺 📅 2026-08-17 ↩ [[2026-08-11]]'
+      text: '- [ ] Email Sarah who:me 🔺 📅 2026-08-17 ↩ [[2026-08-11]]'
     }
   ]);
+});
+
+test('an open task defaults to who:me and a due date a week out', () => {
+  assert.equal(
+    expandTaskShorthand('- [ ] Water the plants', FRIDAY),
+    '- [ ] Water the plants who:me 📅 2026-08-21'
+  );
+  assert.equal(
+    expandTaskShorthand('- [ ] who:julien ships it 📅 2026-08-30', FRIDAY),
+    '- [ ] who:julien ships it 📅 2026-08-30'
+  );
+  // Done tasks, empty checkboxes, and unresolved due typos get no defaults.
+  assert.equal(expandTaskShorthand('- [x] Old work', FRIDAY), '- [x] Old work');
+  assert.equal(expandTaskShorthand('- [ ] ', FRIDAY), '- [ ] ');
+  assert.equal(
+    expandTaskShorthand('- [ ] Ask due:someday', FRIDAY),
+    '- [ ] Ask due:someday who:me'
+  );
 });
 
 test('reads typed priority shorthand as a priority before it is expanded', () => {

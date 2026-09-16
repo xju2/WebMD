@@ -6444,7 +6444,8 @@
               <dd>
                 <code>- [ ] who:julien and who:jack will ship it</code>
                 the names stay in the sentence; filter the Tasks view with
-                <code>who:julien</code>
+                <code>who:julien</code>; open tasks with no name get
+                <code>who:me</code> and no due date get <code>due:+7d</code>
               </dd>
             </div>
             <div>

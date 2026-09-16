@@ -97,6 +97,8 @@ const SHORTHAND_FIELDS = {
 const SHORTHAND_DATE = /(^|\s)(due|created|added|done):(\S+)/giu;
 const SHORTHAND_PRIORITY = /(^|\s):p([1-5]):(?=\s|$)/giu;
 const PRIORITY_BY_LEVEL = ['highest', 'high', 'medium', 'low', 'lowest'];
+const DEFAULT_ASSIGNEE = 'me';
+const DEFAULT_DUE_DAYS = 7;
 const RELATIVE_DAYS = { yesterday: -1, today: 0, tod: 0, tomorrow: 1, tmr: 1 };
 const OFFSET_SHORTHAND = /^\+(\d+)([dw])$/;
 const MONTH_DAY_SHORTHAND = /^(\d{1,2})[-/](\d{1,2})$/;
@@ -202,7 +204,7 @@ export function taskShorthandEdits(content = '', todayText = '') {
     if (!match) return;
 
     const [, prefix, mark, gap, taskBody] = match;
-    const expanded = expandTaskBody(taskBody, todayText);
+    const expanded = expandTaskBody(taskBody, todayText, mark === ' ');
     if (expanded === taskBody) return;
     edits.push({
       line: bodyLine + index,
@@ -228,7 +230,10 @@ export function expandTaskShorthand(content = '', todayText = '') {
 // Shorthand that resolves to nothing recognisable — a typo, or a word that
 // merely looks like a field — is left alone rather than guessed at, so the
 // author sees it stay put and can fix it.
-function expandTaskBody(body, todayText) {
+//
+// An open task also picks up defaults once it has any text: `who:me` when no
+// one is named, and a due date a week out when it has none.
+function expandTaskBody(body, todayText, open = false) {
   const overrides = {};
   let rest = body;
 
@@ -244,9 +249,23 @@ function expandTaskBody(body, todayText) {
     return lead;
   });
 
+  let fields = parseTaskFields(rest);
+  if (open && fields.text) {
+    if (!fields.assignees.length) {
+      rest = `${rest.trimEnd()} who:${DEFAULT_ASSIGNEE}`;
+      fields = parseTaskFields(rest);
+      overrides.assignees = fields.assignees;
+    }
+    // A `due:` left unresolved is a typo the author should see and fix, not
+    // one to paper over with a default.
+    if (!fields.due && !overrides.due && !/(^|\s)due:\S/iu.test(rest)) {
+      const due = shiftDateText(todayText, DEFAULT_DUE_DAYS);
+      if (isDateText(todayText) && due) overrides.due = due;
+    }
+  }
+
   if (!Object.keys(overrides).length) return body;
 
-  const fields = parseTaskFields(rest);
   return formatTaskFields(fields.text, { ...fields, ...overrides });
 }
 

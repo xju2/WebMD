@@ -19,6 +19,8 @@ day it was finished.
 On a task line, `due:tomorrow`, `due:+2w`, or `due:10-01` becomes a date, and
 `:p1:` to `:p5:` becomes a priority, as soon as the cursor leaves the line.
 The file keeps the plain Obsidian Tasks emoji, so it stays readable anywhere.
+An open task with no `who:` gets `who:me`, and one with no due date gets a
+date a week out.
 
 ## The Tasks view
 
