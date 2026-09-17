@@ -635,6 +635,10 @@
   // purpose is to be distributed afterwards.
   $: filingNotePath =
     aiNotePath && dailyNoteDateFor(aiNotePath) ? aiNotePath : '';
+  // And only for text the reader picked out. A day is mostly noise that no
+  // project wants; selecting the part worth keeping is the judgement no model
+  // should be making on the reader's behalf.
+  $: filingSelection = filingNotePath ? selectedText.trim() : '';
   $: unsavedWork = Boolean(
     selectedIsMarkdown &&
     (content !== lastSaved || pendingUpdates.length || inFlightUpdates.length)
@@ -1107,15 +1111,16 @@
    * only reads: nothing is written until the reader works through the list.
    */
   async function requestProjectFiling() {
-    if (filingLoading || !filingNotePath) return;
+    if (filingLoading || !filingNotePath || !filingSelection) return;
 
     const root = selectedRoot;
     const path = selectedPath;
+    const selection = filingSelection;
     filingAbort?.abort();
     filingAbort = new AbortController();
     const abort = filingAbort;
     filingLoading = true;
-    filingStatus = 'Looking for the projects this day touched...';
+    filingStatus = 'Looking for the projects this belongs in...';
     filingPanel = null;
     // Both panels dock to the same corner of the editor.
     clearInlineEdit();
@@ -1134,6 +1139,7 @@
           body: JSON.stringify({
             root,
             path,
+            selection,
             dailyNoteFolder: activeDailyNoteFolder
           })
         });
@@ -1160,6 +1166,7 @@
       filingPanel = {
         root,
         path,
+        selection,
         step: 'review',
         entries,
         selected: new Set(entries.map((entry) => entry.path)),
@@ -1175,7 +1182,7 @@
         : 'No project notes to update';
     } catch (err) {
       if (err.name === 'AbortError') return;
-      filingStatus = 'Could not work out where this day belongs';
+      filingStatus = 'Could not work out where this belongs';
       error = err.message;
     } finally {
       if (filingAbort === abort) {
@@ -7661,6 +7668,9 @@
               {/if}
 
               {#if filingPanel.step === 'review'}
+                <p class="related-note">
+                  Filing what you selected, and nothing else from this day.
+                </p>
                 {#if filingPanel.entries.length}
                   <ul class="related-list">
                     {#each filingPanel.entries as entry}
@@ -7683,7 +7693,7 @@
                   </p>
                 {:else}
                   <p class="empty-copy">
-                    No project note looked like this day advanced it.
+                    No project note looked like the selection advanced it.
                   </p>
                 {/if}
                 {#if filingPanel.filed.length}
@@ -7889,14 +7899,16 @@
       <div class="ai-connect">
         <button
           class="ai-connect-button"
-          disabled={filingLoading || !filingNotePath}
+          disabled={filingLoading || !filingSelection}
           title={filingNotePath
-            ? `File this day's work into the project notes it belongs in`
+            ? filingSelection
+              ? 'File the selected lines into the project notes they belong in'
+              : 'Select the lines worth keeping first'
             : `Only for a daily note in ${activeDailyNoteFolder}`}
           type="button"
           on:click={requestProjectFiling}
         >
-          {filingLoading ? 'Reading the day...' : 'File to projects'}
+          {filingLoading ? 'Reading the selection...' : 'File to projects'}
         </button>
         {#if filingStatus}
           <span class="ai-connect-status">{filingStatus}</span>

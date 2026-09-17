@@ -32,18 +32,36 @@ const CORPUS = [
 const TARGET = {
   path: '/raw/dailynotes/2026-07-09.md',
   content:
-    '# 2026-07-09\n\nTriton kept dropping ONNX inference requests once the GPU instance count went up.'
+    '# 2026-07-09\n\nTriton kept dropping ONNX inference requests once the GPU instance count went up.\n\nLamination folds butter into dough for the weekend bake.'
 };
 
-function rank(files = CORPUS, target = TARGET) {
+const SELECTION =
+  'Triton kept dropping ONNX inference requests once the GPU instance count went up.';
+
+function rank(files = CORPUS, target = TARGET, selection = SELECTION) {
   return rankProjectCandidates(files, target, {
-    dailyNoteFolder: DAILY_FOLDER
+    dailyNoteFolder: DAILY_FOLDER,
+    selection
   });
 }
 
 test('keeps project notes that share subject matter and drops ones that share nothing', () => {
   const paths = rank().candidates.map((candidate) => candidate.path);
   assert.deepEqual(paths, ['/wiki/concepts/triton-serving.md']);
+});
+
+test('ranks on the selection, not the rest of the day around it', () => {
+  // The day also talks about pastry. Filing the Triton lines must not drag the
+  // pastry note along just because the same file mentions it.
+  const paths = rank().candidates.map((candidate) => candidate.path);
+  assert.ok(!paths.includes('/wiki/concepts/pastry.md'));
+
+  const pastry = rank(
+    CORPUS,
+    TARGET,
+    'Lamination folds butter into dough for the weekend bake.'
+  ).candidates.map((candidate) => candidate.path);
+  assert.deepEqual(pastry, ['/wiki/concepts/pastry.md']);
 });
 
 test('never offers another daily note as a filing target', () => {
@@ -92,13 +110,15 @@ test('carries the title, tags, and a snippet into the prompt', () => {
   assert.deepEqual(triton.tags, ['inference']);
   assert.match(triton.snippet, /^Triton batches ONNX/);
 
-  const [system, user] = buildProjectLogMessages(TARGET, candidates);
+  const [system, user] = buildProjectLogMessages(TARGET, candidates, SELECTION);
   assert.equal(system.role, 'developer');
   assert.match(
     user.content,
     /\/wiki\/concepts\/triton-serving\.md — Triton Serving \[tags: inference\]/
   );
-  assert.match(user.content, /Triton kept dropping ONNX/);
+  // The passage leads and the day follows it as context.
+  assert.match(user.content, /^Selected passage:\nTriton kept dropping ONNX/);
+  assert.match(user.content, /for context only:[\s\S]*Lamination folds butter/);
 });
 
 test('reads entries out of a fenced reply', () => {

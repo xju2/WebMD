@@ -458,13 +458,14 @@ The final event is authoritative. Code fences can only be stripped once the whol
 #### Project Filing Vector
 
 * **Endpoint:** `POST /api/ai/project-log`
-* **Role:** Given a daily note, names the project notes that day advanced and the one line each should gain. Offered only for a daily note in the workspace's daily-note folder, because the write lands in notes the reader is not looking at.
+* **Role:** Given a passage selected out of a daily note, names the project notes that passage advanced and the one line each should gain. Offered only for a daily note in the workspace's daily-note folder, and only with text selected: the write lands in notes the reader is not looking at, and a whole day would push its noise into every project it mentions. An empty `selection` is a `400`.
 * **Payload Interface Configuration:**
 
 ```json
 {
   "root": "/Users/me/notes",
   "path": "/raw/dailynotes/2026-07-09.md",
+  "selection": "Triton kept dropping requests once the GPU instance count went past four.",
   "dailyNoteFolder": "/raw/dailynotes"
 }
 
@@ -489,7 +490,7 @@ The final event is authoritative. Code fences can only be stripped once the whol
 
 ```
 
-Candidates are ranked by TF-IDF cosine similarity over the workspace's Markdown cache (`server/project-log.js`), which narrows a few hundred notes to a shortlist the model reads in full; the model does the judging and can only answer with paths it was offered. Notes inside `dailyNoteFolder` are never candidates, and notes that already link back to the day are returned as `filed` rather than offered again, so filing a day twice cannot double an entry. `source` is the backlink as the project note will carry it — shortened as seen from there, and verified to resolve back to the day.
+Candidates are ranked by TF-IDF cosine similarity over the workspace's Markdown cache (`server/project-log.js`), which narrows a few hundred notes to a shortlist the model reads in full; the model does the judging and can only answer with paths it was offered. Ranking reads the `selection`, not the whole day — a day spans every project its author touched, so ranking the day would shortlist all of them. The note travels to the model as context the passage is read against, and the prompt bars filing anything the passage itself does not carry. Notes inside `dailyNoteFolder` are never candidates, and notes that already link back to the day are returned as `filed` rather than offered again, so filing a day twice cannot double an entry. `source` is the backlink as the project note will carry it — shortened as seen from there, and verified to resolve back to the day.
 
 **The endpoint only reads.** Filing is one ordinary `POST /api/workspace/updates` per project note, sent by the client as the reader works through the list, so it rides the same versioned-update path with 409 retry that a clipped paper takes into today's daily note. A run abandoned halfway leaves every note it never reached untouched. The bullet is appended under `## Log`, created at the end of the note when it has none.
 

@@ -943,11 +943,20 @@ export async function createApp({
         throw new WorkspaceError(400, 'A note path is required.');
       }
       const dailyNoteFolder = req.body.dailyNoteFolder;
+      // The passage the reader picked out of the day. Filing the whole day
+      // would push its noise into every project it mentions, so there is
+      // nothing to file without one.
+      const selection =
+        typeof req.body.selection === 'string' ? req.body.selection.trim() : '';
+      if (!selection) {
+        throw new WorkspaceError(400, 'Select the lines to file first.');
+      }
 
       const note = await workspace.loadFile(notePath);
       const files = await workspace.markdownFiles();
       const { candidates, filed } = rankProjectCandidates(files, note, {
-        dailyNoteFolder
+        dailyNoteFolder,
+        selection
       });
       if (!candidates.length) {
         // Nothing to choose from, so there is no point spending a model call.
@@ -956,14 +965,14 @@ export async function createApp({
           filed,
           candidateCount: 0,
           warning: filed.length
-            ? 'Every project note that shares wording with this day already links to it.'
-            : 'No project note in this workspace shares enough wording with this day.'
+            ? 'Every project note that shares wording with the selection already links to this day.'
+            : 'No project note in this workspace shares enough wording with the selection.'
         });
         return;
       }
 
       const reply = await runAiCompletion({
-        messages: buildProjectLogMessages(note, candidates),
+        messages: buildProjectLogMessages(note, candidates, selection),
         env: aiEnv,
         fetchImpl: aiFetch
       });

@@ -274,23 +274,29 @@ arXiv and INSPIRE metadata comes from INSPIRE-HEP.
 ## File to projects
 
 A daily note is where the day's work lands, but it is not where you look for a
-project later. **File to projects** in the AI panel takes the open day and files
-it into the project notes it advanced.
+project later. **File to projects** in the AI panel takes the lines you select in
+the open day and files them into the project notes they advanced.
+
+**Select first.** A day is mostly noise no project wants, and deciding which part
+is worth keeping is your judgement, not the model's. The button stays disabled
+until you select something, and only the selection is filed; the rest of the day
+goes along as context, so a selected line that says "traced it to the batch size"
+can still be written up as a sentence that makes sense on its own.
 
 It ranks every Markdown note in the workspace by how much wording it shares with
-the day, sends the strongest dozen to the model as a shortlist, and asks which
-projects the day actually moved and what one line each should gain. Notes in your
-daily-note folder are never targets — filing one day into another would only copy
-a log sideways.
+the selection, sends the strongest dozen to the model as a shortlist, and asks
+which projects the selection actually moves and what one line each should gain.
+Notes in your daily-note folder are never targets — filing one day into another
+would only copy a log sideways.
 
-The button is only enabled on a daily note in your daily-note folder. This one
-writes into notes you are not looking at, so it is deliberately hard to fire by
-accident.
+The button is only enabled on a daily note in your daily-note folder, which is
+set per workspace in `.webmd/settings.json`. This one writes into notes you are
+not looking at, so it is deliberately hard to fire by accident.
 
 Nothing is written until you say so, twice:
 
-1. **The list.** Every project note the day would touch, with a checkbox. Uncheck
-   anything you would rather leave alone.
+1. **The list.** Every project note the selection would touch, with a checkbox.
+   Uncheck anything you would rather leave alone.
 2. **One note at a time.** Each kept note is shown on its own, with the exact
    line it would gain and where that line lands. File it, skip it, or close the
    panel and stop. Notes you never reach are never touched.

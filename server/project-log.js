@@ -22,23 +22,26 @@ const STOPWORDS = new Set(
    with would you your`.split(/\s+/)
 );
 
-const SYSTEM_PROMPT = `You file a day's work into the project notes it belongs to.
+const SYSTEM_PROMPT = `You file a passage from a day's notes into the project notes it belongs to.
 
-You are given one daily note — a dated log of everything its author worked on that day — and a numbered list of candidate project notes from the same personal knowledge workspace. A day usually touches several projects, and often mentions things that belong to no project at all.
+You are given a passage the author selected out of one daily note, the rest of that day for context, and a numbered list of candidate project notes from the same personal knowledge workspace. The author has already decided the passage is worth keeping. Your job is only to say where it goes and what it should say there.
 
-For each project note the day genuinely advanced, write the one line that should be added to that project's log. Someone reading only the project note, months later, must learn something from that line that the project note does not already say.
+File only what the passage says. The rest of the day is there so you can tell what the passage refers to — an abbreviation, a pronoun, the thing being measured — and for nothing else. Never file something the passage does not carry, however significant it looks elsewhere in the day.
 
-File a project note when the day:
+A passage can belong in more than one project note, in exactly one, or in none of the candidates.
+
+For each project note the passage genuinely advances, write the one line that should be added to that project's log. Someone reading only the project note, months later, must learn something from that line that the project note does not already say.
+
+File a project note when the passage:
 - produced a result, number, or measurement that project depends on
 - made or reversed a decision about it
 - hit a blocker, bug, or open question in it
 - finished, abandoned, or newly started a piece of it
 - changed a configuration, method, or plan the project note describes
 
-Do not file a project note when the day:
+Do not file a project note when the passage:
 - only mentions the project, its tools, or its people in passing
 - only repeats what the project note already records
-- did routine work on it with no outcome worth remembering
 - is merely about the same broad research area
 
 Return only a JSON array, with no prose and no code fences:
@@ -47,10 +50,10 @@ Return only a JSON array, with no prose and no code fences:
 Rules:
 - Never invent a path. Every path must appear verbatim in the candidate list.
 - Return at most ${MAX_TARGETS}, most significant first. Two real updates beat five padded ones, and returning none beats inventing significance.
-- Return [] when the day advanced nothing in the list. That is a normal answer, not a failure.
+- Return [] when the passage advances nothing in the list. That is a normal answer, not a failure.
 - Each summary is one sentence under ${MAX_SUMMARY_CHARS} characters, written for the project note's reader. Name the specific thing — the result, decision, number, blocker, or change — in the past tense.
-- Carry no facts the daily note does not state. Do not guess at causes or next steps it does not name.
-- Do not date the summary and do not refer to "the daily note", "today", or "this note". The line is filed under a dated link that already says when.
+- Carry no facts the passage does not state. Do not guess at causes or next steps it does not name.
+- Do not date the summary and do not refer to "the daily note", "the passage", "today", or "this note". The line is filed under a dated link that already says when.
 
 Good summaries:
 - "Traced the eval-harness OOM to the batch-size default, which is 32 rather than the 8 the config claims."
@@ -77,12 +80,16 @@ Bad summaries, because the project note learns nothing from them:
  * they were left alone rather than silently omitting them.
  *
  * `files` is the corpus from the workspace's markdown file cache; `target` is
- * `{path, content}` for the daily note being filed.
+ * `{path, content}` for the daily note the passage was selected from.
+ *
+ * Ranking reads `selection`, not the whole day: a day spans every project its
+ * author touched, so ranking the day would shortlist all of them and leave the
+ * model to rediscover which one the passage is actually about.
  */
 export function rankProjectCandidates(
   files,
   target,
-  { dailyNoteFolder = '', limit = 12 } = {}
+  { dailyNoteFolder = '', selection = '', limit = 12 } = {}
 ) {
   const markdown = (files || []).filter(
     (file) => file.fileKind === 'markdown' && typeof file.content === 'string'
@@ -110,7 +117,7 @@ export function rankProjectCandidates(
   }
 
   const total = documents.length || 1;
-  const targetTerms = termCounts(bodyOf(target.content));
+  const targetTerms = termCounts(bodyOf(selection || target.content));
   const targetWeights = termWeights(targetTerms, frequencies, total);
   const targetTags = tagsOf(target);
 
@@ -154,7 +161,7 @@ export function rankProjectCandidates(
 }
 
 /** Provider messages in the same shape `server/ai.js` builds elsewhere. */
-export function buildProjectLogMessages(target, candidates) {
+export function buildProjectLogMessages(target, candidates, selection = '') {
   const digest = candidates
     .map((candidate, index) => {
       const tags = candidate.tags?.length
@@ -165,11 +172,14 @@ export function buildProjectLogMessages(target, candidates) {
     })
     .join('\n');
 
+  // The passage leads, because it is what gets filed; the day follows as the
+  // context the passage is read against.
+  const passage = String(selection || target.content).trim();
   return [
     { role: 'developer', content: SYSTEM_PROMPT },
     {
       role: 'user',
-      content: `Daily note ${target.path}:\n${trimNote(target.content)}\n\nCandidate project notes:\n${digest}`
+      content: `Selected passage:\n${trimNote(passage)}\n\nThe rest of ${target.path}, for context only:\n${trimNote(target.content)}\n\nCandidate project notes:\n${digest}`
     }
   ];
 }

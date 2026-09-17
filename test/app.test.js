@@ -417,6 +417,7 @@ test('names the project notes a day should be filed into', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         path: '/daily/2026-07-09.md',
+        selection: 'Triton dropped ONNX inference requests on the GPU.',
         dailyNoteFolder: '/daily'
       })
     });
@@ -460,13 +461,42 @@ test('skips the AI call when no project note shares wording with the day', async
     const response = await fetch(`${url}/api/ai/project-log`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: '/2026-07-09.md' })
+      body: JSON.stringify({
+        path: '/2026-07-09.md',
+        selection: 'Triton inference.'
+      })
     });
 
     assert.equal(response.status, 200);
     const result = await response.json();
     assert.deepEqual(result.entries, []);
     assert.equal(result.candidateCount, 0);
+  } finally {
+    server.close();
+  }
+});
+
+test('refuses to file a day with nothing selected', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(path.join(root, '2026-07-09.md'), '# Today\nNotes.\n');
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async () => assert.fail('should not call the AI provider')
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/ai/project-log`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/2026-07-09.md', selection: '   ' })
+    });
+
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /Select the lines/);
   } finally {
     server.close();
   }
