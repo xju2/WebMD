@@ -1128,7 +1128,14 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: abort.signal,
-          body: JSON.stringify({ root, path, dailyNoteFolder })
+          // The folder actually in use: a configured one that does not exist
+          // falls back to `/`, and the server has to exclude the same daily
+          // notes the button gated on.
+          body: JSON.stringify({
+            root,
+            path,
+            dailyNoteFolder: activeDailyNoteFolder
+          })
         });
       } catch (err) {
         if (err.name === 'AbortError') throw err;
