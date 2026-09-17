@@ -11,7 +11,7 @@ import {
   parseBibtex
 } from '../src/citations.js';
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
-import { shortestWikiTarget } from '../src/related-links.js';
+import { shortestWikiTarget } from '../src/wiki-target.js';
 import { collectTasks } from '../src/tasks.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 

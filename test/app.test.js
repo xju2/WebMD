@@ -364,12 +364,17 @@ test('streams AI chat through the selected workspace document', async () => {
   }
 });
 
-test('suggests related notes as links that resolve back to real files', async () => {
+test('names the project notes a day should be filed into', async () => {
   const root = await tempRoot();
   await fs.mkdir(path.join(root, 'wiki'));
+  await fs.mkdir(path.join(root, 'daily'));
   await fs.writeFile(
-    path.join(root, 'note.md'),
+    path.join(root, 'daily', '2026-07-09.md'),
     '# Today\nTriton dropped ONNX inference requests on the GPU.\n'
+  );
+  await fs.writeFile(
+    path.join(root, 'daily', '2026-07-08.md'),
+    '# Yesterday\nTriton ONNX inference throughput on the GPU.\n'
   );
   await fs.writeFile(
     path.join(root, 'wiki', 'triton.md'),
@@ -388,12 +393,14 @@ test('suggests related notes as links that resolve back to real files', async ()
         const body = JSON.parse(options.body);
         assert.match(body.messages[1].content, /\/wiki\/triton\.md/);
         assert.doesNotMatch(body.messages[1].content, /\/wiki\/bread\.md/);
+        // Another daily note is never a filing target, however much it shares.
+        assert.doesNotMatch(body.messages[1].content, /2026-07-08/);
         return new Response(
           new ReadableStream({
             start(controller) {
               controller.enqueue(
                 new TextEncoder().encode(
-                  `{"message":{"content":"[{\\"path\\": \\"/wiki/triton.md\\", \\"reason\\": \\"same serving stack\\"}]"}}\n`
+                  `{"message":{"content":"[{\\"path\\": \\"/wiki/triton.md\\", \\"summary\\": \\"Dropped requests as instances went up.\\"}]"}}\n`
                 )
               );
               controller.close();
@@ -405,19 +412,24 @@ test('suggests related notes as links that resolve back to real files', async ()
   );
 
   try {
-    const response = await fetch(`${url}/api/ai/related`, {
+    const response = await fetch(`${url}/api/ai/project-log`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: '/note.md' })
+      body: JSON.stringify({
+        path: '/daily/2026-07-09.md',
+        dailyNoteFolder: '/daily'
+      })
     });
 
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).suggestions, [
+    // `source` is the backlink as the project note will carry it: shortened
+    // from there, and pointing back at the day.
+    assert.deepEqual((await response.json()).entries, [
       {
         path: '/wiki/triton.md',
         title: 'Triton',
-        reason: 'same serving stack',
-        target: 'triton'
+        summary: 'Dropped requests as instances went up.',
+        source: '2026-07-09'
       }
     ]);
   } finally {
@@ -425,10 +437,10 @@ test('suggests related notes as links that resolve back to real files', async ()
   }
 });
 
-test('skips the AI call when no note shares wording with the open one', async () => {
+test('skips the AI call when no project note shares wording with the day', async () => {
   const root = await tempRoot();
   await fs.writeFile(
-    path.join(root, 'note.md'),
+    path.join(root, '2026-07-09.md'),
     '# Today\nTriton inference.\n'
   );
   await fs.writeFile(
@@ -445,15 +457,15 @@ test('skips the AI call when no note shares wording with the open one', async ()
   );
 
   try {
-    const response = await fetch(`${url}/api/ai/related`, {
+    const response = await fetch(`${url}/api/ai/project-log`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: '/note.md' })
+      body: JSON.stringify({ path: '/2026-07-09.md' })
     });
 
     assert.equal(response.status, 200);
     const result = await response.json();
-    assert.deepEqual(result.suggestions, []);
+    assert.deepEqual(result.entries, []);
     assert.equal(result.candidateCount, 0);
   } finally {
     server.close();

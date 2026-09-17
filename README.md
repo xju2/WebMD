@@ -271,30 +271,49 @@ journal article link with the DOI in its URL imports its BibTeX entry and
 replaces the link with its `[@key]` citation. DOI metadata comes from doi.org;
 arXiv and INSPIRE metadata comes from INSPIRE-HEP.
 
-## Connect notes
+## File to projects
 
-**Connect notes** in the AI panel links the open note to notes you already have.
-It ranks every Markdown file in the workspace by how much wording it shares with
-the open note, sends the strongest dozen to the model as a shortlist, and asks
-which ones a reader would want to follow.
+A daily note is where the day's work lands, but it is not where you look for a
+project later. **File to projects** in the AI panel takes the open day and files
+it into the project notes it advanced.
 
-The suggestions arrive as a review panel — one checkbox per link, showing the
-exact bullet that will be written. Accepting appends them to a `## Related`
-section at the end of the note, reusing a trailing `## Related pages` or
-`## Related concepts` section when the note already has one:
+It ranks every Markdown note in the workspace by how much wording it shares with
+the day, sends the strongest dozen to the model as a shortlist, and asks which
+projects the day actually moved and what one line each should gain. Notes in your
+daily-note folder are never targets — filing one day into another would only copy
+a log sideways.
+
+The button is only enabled on a daily note in your daily-note folder. This one
+writes into notes you are not looking at, so it is deliberately hard to fire by
+accident.
+
+Nothing is written until you say so, twice:
+
+1. **The list.** Every project note the day would touch, with a checkbox. Uncheck
+   anything you would rather leave alone.
+2. **One note at a time.** Each kept note is shown on its own, with the exact
+   line it would gain and where that line lands. File it, skip it, or close the
+   panel and stop. Notes you never reach are never touched.
+
+A filed line is a dated backlink and a summary, appended under a `## Log` heading
+in the project note, which is added at the end if the note has none:
 
 ```markdown
-## Related
+## Log
 
-- [[concepts/hybrid-search]] — the retrieval scheme this run replaced
-- [[2026-07-08]] — earlier pass over the same dataset
+- [[2026-07-08]] — ruled out the detector geometry by rerunning with the old alignment
+- [[2026-07-09]] — requests started dropping once the GPU instance count went past four
 ```
 
-Links are one-directional and written only into the open note; no other file is
-touched. Each link is emitted in the shortest form that resolves back to the
-note it names, so it can never be a dead link. Notes the file already links to
-are never suggested again, and the model can only choose from the shortlist, so
-it cannot invent a path.
+Nothing else in the project note changes. Because the link points back at the
+day, the day shows every project it fed among its own linked mentions, with no
+second pass and nothing written into it.
+
+Filing the same day twice cannot double an entry: a project note that already
+links to the day is left out of the list and counted as already filed. Each
+backlink is emitted in the shortest form that resolves back to the day from that
+note, so it can never be a dead link, and the model can only choose from the
+shortlist, so it cannot invent a path.
 
 ## Snippets
 

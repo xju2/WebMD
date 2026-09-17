@@ -4840,6 +4840,39 @@ input[type='radio'] {
   font-size: 0.72rem;
 }
 
+/* The one note being filed into, and the exact line it would gain. Neither
+   sits under a checkbox, so neither takes the list's indent. */
+.filing-target {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.filing-target .related-path,
+.filing-result .related-path {
+  padding-left: 0;
+}
+
+.filing-bullet {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.filing-result .related-bullet {
+  color: var(--ink-muted);
+  font-weight: 600;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .diff-file {
   overflow: hidden;
   border: 1px solid var(--border);

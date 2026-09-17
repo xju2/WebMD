@@ -72,11 +72,11 @@ import {
   writeQuoteHistory
 } from './quote.js';
 import {
-  buildRelatedMessages,
-  parseRelatedSuggestions,
-  rankRelatedCandidates
-} from './related.js';
-import { shortestWikiTarget } from '../src/related-links.js';
+  buildProjectLogMessages,
+  parseProjectLogEntries,
+  rankProjectCandidates
+} from './project-log.js';
+import { shortestWikiTarget } from '../src/wiki-target.js';
 import { readWorkspaceSettings } from './settings.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
@@ -931,49 +931,56 @@ export async function createApp({
     })
   );
 
+  // Reads only. The filing itself is one ordinary note update per project note,
+  // sent from the client as the reader works through the list, so a run that is
+  // abandoned halfway leaves the notes it never reached untouched.
   app.post(
-    '/api/ai/related',
+    '/api/ai/project-log',
     asyncHandler(async (req, res) => {
       const workspace = workspaces.get(req.body.root);
       const notePath = req.body.path;
       if (typeof notePath !== 'string' || !notePath) {
         throw new WorkspaceError(400, 'A note path is required.');
       }
+      const dailyNoteFolder = req.body.dailyNoteFolder;
 
       const note = await workspace.loadFile(notePath);
       const files = await workspace.markdownFiles();
-      const candidates = rankRelatedCandidates(files, note);
+      const { candidates, filed } = rankProjectCandidates(files, note, {
+        dailyNoteFolder
+      });
       if (!candidates.length) {
         // Nothing to choose from, so there is no point spending a model call.
         res.json({
-          suggestions: [],
+          entries: [],
+          filed,
           candidateCount: 0,
-          warning:
-            'No other note in this workspace shares enough wording to compare.'
+          warning: filed.length
+            ? 'Every project note that shares wording with this day already links to it.'
+            : 'No project note in this workspace shares enough wording with this day.'
         });
         return;
       }
 
       const reply = await runAiCompletion({
-        messages: buildRelatedMessages(note, candidates),
+        messages: buildProjectLogMessages(note, candidates),
         env: aiEnv,
         fetchImpl: aiFetch
       });
-      const { suggestions, warning } = parseRelatedSuggestions(
-        reply,
-        candidates
-      );
+      const { entries, warning } = parseProjectLogEntries(reply, candidates);
       const paths = files.map((file) => file.path);
 
       res.json({
-        // Each link is written in the shortest form that resolves back to the
-        // note it names, so an accepted suggestion can never be a dead link.
-        suggestions: suggestions.map((suggestion) => ({
-          ...suggestion,
-          target: shortestWikiTarget(suggestion.path, note.path, paths, {
-            dailyNoteFolder: req.body.dailyNoteFolder
+        entries: entries.map((entry) => ({
+          ...entry,
+          // The backlink is written into the project note, so it is shortened
+          // as seen from there, in the shortest form that still resolves back
+          // to this day. An accepted entry can never file a dead link.
+          source: shortestWikiTarget(note.path, entry.path, paths, {
+            dailyNoteFolder
           })
         })),
+        filed,
         candidateCount: candidates.length,
         warning
       });

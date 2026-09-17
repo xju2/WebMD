@@ -104,7 +104,6 @@
     uploadFilesForPastedImageSources,
     uploadPayloadForFile
   } from './uploads.js';
-  import { relatedInsertion } from './related-links.js';
   import {
     collectTasks,
     taskCitation,
@@ -160,6 +159,9 @@
   const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news', 'meetings']);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
+  // Where a day's work lands in a project note. Fixed rather than configurable:
+  // one heading everywhere means a project's log reads as one trail.
+  const PROJECT_LOG_HEADING = 'Log';
   const DEFAULT_IMAGE_ASSET_FOLDER = '/assets';
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
@@ -279,10 +281,12 @@
   // move rarely and a stale row costs a keystroke, so one fetch per note per
   // session is enough.
   const completionNotes = new Map();
-  let relatedLoading = false;
-  let relatedStatus = '';
-  let relatedPanel = null;
-  let relatedAbort = null;
+  let filingLoading = false;
+  let filingStatus = '';
+  // The whole review-and-file run: the entries the model proposed, which of
+  // them the reader kept, and how far through the kept ones they are.
+  let filingPanel = null;
+  let filingAbort = null;
   let aiPresets = [];
   let aiPresetWarning = '';
   let activePresetGroup = '';
@@ -626,6 +630,11 @@
   // Tasks, Calendar, or News is not on screen, so it stays out of the request
   // instead of travelling with it unseen.
   $: aiNotePath = selectedIsMarkdown && documentControls ? selectedPath : '';
+  // Filing writes into notes the reader is not looking at, so it is offered
+  // only from a daily note in the configured folder — the one note whose whole
+  // purpose is to be distributed afterwards.
+  $: filingNotePath =
+    aiNotePath && dailyNoteDateFor(aiNotePath) ? aiNotePath : '';
   $: unsavedWork = Boolean(
     selectedIsMarkdown &&
     (content !== lastSaved || pendingUpdates.length || inFlightUpdates.length)
@@ -951,7 +960,7 @@
     const abort = inlineEditAbort;
     inlineEditLoading = true;
     inlineEditStatus = 'Drafting edit...';
-    dismissRelatedLinks();
+    dismissProjectFiling();
     error = '';
     setViewMode('edit');
 
@@ -1094,20 +1103,20 @@
   }
 
   /**
-   * Asks the server which existing notes the open note should link to. Nothing
-   * is written until the reader accepts, and only this note is ever touched.
+   * Asks the server which project notes the open day's work belongs in. This
+   * only reads: nothing is written until the reader works through the list.
    */
-  async function requestRelatedNotes() {
-    if (relatedLoading || !aiNotePath) return;
+  async function requestProjectFiling() {
+    if (filingLoading || !filingNotePath) return;
 
     const root = selectedRoot;
     const path = selectedPath;
-    relatedAbort?.abort();
-    relatedAbort = new AbortController();
-    const abort = relatedAbort;
-    relatedLoading = true;
-    relatedStatus = 'Looking for related notes...';
-    relatedPanel = null;
+    filingAbort?.abort();
+    filingAbort = new AbortController();
+    const abort = filingAbort;
+    filingLoading = true;
+    filingStatus = 'Looking for the projects this day touched...';
+    filingPanel = null;
     // Both panels dock to the same corner of the editor.
     clearInlineEdit();
     error = '';
@@ -1115,7 +1124,7 @@
     try {
       let response;
       try {
-        response = await fetch('/api/ai/related', {
+        response = await fetch('/api/ai/project-log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: abort.signal,
@@ -1138,82 +1147,167 @@
       )
         return;
 
-      const suggestions = (result.suggestions ?? []).filter(
-        (suggestion) => suggestion.target
+      const entries = (result.entries ?? []).filter(
+        (entry) => entry.source && entry.summary
       );
-      relatedPanel = {
+      filingPanel = {
         root,
         path,
-        suggestions,
-        selected: new Set(suggestions.map((suggestion) => suggestion.path)),
-        warning: result.warning ?? ''
+        step: 'review',
+        entries,
+        selected: new Set(entries.map((entry) => entry.path)),
+        filed: result.filed ?? [],
+        warning: result.warning ?? '',
+        queue: [],
+        index: 0,
+        results: [],
+        busy: false
       };
-      relatedStatus = suggestions.length
-        ? `Reviewed ${result.candidateCount} notes`
-        : 'No related notes found';
+      filingStatus = entries.length
+        ? `Reviewed ${result.candidateCount} project notes`
+        : 'No project notes to update';
     } catch (err) {
       if (err.name === 'AbortError') return;
-      relatedStatus = 'Could not find related notes';
+      filingStatus = 'Could not work out where this day belongs';
       error = err.message;
     } finally {
-      if (relatedAbort === abort) {
-        relatedAbort = null;
-        relatedLoading = false;
+      if (filingAbort === abort) {
+        filingAbort = null;
+        filingLoading = false;
       }
     }
   }
 
-  function toggleRelatedSuggestion(suggestion) {
-    if (!relatedPanel) return;
-    const selected = new Set(relatedPanel.selected);
-    if (selected.has(suggestion.path)) selected.delete(suggestion.path);
-    else selected.add(suggestion.path);
-    relatedPanel = { ...relatedPanel, selected };
+  function toggleFilingEntry(entry) {
+    if (!filingPanel || filingPanel.step !== 'review') return;
+    const selected = new Set(filingPanel.selected);
+    if (selected.has(entry.path)) selected.delete(entry.path);
+    else selected.add(entry.path);
+    filingPanel = { ...filingPanel, selected };
   }
 
-  function relatedBulletText(suggestion) {
-    return suggestion.reason
-      ? `[[${suggestion.target}]] — ${suggestion.reason}`
-      : `[[${suggestion.target}]]`;
+  /** The exact line that will be appended to the project note. */
+  function filingBulletText(entry) {
+    return `- [[${entry.source}]] — ${entry.summary}`;
   }
 
   /**
-   * Appends the checked links to the note's Related section through the editor,
-   * so the write rides the existing autosave and collab path and stays undoable.
+   * Leaves the list behind and starts on the kept notes, one at a time. The
+   * queue is frozen here so unchecking something later cannot change a run
+   * already under way.
    */
-  function applyRelatedLinks() {
-    const panel = relatedPanel;
-    if (!panel || !editorView) return;
-    if (panel.root !== selectedRoot || panel.path !== selectedPath) {
-      error = 'The suggested links no longer match the open file.';
-      return;
-    }
-
-    const chosen = panel.suggestions.filter((suggestion) =>
-      panel.selected.has(suggestion.path)
+  function startProjectFiling() {
+    if (!filingPanel || filingPanel.step !== 'review') return;
+    const queue = filingPanel.entries.filter((entry) =>
+      filingPanel.selected.has(entry.path)
     );
-    const insertion = relatedInsertion(editorView.state.doc.toString(), chosen);
-    if (!insertion) {
-      relatedStatus = 'Those links are already in this note';
-      return;
-    }
-
-    setViewMode('edit');
-    editorView.dispatch({
-      changes: insertion,
-      selection: { anchor: insertion.from + insertion.insert.length },
-      effects: EditorView.scrollIntoView(insertion.from, { y: 'center' })
-    });
-    editorView.focus();
-    dismissRelatedLinks();
+    if (!queue.length) return;
+    filingPanel = {
+      ...filingPanel,
+      step: 'walk',
+      queue,
+      index: 0,
+      results: []
+    };
+    filingStatus = '';
   }
 
-  function dismissRelatedLinks() {
-    relatedAbort?.abort();
-    relatedAbort = null;
-    relatedLoading = false;
-    relatedPanel = null;
-    relatedStatus = '';
+  /** Moves past the note on screen without touching it. */
+  function skipFilingEntry() {
+    if (!filingPanel || filingPanel.step !== 'walk' || filingPanel.busy) return;
+    advanceFiling({
+      path: filingPanel.queue[filingPanel.index].path,
+      state: 'skipped'
+    });
+  }
+
+  /**
+   * Appends the bullet to the project note on screen and moves on.
+   *
+   * The note is not the open one, so the write cannot go through the editor.
+   * It rides the same path a clipped paper takes into today's daily note:
+   * load, one change, and a versioned update that retries when someone typed
+   * into the note in between.
+   */
+  async function fileProjectEntry() {
+    const panel = filingPanel;
+    if (!panel || panel.step !== 'walk' || panel.busy) return;
+    const entry = panel.queue[panel.index];
+    const root = panel.root;
+    filingPanel = { ...panel, busy: true };
+
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        const file = await requestJson(
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(entry.path)}`
+        );
+        // A backlink added since the model looked would be a duplicate.
+        if (file.content.includes(`[[${entry.source}]]`)) {
+          advanceFiling({ path: entry.path, state: 'already' });
+          return;
+        }
+
+        const changes = ChangeSet.of(
+          newsClipChange(file.content, filingLine(entry), PROJECT_LOG_HEADING),
+          file.content.length
+        );
+        try {
+          await requestJson('/api/workspace/updates', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              root,
+              path: entry.path,
+              version: file.version,
+              updates: [{ clientID: 'project-log', changes: changes.toJSON() }]
+            })
+          });
+          break;
+        } catch (err) {
+          // Someone typed into the project note between the load and the update.
+          if (err.status !== 409 || attempt >= 2) throw err;
+        }
+      }
+      rememberEditedFile(entry.path, root);
+      advanceFiling({ path: entry.path, state: 'filed' });
+    } catch (err) {
+      error = `Could not file into ${entry.path}: ${err.message}`;
+      if (filingPanel) filingPanel = { ...filingPanel, busy: false };
+    }
+  }
+
+  /** `newsClipChange` writes the bullet marker itself. */
+  function filingLine(entry) {
+    return `[[${entry.source}]] — ${entry.summary}`;
+  }
+
+  function advanceFiling(result) {
+    const panel = filingPanel;
+    if (!panel) return;
+    const results = [...panel.results, result];
+    const index = panel.index + 1;
+    const done = index >= panel.queue.length;
+    filingPanel = {
+      ...panel,
+      results,
+      index,
+      busy: false,
+      step: done ? 'done' : 'walk'
+    };
+    if (done) {
+      const filed = results.filter((item) => item.state === 'filed').length;
+      filingStatus = filed
+        ? `Filed into ${filed} project note${filed === 1 ? '' : 's'}`
+        : 'Nothing was filed';
+    }
+  }
+
+  function dismissProjectFiling() {
+    filingAbort?.abort();
+    filingAbort = null;
+    filingLoading = false;
+    filingPanel = null;
+    filingStatus = '';
   }
 
   // Keyed on the item's source line rather than its position among the tasks:
@@ -7510,54 +7604,116 @@
             </div>
           </section>
         {/if}
-        {#if relatedPanel && relatedPanel.root === selectedRoot && relatedPanel.path === selectedPath}
-          <section class="inline-edit-panel" aria-label="Related notes">
+        {#if filingPanel && filingPanel.root === selectedRoot && filingPanel.path === selectedPath}
+          <section class="inline-edit-panel" aria-label="File to projects">
             <header class="inline-edit-header">
-              <strong>Related notes</strong>
+              <strong>
+                {#if filingPanel.step === 'review'}
+                  Projects this day touched
+                {:else if filingPanel.step === 'walk'}
+                  Filing {filingPanel.index + 1} of {filingPanel.queue.length}
+                {:else}
+                  Done filing
+                {/if}
+              </strong>
               <div class="inline-edit-actions">
-                <button type="button" on:click={dismissRelatedLinks}>
-                  Dismiss
+                <button type="button" on:click={dismissProjectFiling}>
+                  {filingPanel.step === 'done' ? 'Close' : 'Cancel'}
                 </button>
-                <button
-                  class="primary"
-                  disabled={!relatedPanel.selected.size}
-                  type="button"
-                  on:click={applyRelatedLinks}
-                >
-                  Insert links
-                </button>
+                {#if filingPanel.step === 'review' && filingPanel.entries.length}
+                  <button
+                    class="primary"
+                    disabled={!filingPanel.selected.size}
+                    type="button"
+                    on:click={startProjectFiling}
+                  >
+                    Review {filingPanel.selected.size} one by one
+                  </button>
+                {:else if filingPanel.step === 'walk'}
+                  <button
+                    disabled={filingPanel.busy}
+                    type="button"
+                    on:click={skipFilingEntry}
+                  >
+                    Skip
+                  </button>
+                  <button
+                    class="primary"
+                    disabled={filingPanel.busy}
+                    type="button"
+                    on:click={fileProjectEntry}
+                  >
+                    {filingPanel.busy ? 'Filing...' : 'File it'}
+                  </button>
+                {/if}
               </div>
             </header>
             <div class="related-body">
-              {#if relatedPanel.warning}
-                <p class="ai-preset-warning">{relatedPanel.warning}</p>
+              {#if filingPanel.warning}
+                <p class="ai-preset-warning">{filingPanel.warning}</p>
               {/if}
-              {#if relatedPanel.suggestions.length}
+
+              {#if filingPanel.step === 'review'}
+                {#if filingPanel.entries.length}
+                  <ul class="related-list">
+                    {#each filingPanel.entries as entry}
+                      <li class="related-item">
+                        <label class="related-choice">
+                          <input
+                            checked={filingPanel.selected.has(entry.path)}
+                            type="checkbox"
+                            on:change={() => toggleFilingEntry(entry)}
+                          />
+                          <span class="related-bullet">{entry.title}</span>
+                        </label>
+                        <span class="related-path">{entry.path}</span>
+                      </li>
+                    {/each}
+                  </ul>
+                  <p class="related-note">
+                    Nothing is written yet. Each note you keep is shown on its
+                    own, with the line it would gain, before anything changes.
+                  </p>
+                {:else}
+                  <p class="empty-copy">
+                    No project note looked like this day advanced it.
+                  </p>
+                {/if}
+                {#if filingPanel.filed.length}
+                  <p class="related-note">
+                    Already linked to this day, so left alone: {filingPanel
+                      .filed.length} note{filingPanel.filed.length === 1
+                      ? ''
+                      : 's'}.
+                  </p>
+                {/if}
+              {:else if filingPanel.step === 'walk'}
+                {@const entry = filingPanel.queue[filingPanel.index]}
+                <p class="filing-target">
+                  <strong>{entry.title}</strong>
+                  <span class="related-path">{entry.path}</span>
+                </p>
+                <pre class="filing-bullet">{filingBulletText(entry)}</pre>
+                <p class="related-note">
+                  Appended under <code>## {PROJECT_LOG_HEADING}</code>, added at
+                  the end of that note if it has none. Nothing else in it
+                  changes.
+                </p>
+              {:else}
                 <ul class="related-list">
-                  {#each relatedPanel.suggestions as suggestion}
-                    <li class="related-item">
-                      <label class="related-choice">
-                        <input
-                          checked={relatedPanel.selected.has(suggestion.path)}
-                          type="checkbox"
-                          on:change={() => toggleRelatedSuggestion(suggestion)}
-                        />
-                        <span class="related-bullet"
-                          >{relatedBulletText(suggestion)}</span
-                        >
-                      </label>
-                      <span class="related-path">{suggestion.path}</span>
+                  {#each filingPanel.results as result}
+                    <li class="related-item filing-result">
+                      <span class="related-bullet">
+                        {result.state === 'filed'
+                          ? 'Filed'
+                          : result.state === 'already'
+                            ? 'Already there'
+                            : 'Skipped'}
+                      </span>
+                      <span class="related-path">{result.path}</span>
                     </li>
                   {/each}
                 </ul>
-                <p class="related-note">
-                  Appended to a <code>## Related</code> section at the end of this
-                  note. No other file is changed.
-                </p>
-              {:else}
-                <p class="empty-copy">
-                  Nothing in this workspace looked related enough to link.
-                </p>
               {/if}
             </div>
           </section>
@@ -7726,17 +7882,17 @@
       <div class="ai-connect">
         <button
           class="ai-connect-button"
-          disabled={relatedLoading || !aiNotePath}
-          title={aiNotePath
-            ? `Suggest existing notes to link ${aiNotePath} to`
-            : 'Open a Markdown note first'}
+          disabled={filingLoading || !filingNotePath}
+          title={filingNotePath
+            ? `File this day's work into the project notes it belongs in`
+            : `Only for a daily note in ${activeDailyNoteFolder}`}
           type="button"
-          on:click={requestRelatedNotes}
+          on:click={requestProjectFiling}
         >
-          {relatedLoading ? 'Connecting...' : 'Connect notes'}
+          {filingLoading ? 'Reading the day...' : 'File to projects'}
         </button>
-        {#if relatedStatus}
-          <span class="ai-connect-status">{relatedStatus}</span>
+        {#if filingStatus}
+          <span class="ai-connect-status">{filingStatus}</span>
         {/if}
       </div>
       {#if presetGroups.length}

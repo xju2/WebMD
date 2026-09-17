@@ -455,6 +455,44 @@ data: {"done": true, "replacement": "The results indicate a consistent trend."}
 
 The final event is authoritative. Code fences can only be stripped once the whole reply has arrived, so clients apply `replacement` rather than their own concatenated deltas. The editor renders the accumulating text as a live diff and commits it only after the user accepts.
 
+#### Project Filing Vector
+
+* **Endpoint:** `POST /api/ai/project-log`
+* **Role:** Given a daily note, names the project notes that day advanced and the one line each should gain. Offered only for a daily note in the workspace's daily-note folder, because the write lands in notes the reader is not looking at.
+* **Payload Interface Configuration:**
+
+```json
+{
+  "root": "/Users/me/notes",
+  "path": "/raw/dailynotes/2026-07-09.md",
+  "dailyNoteFolder": "/raw/dailynotes"
+}
+
+```
+
+* **Success Signature (`200 OK`):**
+
+```json
+{
+  "entries": [
+    {
+      "path": "/wiki/projects/triton.md",
+      "title": "Triton serving",
+      "summary": "Requests started dropping once the GPU instance count went past four.",
+      "source": "2026-07-09"
+    }
+  ],
+  "filed": ["/wiki/projects/retrieval.md"],
+  "candidateCount": 9,
+  "warning": null
+}
+
+```
+
+Candidates are ranked by TF-IDF cosine similarity over the workspace's Markdown cache (`server/project-log.js`), which narrows a few hundred notes to a shortlist the model reads in full; the model does the judging and can only answer with paths it was offered. Notes inside `dailyNoteFolder` are never candidates, and notes that already link back to the day are returned as `filed` rather than offered again, so filing a day twice cannot double an entry. `source` is the backlink as the project note will carry it — shortened as seen from there, and verified to resolve back to the day.
+
+**The endpoint only reads.** Filing is one ordinary `POST /api/workspace/updates` per project note, sent by the client as the reader works through the list, so it rides the same versioned-update path with 409 retry that a clipped paper takes into today's daily note. A run abandoned halfway leaves every note it never reached untouched. The bullet is appended under `## Log`, created at the end of the note when it has none.
+
 ---
 
 ## 7. Cross-Cutting Concerns: State Synchronization & Fault Tolerance

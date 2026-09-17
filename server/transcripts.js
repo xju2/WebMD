@@ -1,4 +1,4 @@
-import { shortestWikiTarget } from '../src/related-links.js';
+import { shortestWikiTarget } from '../src/wiki-target.js';
 import { meetingNoteNames } from './meetings.js';
 import { WorkspaceError } from './workspace.js';
 

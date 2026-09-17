@@ -1,5 +1,5 @@
 import { titleFileName } from '../src/note-title.js';
-import { shortestWikiTarget } from '../src/related-links.js';
+import { shortestWikiTarget } from '../src/wiki-target.js';
 import { resolveWikiLinkPath } from '../src/wiki-links.js';
 import {
   actionLine,
