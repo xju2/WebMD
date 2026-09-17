@@ -4616,6 +4616,22 @@
     });
   }
 
+  // A fresh tree opens every folder so the whole structure is in view, except
+  // folders holding more than this many files of their own, which stay folded.
+  const CROWDED_FOLDER_FILES = 20;
+
+  function defaultExpandedDirectories(nodes) {
+    return nodes.flatMap((node) => {
+      if (node.type !== 'directory') return [];
+      const children = node.children || [];
+      const ownFiles = children.filter((child) => child.type === 'file').length;
+      return [
+        ...(ownFiles > CROWDED_FOLDER_FILES ? [] : [node.path]),
+        ...defaultExpandedDirectories(children)
+      ];
+    });
+  }
+
   function reconcileDailyNoteFolder() {
     if (
       !dailyNoteFolderConfigured &&
@@ -5058,11 +5074,7 @@
   }
 
   $: if (!loadedTreeOnce && workspaceTree.length) {
-    expandedDirs = new Set(
-      workspaceTree
-        .filter((node) => node.type === 'directory')
-        .map((node) => node.path)
-    );
+    expandedDirs = new Set(defaultExpandedDirectories(workspaceTree));
     loadedTreeOnce = true;
   }
 </script>
