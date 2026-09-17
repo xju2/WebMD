@@ -702,12 +702,14 @@
     createEditor('');
     document.addEventListener('selectionchange', updateBrowserSelectedText);
     window.addEventListener('popstate', openNavigationState);
+    document.addEventListener('visibilitychange', refreshVisibleNews);
     await loadRoots();
   });
 
   onDestroy(() => {
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
+    document.removeEventListener('visibilitychange', refreshVisibleNews);
     closeDocumentEvents();
     chatAbort?.abort();
     editorView?.destroy();
@@ -2019,6 +2021,14 @@
       setViewMode('edit', { remember: false });
     } catch (err) {
       error = `Could not open the ranking instructions: ${err.message}`;
+    }
+  }
+
+  // A phone web app sits in the background for hours, so papers clipped on
+  // another device only show as clipped once News looks at today's note again.
+  function refreshVisibleNews() {
+    if (document.visibilityState === 'visible' && viewMode === 'news') {
+      loadNewsClipped(selectedRoot);
     }
   }
 
