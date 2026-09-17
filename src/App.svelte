@@ -2439,7 +2439,6 @@
     lastSaved = savedContent;
     syncedTitle = noteTitle(nextContent);
     fileCache.set(rootPathKey(root, path), nextContent);
-    expandToPath(path);
     setEditorContent(nextContent);
     resetCollaboration(version);
     if (collaborate) openDocumentEvents(root, path, version);
@@ -2454,7 +2453,6 @@
     selectedRange = null;
     clearInlineEdit();
     viewMode = 'preview';
-    expandToPath(path);
     setEditorContent('');
   }
 
@@ -4616,20 +4614,19 @@
     });
   }
 
-  // A fresh tree opens every folder so the whole structure is in view, except
-  // folders holding more than this many files of their own, which stay folded.
+  // A fresh tree opens its top-level folders, except those holding more than
+  // this many files of their own, which stay folded like everything deeper.
   const CROWDED_FOLDER_FILES = 20;
 
   function defaultExpandedDirectories(nodes) {
-    return nodes.flatMap((node) => {
-      if (node.type !== 'directory') return [];
-      const children = node.children || [];
-      const ownFiles = children.filter((child) => child.type === 'file').length;
-      return [
-        ...(ownFiles > CROWDED_FOLDER_FILES ? [] : [node.path]),
-        ...defaultExpandedDirectories(children)
-      ];
-    });
+    return nodes
+      .filter(
+        (node) =>
+          node.type === 'directory' &&
+          (node.children || []).filter((child) => child.type === 'file')
+            .length <= CROWDED_FOLDER_FILES
+      )
+      .map((node) => node.path);
   }
 
   function reconcileDailyNoteFolder() {
