@@ -212,3 +212,27 @@ test('names the reader\'s own day a meeting starts on', () => {
   assert.equal(meetingLocalDay(meeting('early', local(2026, 1, 2, 0, 5))), '2026-01-02');
   assert.equal(meetingLocalDay({}), '');
 });
+
+test('sorts and dates meetings by the configured time zone', () => {
+  const zone = { timeZone: 'America/Los_Angeles' };
+  // 10:00 UTC Friday 11 Sep is 03:00 Friday in Los Angeles.
+  const now = Date.UTC(2026, 8, 11, 10);
+  const cases = [
+    // 05:00 UTC Friday is 22:00 Thursday Pacific: already past.
+    [meeting('thursday night', Date.UTC(2026, 8, 11, 5)), 'past'],
+    [meeting('friday evening', Date.UTC(2026, 8, 12, 4)), 'today'],
+    [meeting('saturday morning', Date.UTC(2026, 8, 12, 8)), 'tomorrow'],
+    // Monday 00:30 Pacific starts the next week.
+    [meeting('monday', Date.UTC(2026, 8, 14, 7, 30)), 'next-week'],
+    [meeting('sunday late', Date.UTC(2026, 8, 14, 6, 30)), 'week']
+  ];
+  for (const [item, section] of cases) {
+    assert.equal(meetingSection(item, now, zone), section, item.title);
+  }
+  assert.equal(meetingLocalDay(meeting('evening', Date.UTC(2026, 8, 12, 4)), zone), '2026-09-11');
+  assert.equal(describeMeetingTime(meeting('evening', Date.UTC(2026, 8, 12, 4)), zone).time, '21:00–22:00');
+  // Across the November switch back to standard time, midnight still lands right.
+  const afterSwitch = Date.UTC(2026, 10, 2, 10);
+  assert.equal(meetingSection(meeting('just after midnight', Date.UTC(2026, 10, 2, 8, 5)), afterSwitch, zone), 'today');
+  assert.equal(meetingSection(meeting('just before midnight', Date.UTC(2026, 10, 2, 7, 50), Date.UTC(2026, 10, 2, 7, 55)), afterSwitch, zone), 'past');
+});

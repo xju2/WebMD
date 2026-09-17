@@ -1,7 +1,7 @@
 // Browser-side helpers for the Meetings view. The server sends each meeting's
 // start and end as absolute instants beside the event's own timezone; these
-// helpers place them in the reader's local day, which is what "Today" means
-// to the person looking at the list.
+// helpers place them in the workspace's meeting time zone (the reader's local
+// time when none is given), which is what "Today" means in the list.
 
 export const MEETING_SECTIONS = [
   { id: 'ongoing', label: 'Ongoing' },
@@ -17,24 +17,101 @@ export const MEETING_SECTIONS = [
 // A Zoom meeting opens its waiting room a little early, and people join then.
 export const JOIN_LEAD_MS = 15 * 60 * 1000;
 
-export function startOfDay(ms) {
-  const date = new Date(ms);
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+// Where the Meetings view reads its times when the workspace sets no zone.
+export const DEFAULT_MEETING_TIME_ZONE = 'America/Los_Angeles';
+
+/** `timeZone` if the browser knows it, else '' (the reader's local time). */
+export function validTimeZone(timeZone) {
+  if (!timeZone) return '';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone });
+    return timeZone;
+  } catch {
+    return '';
+  }
 }
 
-function addDays(ms, days) {
-  const date = new Date(ms);
-  return new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate() + days
-  ).getTime();
+/** `PDT` or `GMT+2`: the zone's short name at `ms`, for the toolbar. */
+export function zoneName(timeZone, ms = Date.now()) {
+  try {
+    return (
+      new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' })
+        .formatToParts(ms)
+        .find((part) => part.type === 'timeZoneName')?.value || timeZone
+    );
+  } catch {
+    return timeZone;
+  }
 }
 
-/** Local midnight at the start of the Monday after the week holding `ms`. */
-function endOfWeek(ms) {
-  const day = new Date(ms).getDay(); // 0 = Sunday
-  return addDays(startOfDay(ms), day === 0 ? 1 : 8 - day);
+/** The calendar date and weekday `ms` falls on in `timeZone`, or locally. */
+function calendarDate(ms, timeZone) {
+  if (!timeZone) {
+    const date = new Date(ms);
+    return { year: date.getFullYear(), month: date.getMonth() + 1, day: date.getDate(), weekday: date.getDay() };
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    })
+      .formatToParts(ms)
+      .map((part) => [part.type, part.value])
+  );
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  return { year, month, day, weekday: new Date(Date.UTC(year, month - 1, day)).getUTCDay() };
+}
+
+/** How far `timeZone`'s wall clock runs ahead of UTC at `ms`. */
+function zoneOffset(ms, timeZone) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric'
+    })
+      .formatToParts(ms)
+      .map((part) => [part.type, part.value])
+  );
+  const wall = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return wall - Math.floor(ms / 1000) * 1000;
+}
+
+/** The instant midnight begins on a calendar date, in `timeZone` or locally. */
+function midnight(year, month, day, timeZone) {
+  if (!timeZone) return new Date(year, month - 1, day).getTime();
+  const wall = Date.UTC(year, month - 1, day);
+  // Twice, so a date whose offset differs from the guess (a DST switch) settles.
+  let at = wall - zoneOffset(wall, timeZone);
+  at = wall - zoneOffset(at, timeZone);
+  return at;
+}
+
+export function startOfDay(ms, timeZone = '') {
+  const { year, month, day } = calendarDate(ms, timeZone);
+  return midnight(year, month, day, timeZone);
+}
+
+function addDays(ms, days, timeZone = '') {
+  const { year, month, day } = calendarDate(ms, timeZone);
+  // Date.UTC rolls a day past the month's end over, so the date stays valid.
+  const next = new Date(Date.UTC(year, month - 1, day + days));
+  return midnight(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate(), timeZone);
+}
+
+/** Midnight at the start of the Monday after the week holding `ms`. */
+function endOfWeek(ms, timeZone = '') {
+  const { weekday } = calendarDate(ms, timeZone); // 0 = Sunday
+  return addDays(ms, weekday === 0 ? 1 : 8 - weekday, timeZone);
 }
 
 export function meetingStart(meeting) {
@@ -53,27 +130,26 @@ export function meetingEnd(meeting) {
  * "event" does not crowd the top of Today every morning. One that finished
  * before today began is Past; the server only sends the last week of those.
  */
-export function meetingSection(meeting, now = Date.now()) {
+export function meetingSection(meeting, now = Date.now(), { timeZone = '' } = {}) {
   const start = meetingStart(meeting);
   const end = meetingEnd(meeting);
   if (!Number.isFinite(start)) return '';
-  const today = startOfDay(now);
+  const today = startOfDay(now, timeZone);
   if (end < today) return 'past';
   if (start < today) return 'ongoing';
-  const tomorrow = addDays(today, 1);
-  if (start < tomorrow) return 'today';
-  if (start < addDays(today, 2)) return 'tomorrow';
-  const weekEnd = endOfWeek(now);
+  if (start < addDays(now, 1, timeZone)) return 'today';
+  if (start < addDays(now, 2, timeZone)) return 'tomorrow';
+  const weekEnd = endOfWeek(now, timeZone);
   if (start < weekEnd) return 'week';
-  if (start < addDays(weekEnd, 7)) return 'next-week';
+  if (start < addDays(weekEnd, 7, timeZone)) return 'next-week';
   return 'later';
 }
 
 /** Non-empty sections in order, each `{ id, label, meetings }`. */
-export function groupMeetings(meetings, now = Date.now()) {
+export function groupMeetings(meetings, now = Date.now(), options = {}) {
   const buckets = new Map(MEETING_SECTIONS.map((section) => [section.id, []]));
   for (const meeting of meetings || []) {
-    const id = meetingSection(meeting, now);
+    const id = meetingSection(meeting, now, options);
     if (id) buckets.get(id).push(meeting);
   }
   return MEETING_SECTIONS.map((section) => ({
@@ -115,16 +191,12 @@ export function zoomMeetingId(id = '') {
   return digits;
 }
 
-/** The reader's own calendar day a meeting starts on, as YYYY-MM-DD. */
-export function meetingLocalDay(meeting) {
+/** The calendar day a meeting starts on in `timeZone` (or locally), as YYYY-MM-DD. */
+export function meetingLocalDay(meeting, { timeZone = '' } = {}) {
   const start = meetingStart(meeting);
   if (!Number.isFinite(start)) return '';
-  const date = new Date(start);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, '0'),
-    String(date.getDate()).padStart(2, '0')
-  ].join('-');
+  const { year, month, day } = calendarDate(start, timeZone);
+  return [year, String(month).padStart(2, '0'), String(day).padStart(2, '0')].join('-');
 }
 
 /** A note path as its name, for a link that opens it. */
@@ -151,8 +223,8 @@ const DAY_OPTIONS = { weekday: 'short', day: 'numeric', month: 'short' };
 const TIME_OPTIONS = { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' };
 
 /**
- * `{ day, time, full, zoned }` for the list and the detail pane, in local
- * time. `day` and `time` are the list's two short lines; `full` is the one
+ * `{ day, time, full, zoned }` for the list and the detail pane, in
+ * `timeZone` (local time when none is given). `day` and `time` are the list's two short lines; `full` is the one
  * line the detail pane shows. `zoned` repeats `full` in the event's own zone
  * when that reads differently, so a Geneva meeting seen from Chicago still
  * shows the time the agenda talks about. A meeting over several days says so
@@ -230,7 +302,7 @@ export function describeRange(from, to, { timeZone } = {}) {
   const format = formatter({ day: 'numeric', month: 'short' }, timeZone);
   // The server asks from a day back to cover every timezone; the list itself
   // starts today.
-  return `${format.format(Math.max(start, startOfDay(Date.now())))} – ${format.format(end)}`;
+  return `${format.format(Math.max(start, startOfDay(Date.now(), timeZone)))} – ${format.format(end)}`;
 }
 
 export function meetingPlace(meeting) {

@@ -5,6 +5,7 @@ export const SETTINGS_CONFIG_PATH = '/.webmd/settings.json';
 
 export const DEFAULT_IMAGE_ASSET_FOLDER = '/assets';
 export const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
+export const DEFAULT_MEETING_TIME_ZONE = 'America/Los_Angeles';
 
 /**
  * Settings that describe how one workspace is laid out, so they live in the
@@ -18,6 +19,8 @@ export const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
  *                      or / when the workspace has no such folder.
  *   dailyNoteTemplate  the note a new daily note starts from. Unset means a
  *                      conventionally named template; "" means none.
+ *   meetingTimeZone    the IANA zone (e.g. "Europe/Zurich") the Meetings view
+ *                      shows every time and day in. Unset means Pacific time.
  *
  * A bad value is dropped with a warning naming it, and the rest still apply.
  */
@@ -34,6 +37,7 @@ export async function readWorkspaceSettings(workspace, env = {}) {
     dailyNoteFolder: configuredFolder ?? DEFAULT_DAILY_NOTE_FOLDER,
     dailyNoteFolderConfigured: configuredFolder !== undefined,
     dailyNoteTemplate: templateSetting(values, warnings),
+    meetingTimeZone: timeZoneSetting(values, warnings),
     ...(warnings.length ? { warning: warnings.join(' ') } : {})
   };
 }
@@ -106,4 +110,21 @@ function templateSetting(values, warnings) {
     `Ignored "dailyNoteTemplate" in ${SETTINGS_CONFIG_PATH}: not a Markdown note path.`
   );
   return null;
+}
+
+function timeZoneSetting(values, warnings) {
+  const value = values.meetingTimeZone;
+  if (value === undefined || value === null || value === '') return DEFAULT_MEETING_TIME_ZONE;
+  if (typeof value === 'string') {
+    try {
+      return new Intl.DateTimeFormat('en-US', { timeZone: value.trim() }).resolvedOptions()
+        .timeZone;
+    } catch {
+      // Falls through to the warning below.
+    }
+  }
+  warnings.push(
+    `Ignored "meetingTimeZone" in ${SETTINGS_CONFIG_PATH}: not an IANA time zone such as "America/Los_Angeles".`
+  );
+  return DEFAULT_MEETING_TIME_ZONE;
 }

@@ -78,7 +78,8 @@ test('falls back to IMAGE_ASSET_FOLDER when the workspace sets no folder', async
       imageAssetFolder: '/files/img',
       dailyNoteFolder: '/raw/dailynotes',
       dailyNoteFolderConfigured: false,
-      dailyNoteTemplate: null
+      dailyNoteTemplate: null,
+      meetingTimeZone: 'America/Los_Angeles'
     });
   } finally {
     server.close();
@@ -110,7 +111,8 @@ test('reads settings from each workspace .webmd/settings.json', async () => {
     JSON.stringify({
       imageAssetFolder: 'static/img/',
       dailyNoteFolder: '/journal',
-      dailyNoteTemplate: 'journal/template.md'
+      dailyNoteTemplate: 'journal/template.md',
+      meetingTimeZone: 'Europe/Zurich'
     })
   );
 
@@ -126,7 +128,8 @@ test('reads settings from each workspace .webmd/settings.json', async () => {
       imageAssetFolder: '/static/img',
       dailyNoteFolder: '/journal',
       dailyNoteFolderConfigured: true,
-      dailyNoteTemplate: '/journal/template.md'
+      dailyNoteTemplate: '/journal/template.md',
+      meetingTimeZone: 'Europe/Zurich'
     });
     const other = await (await fetch(`${url}/api/settings?root=1`)).json();
     assert.equal(other.imageAssetFolder, '/files/img');
@@ -144,7 +147,8 @@ test('keeps good settings and warns about bad ones', async () => {
     JSON.stringify({
       imageAssetFolder: '../outside',
       dailyNoteFolder: '/daily',
-      dailyNoteTemplate: ''
+      dailyNoteTemplate: '',
+      meetingTimeZone: 'Mars/Olympus'
     })
   );
 
@@ -158,6 +162,8 @@ test('keeps good settings and warns about bad ones', async () => {
     assert.equal(settings.dailyNoteFolder, '/daily');
     assert.equal(settings.dailyNoteTemplate, '');
     assert.match(settings.warning, /imageAssetFolder/);
+    assert.equal(settings.meetingTimeZone, 'America/Los_Angeles');
+    assert.match(settings.warning, /meetingTimeZone/);
 
     await fs.writeFile(path.join(root, '.webmd/settings.json'), '{ nope');
     const broken = await (await fetch(`${url}/api/settings`)).json();

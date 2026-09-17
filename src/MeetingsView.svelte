@@ -6,6 +6,7 @@
   import { onDestroy, onMount, tick } from 'svelte';
   import { ICONS } from './icons.js';
   import {
+    DEFAULT_MEETING_TIME_ZONE,
     describeAgendaTime,
     describeMeetingTime,
     describeRange,
@@ -15,6 +16,8 @@
     keepSelection,
     meetingBegun,
     meetingLocalDay,
+    validTimeZone,
+    zoneName,
     meetingPlace,
     meetingsPane,
     noteName,
@@ -24,6 +27,8 @@
 
   export let root = '0';
   export let active = false;
+  // IANA zone every time and day section is shown in, from .webmd/settings.json.
+  export let timeZone = DEFAULT_MEETING_TIME_ZONE;
   // Opens a note in the editor; the parent owns navigation and the tree.
   export let onOpenNote = async () => {};
   // A note or transcript was made here; the parent's file tree should show it.
@@ -73,7 +78,9 @@
   $: layout = meetingsPane({ compact, detailOpen: detailOpen && !!selectedKey });
   $: meetings = listing?.meetings ?? [];
   $: shown = filterMeetings(meetings, sourceFilter);
-  $: sections = groupMeetings(shown, now);
+  $: sections = groupMeetings(shown, now, { timeZone: zone });
+  $: zone = validTimeZone(timeZone) || DEFAULT_MEETING_TIME_ZONE;
+  $: zoneLabel = zoneName(zone, now);
   $: shownCount = sections.reduce((sum, section) => sum + section.meetings.length, 0);
   $: selected = meetings.find((meeting) => meeting.key === selectedKey) || null;
   $: view = selected && detail?.key === selected.key ? detail : selected;
@@ -81,7 +88,7 @@
   $: sourceById = new Map(sources.map((source) => [source.id, source]));
   $: notices = sourceNotices(listing?.statuses, sourceById);
   $: blocked = notices.some((notice) => notice.tone === 'error');
-  $: range = listing ? describeRange(listing.from, listing.to) : '';
+  $: range = listing ? describeRange(listing.from, listing.to, { timeZone: zone }) : '';
   $: if (active && root !== loadedRoot) resetFor(root);
   $: if (active && loadedRoot === root && !loading && !listing && !loadError)
     load();
@@ -245,7 +252,7 @@
           root,
           origin: meeting.origin,
           id: meeting.eventId,
-          day: meetingLocalDay(meeting)
+          day: meetingLocalDay(meeting, { timeZone: zone })
         })
       });
       markFiles(meeting.key, { notePath: result.path });
@@ -301,7 +308,7 @@
           root,
           origin: meeting.origin,
           id: meeting.eventId,
-          day: meetingLocalDay(meeting),
+          day: meetingLocalDay(meeting, { timeZone: zone }),
           ...body
         })
       });
@@ -456,6 +463,7 @@
     <h2>
       Meetings
       {#if range}<span class="news-date">{range}</span>{/if}
+      <span class="news-date" title={zone}>{zoneLabel}</span>
     </h2>
     <div class="tasks-summary">
       {#if sources.length > 1}
@@ -608,7 +616,7 @@
           </h3>
           <ul>
             {#each section.meetings as meeting (meeting.key)}
-              {@const time = describeMeetingTime(meeting)}
+              {@const time = describeMeetingTime(meeting, { timeZone: zone })}
               {@const joining = joinState(meeting, now)}
               <li class="meetings-row">
                 <button
@@ -673,7 +681,7 @@
         hidden={layout === 'list'}
       >
         {#if selected}
-          {@const time = describeMeetingTime(selected)}
+          {@const time = describeMeetingTime(selected, { timeZone: zone })}
           {#if compact}
             <button class="meetings-back" type="button" on:click={backToList}>
               {@render icon('chevronLeft')} All meetings
@@ -857,7 +865,7 @@
             <ol class="meetings-agenda">
               {#each detail.agenda as item (item.id + item.start.iso)}
                 <li>
-                  <span class="meetings-agenda-time">{describeAgendaTime(item, selected)}</span>
+                  <span class="meetings-agenda-time">{describeAgendaTime(item, selected, { timeZone: zone })}</span>
                   <span class="meetings-agenda-main">
                     {#if item.url}
                       <a href={item.url} rel="noopener noreferrer" target="_blank">{item.title}</a>

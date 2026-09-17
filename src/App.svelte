@@ -358,6 +358,7 @@
   let dailyNoteTemplatePath = null;
   let imageAssetFolder = DEFAULT_IMAGE_ASSET_FOLDER;
   let settingsWarning = '';
+  let meetingTimeZone = '';
   let calendarMonth = new Date(
     new Date().getFullYear(),
     new Date().getMonth(),
@@ -1253,6 +1254,7 @@
     dailyNoteFolder = settings.dailyNoteFolder || DEFAULT_DAILY_NOTE_FOLDER;
     dailyNoteFolderConfigured = Boolean(settings.dailyNoteFolderConfigured);
     dailyNoteTemplatePath = settings.dailyNoteTemplate ?? null;
+    meetingTimeZone = settings.meetingTimeZone || '';
     settingsWarning = settings.warning ?? '';
   }
 
@@ -7067,6 +7069,7 @@
             onOpenNote={openMeetingNote}
             onFilesChanged={() => loadTree(selectedRoot)}
             root={selectedRoot}
+            timeZone={meetingTimeZone || undefined}
           />
         {/if}
         {#if viewMode === 'calendar'}

@@ -10,7 +10,9 @@ the settings travel with the notes.
 
 - `.webmd/settings.json` sets the image folder, the daily-note folder, and the
   daily-note template. This sandbox uses `/assets`, `/daily`, and
-  `/daily/template.md`.
+  `/daily/template.md`. It can also set `meetingTimeZone`, the time zone the
+  Meetings view shows every time and day in, such as `"Europe/Zurich"`. It
+  defaults to Pacific time (`"America/Los_Angeles"`).
 - `.webmd/prompts.json` adds your own prompts to the AI panel. This sandbox
   adds one, **Plain English**.
 - `.webmd/news.md` describes your research so arXiv News can rank papers for
