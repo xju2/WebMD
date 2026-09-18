@@ -88,6 +88,7 @@
   import { renderMermaid } from './mermaid.js';
   import { SNIPPETS, clockTime, snippetExpansion } from './snippets.js';
   import { noteDateEdits, stampNoteDates } from './note-dates.js';
+  import { sanitizeEdits } from './sanitize.js';
   import {
     isDateNamedPath,
     noteTitle,
@@ -3242,11 +3243,23 @@
     return date && !Number.isNaN(date.getTime()) ? dailyNoteDate(date) : '';
   }
 
+  /**
+   * Tidies the note as it is left: no trailing whitespace, no blank lines at
+   * either end, one newline to finish on. Only on the way out, so whitespace
+   * the user is still typing through is never pulled out from under the caret.
+   */
+  function sanitizeInEditor() {
+    if (!editorView || !selectedPath || !selectedIsMarkdown) return;
+    const changes = sanitizeEdits(editorView.state.doc.toString());
+    if (changes.length) editorView.dispatch({ changes });
+  }
+
   async function saveNow() {
     if (!selectedPath || !selectedIsMarkdown) return;
-    // Before the timer is cleared, so the expansion's own edit is saved with
-    // the rest rather than left waiting behind a cancelled flush.
+    // Before the timer is cleared, so these edits are saved with the rest
+    // rather than left waiting behind a cancelled flush.
     expandTaskShorthandInEditor(true);
+    sanitizeInEditor();
     clearTimeout(saveTimer);
     if (
       collaborationEnabled &&
