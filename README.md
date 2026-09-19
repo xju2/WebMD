@@ -595,8 +595,6 @@ listing and are skipped.
 - **Filter** keeps papers whose title, authors, or abstract contain every word
   you type. The category chips narrow the list to the ones you pick. Both are
   remembered, so tomorrow's listing opens filtered the same way.
-- **Updates** also shows replacements, which are new versions of older papers.
-  They are hidden by default.
 - **Clip** adds the paper to today's daily note, under a `## Reading` heading
   that is created the first time. The line is the same citation a pasted arXiv
   link becomes. If today's note does not exist yet, it is created from the
@@ -620,7 +618,8 @@ area it connects to, and a one-sentence reason. The five strongest are listed
 first as **Top picks**, then **Also relevant**. Everything else follows,
 ordered by how much of your profile's rarer vocabulary each paper uses. That
 same lexical score chooses the 120 papers the model reads, which keeps a day
-of listings to one call. Updates are not judged.
+of listings to one call. Replacements — new versions of older papers — are not
+listed at all.
 
 A listing is ranked once per day, so reloads and other tabs reuse it, and
 clipping a paper does not reshuffle the page. Editing the instructions note

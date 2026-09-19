@@ -248,20 +248,15 @@ test('finds the arXiv papers a note already links to', () => {
   assert.deepEqual([...ids], ['2609.09159', 'hep-ph/0601001']);
 });
 
-test('filters by words, categories, and replacements', () => {
+test('filters by words and categories, never showing replacements', () => {
   const { papers } = parseArxivRss(RSS);
   assert.deepEqual(
     filterPapers(papers).map((paper) => paper.id),
     ['2609.09159']
   );
-  assert.equal(filterPapers(papers, { includeReplacements: true }).length, 2);
   assert.equal(filterPapers(papers, { query: 'murnane TRACKING' }).length, 1);
   assert.equal(filterPapers(papers, { query: 'nothing' }).length, 0);
-  assert.equal(
-    filterPapers(papers, { categories: ['cs.LG'], includeReplacements: true })
-      .length,
-    2
-  );
+  assert.equal(filterPapers(papers, { categories: ['cs.LG'] }).length, 1);
   assert.deepEqual(
     [...newsCategoryCounts(papers, ['hep-ex', 'cs.LG'])],
     [

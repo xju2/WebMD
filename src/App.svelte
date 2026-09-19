@@ -692,10 +692,6 @@
   $: otherPapers = pickById.size
     ? rankedPapers.filter((paper) => !pickById.has(paper.id))
     : rankedPapers;
-  $: hiddenReplacementCount = newsFilter.includeReplacements
-    ? 0
-    : filterPapers(newsPapers, { ...newsFilter, includeReplacements: true })
-        .length - visiblePapers.length;
   $: noteTasks =
     selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : [];
   $: noteProgress = taskProgress(noteTasks);
@@ -2247,7 +2243,6 @@
     const empty = {
       query: '',
       categories: [],
-      includeReplacements: false,
       sort: 'rank'
     };
     try {
@@ -2257,7 +2252,6 @@
         categories: Array.isArray(stored.categories)
           ? stored.categories.filter((item) => typeof item === 'string')
           : [],
-        includeReplacements: stored.includeReplacements === true,
         sort: stored.sort === 'arxiv' ? 'arxiv' : 'rank'
       };
     } catch {
@@ -7059,9 +7053,7 @@
               </h2>
               <div class="tasks-summary">
                 <span>
-                  {visiblePapers.length} papers{hiddenReplacementCount
-                    ? ` · ${hiddenReplacementCount} updates hidden`
-                    : ''}
+                  {visiblePapers.length} papers
                 </span>
                 <div
                   class="tasks-grouping"
@@ -7100,17 +7092,6 @@
                       setNewsFilter({ query: event.currentTarget.value })}
                   />
                 </div>
-                <label class="tasks-toggle">
-                  <input
-                    type="checkbox"
-                    checked={newsFilter.includeReplacements}
-                    on:change={(event) =>
-                      setNewsFilter({
-                        includeReplacements: event.currentTarget.checked
-                      })}
-                  />
-                  Updates
-                </label>
                 <button
                   type="button"
                   title="Edit what the AI ranks papers against"

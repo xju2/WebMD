@@ -66,16 +66,16 @@ export function linkedArxivIds(content = '') {
 /**
  * Narrows the day's listing. Every word of `query` must appear in the title,
  * authors, or abstract; `categories` keeps papers listed under any of them;
- * replacements (new versions of older papers) stay out unless asked for.
+ * replacements (new versions of older papers) never show.
  */
 export function filterPapers(
   papers = [],
-  { query = '', categories = [], includeReplacements = false } = {}
+  { query = '', categories = [] } = {}
 ) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const wanted = new Set(categories);
   return papers.filter((paper) => {
-    if (!includeReplacements && isReplacement(paper)) return false;
+    if (isReplacement(paper)) return false;
     if (
       wanted.size &&
       !paper.categories.some((category) => wanted.has(category))
