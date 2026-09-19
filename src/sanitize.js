@@ -1,7 +1,8 @@
 /**
  * Character edits that tidy a note before it is written out, in the shape
- * CodeMirror's `changes` takes: no trailing whitespace, no blank lines at the
- * start or the end, and exactly one newline to finish on. Empty when the note
+ * CodeMirror's `changes` takes: no trailing whitespace or stray carriage
+ * returns, no blank lines at the start or the end, and exactly one newline to
+ * finish on. Empty when the note
  * is already tidy, which is the usual case.
  */
 export function sanitizeEdits(content = '') {
@@ -53,5 +54,5 @@ export function sanitize(content = '') {
 }
 
 function trimEnd(line) {
-  return line.replace(/[ \t]+$/, '');
+  return line.replace(/[ \t\r]+$/, '');
 }

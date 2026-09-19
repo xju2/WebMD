@@ -3244,9 +3244,10 @@
   }
 
   /**
-   * Tidies the note as it is left: no trailing whitespace, no blank lines at
-   * either end, one newline to finish on. Only on the way out, so whitespace
-   * the user is still typing through is never pulled out from under the caret.
+   * Tidies the note on the way out: no trailing whitespace, no blank lines at
+   * either end, one newline to finish on. Runs with the rest of the leaving
+   * flush rather than on every keystroke, so whitespace the note is still
+   * being typed through is not pulled out from under the caret.
    */
   function sanitizeInEditor() {
     if (!editorView || !selectedPath || !selectedIsMarkdown) return;

@@ -37,3 +37,8 @@ test('edits are ordered and never overlap', () => {
     end = edit.to;
   }
 });
+
+test('strips carriage returns from a CRLF file', () => {
+  assert.equal(sanitize('# Notes\r\n\r\nBody\r\n'), '# Notes\n\nBody\n');
+  assert.equal(sanitize('# Notes\r\n\r\n'), '# Notes\n');
+});
