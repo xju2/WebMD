@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "review-before-coding": {
+      "source": "xju2/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/coding-agents/review-before-coding/SKILL.md",
+      "computedHash": "c2fb12616714259a0f7db0be2fd80e898b381f0aa728321504cb84f0c71ba280"
+    }
+  }
+}

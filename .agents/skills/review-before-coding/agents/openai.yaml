@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Before Coding"
+  short_description: "Assess whether a coding request is worth doing"
+  default_prompt: "Use $review-before-coding to assess this change against the repository before implementation."
+policy:
+  allow_implicit_invocation: true
