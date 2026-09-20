@@ -64,6 +64,24 @@ export function linkedArxivIds(content = '') {
 }
 
 /**
+ * The arXiv ids the bibliography already holds, so a paper filed on any earlier
+ * day still shows as clipped. `eprint` names the preprint; an entry that lacks
+ * one may still carry an arXiv link.
+ */
+export function bibArxivIds(entries = []) {
+  const ids = new Set();
+  for (const entry of entries) {
+    const eprint = String(entry?.arxiv ?? '')
+      .trim()
+      .replace(/^arxiv:\s*/i, '')
+      .replace(/v\d+$/i, '');
+    if (eprint) ids.add(eprint.toLowerCase());
+    for (const id of linkedArxivIds(String(entry?.url ?? ''))) ids.add(id);
+  }
+  return ids;
+}
+
+/**
  * Narrows the day's listing. Every word of `query` must appear in the title,
  * authors, or abstract; `categories` keeps papers listed under any of them;
  * replacements (new versions of older papers) never show.

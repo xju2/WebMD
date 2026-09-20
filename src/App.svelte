@@ -75,6 +75,7 @@
   import { renderMarkdown } from './markdown.js';
   import {
     filterPapers,
+    bibArxivIds,
     linkedArxivIds,
     newsCategoryCounts,
     newsDayLabel,
@@ -310,7 +311,7 @@
   let newsWarning = '';
   let newsFilter = readNewsFilter();
   let newsExpanded = new Set();
-  let newsClipped = new Set();
+  let newsNoteClipped = new Set();
   let newsClipping = new Set();
   let newsRanking = null;
   let newsRankStatus = '';
@@ -535,6 +536,10 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  // A paper counts as clipped once it is in the bibliography, so yesterday's
+  // listing still shows the papers it was read from.
+  $: newsClipped = new Set([...newsNoteClipped, ...bibArxivIds(bibliography)]);
+
   $: bibliographyByKey = new Map(
     bibliography.map((entry) => [entry.key, entry])
   );
@@ -2143,10 +2148,10 @@
       const file = await requestJson(
         `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(todayNotePath())}`
       );
-      if (root === selectedRoot) newsClipped = linkedArxivIds(file.content);
+      if (root === selectedRoot) newsNoteClipped = linkedArxivIds(file.content);
     } catch {
-      // No note yet today means nothing is clipped.
-      if (root === selectedRoot) newsClipped = new Set();
+      // No note yet today means nothing is clipped from it.
+      if (root === selectedRoot) newsNoteClipped = new Set();
     }
   }
 
@@ -2215,13 +2220,36 @@
         }
       }
       rememberEditedFile(path, root);
-      newsClipped = new Set(newsClipped).add(paper.id.toLowerCase());
+      newsNoteClipped = new Set(newsNoteClipped).add(paper.id.toLowerCase());
+      await fileClippedReference(root, paper);
     } catch (err) {
       error = `Could not clip ${paper.id}: ${err.message}`;
     } finally {
       const clipping = new Set(newsClipping);
       clipping.delete(paper.id);
       newsClipping = clipping;
+    }
+  }
+
+  /**
+   * Files the clipped paper in `references.bib`, as a pasted arXiv link would.
+   * The lookup leaves the network, so a failure only costs the bib entry: the
+   * line in today's note is the clip that matters.
+   */
+  async function fileClippedReference(root, paper) {
+    try {
+      const metadata = await requestJson('/api/workspace/citations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          source: paper.url || `https://arxiv.org/abs/${paper.id}`
+        })
+      });
+      if (root === selectedRoot)
+        bibliography = metadata.entries ?? bibliography;
+    } catch {
+      // No catalogue has it yet; the next clip or paste can try again.
     }
   }
 

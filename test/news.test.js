@@ -15,6 +15,7 @@ import {
 } from '../server/news.js';
 import {
   filterPapers,
+  bibArxivIds,
   linkedArxivIds,
   newsCategoryCounts,
   newsClipChange,
@@ -245,6 +246,15 @@ test('finds the arXiv papers a note already links to', () => {
   const ids = linkedArxivIds(
     'Ju et al., "T" — [arXiv:2609.09159](https://arxiv.org/abs/2609.09159)\nhttps://arxiv.org/pdf/hep-ph/0601001'
   );
+  assert.deepEqual([...ids], ['2609.09159', 'hep-ph/0601001']);
+});
+
+test('finds the arXiv papers the bibliography already holds', () => {
+  const ids = bibArxivIds([
+    { key: 'a', arxiv: '2609.09159v2' },
+    { key: 'b', arxiv: '', url: 'https://arxiv.org/abs/hep-ph/0601001' },
+    { key: 'c', arxiv: '', url: 'https://doi.org/10.1000/x' }
+  ]);
   assert.deepEqual([...ids], ['2609.09159', 'hep-ph/0601001']);
 });
 
