@@ -2893,6 +2893,21 @@ input[type='radio'] {
   font-size: 0.86rem;
 }
 
+.x-note {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.x-note:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
+}
+
 .news-authors {
   min-width: 0;
   overflow-wrap: anywhere;

@@ -148,11 +148,11 @@
   const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
-  // 'tasks', 'news', and 'meetings' are workspace-wide views rather
+  // 'tasks', 'news', 'x', and 'meetings' are workspace-wide views rather
   // than ways of looking at the open note, so none is remembered as a file's
   // view mode. They are still navigation destinations, so back and forward can
   // return to them.
-  const WORKSPACE_VIEWS = new Set(['tasks', 'news', 'meetings']);
+  const WORKSPACE_VIEWS = new Set(['tasks', 'news', 'x', 'meetings']);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   // Where a day's work lands in a project note. Fixed rather than configurable:
@@ -309,6 +309,10 @@
   // arXiv id -> 1 or -1, as `.webmd/news-votes.json` holds them.
   let newsVotes = {};
   let newsRanking = null;
+  // X posts linked from the workspace's notes, newest note first.
+  let xPosts = [];
+  let xStatus = '';
+  let xQuery = '';
   let newsRankStatus = '';
   // The Tasks view opens on the board: four ranked lanes, which is the only one
   // of the three that answers "what now". Sections (a dashboard of filters the
@@ -595,6 +599,7 @@
     viewMode === 'graph' ||
     viewMode === 'tasks' ||
     viewMode === 'news' ||
+    viewMode === 'x' ||
     viewMode === 'meetings';
   // The rail's workspace views bring their own toolbars, so the file actions
   // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
@@ -602,11 +607,13 @@
   $: toolbarTitle =
     viewMode === 'news'
       ? 'arXiv News'
-      : viewMode === 'meetings'
-        ? 'Meetings'
-        : viewMode === 'tasks'
-          ? 'Tasks'
-          : selectedPath || 'Workspace Home';
+      : viewMode === 'x'
+        ? 'X'
+        : viewMode === 'meetings'
+          ? 'Meetings'
+          : viewMode === 'tasks'
+            ? 'Tasks'
+            : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -646,6 +653,11 @@
     unsaved: unsavedWork
   });
   $: visiblePapers = filterPapers(newsPapers, newsFilter);
+  $: xWords = xQuery.toLowerCase().split(/\s+/).filter(Boolean);
+  $: visibleXPosts = xPosts.filter((post) => {
+    const text = `${post.label} ${post.handle} ${post.path}`.toLowerCase();
+    return xWords.every((word) => text.includes(word));
+  });
   // A weekend's empty listing is not kept, but it is still today.
   $: newsDayOptions =
     newsLatestDay && !newsDays.includes(newsLatestDay)
@@ -1971,6 +1983,30 @@
       loadNewsVotes(selectedRoot)
     ]);
     if (viewMode === 'news' && newsPapers.length) rankNews();
+  }
+
+  async function showXPosts({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('x');
+    viewMode = 'x';
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+    const root = selectedRoot;
+    xStatus = 'Loading X posts...';
+    try {
+      const result = await requestJson(
+        `/api/workspace/x-posts?root=${encodeURIComponent(root)}`
+      );
+      if (root !== selectedRoot) return;
+      xPosts = result.posts;
+      xStatus = '';
+    } catch (err) {
+      if (root !== selectedRoot) return;
+      xPosts = [];
+      xStatus = err.message;
+    }
   }
 
   // Mounted on the first visit and kept, so the list and its selection are
@@ -4424,6 +4460,7 @@
     // the view rather than the note that happened to be selected underneath it.
     if (target.view === 'tasks') await showTasks({ remember: false });
     else if (target.view === 'news') await showNews({ remember: false });
+    else if (target.view === 'x') await showXPosts({ remember: false });
     else if (target.view === 'meetings')
       await showMeetings({ remember: false });
     else
@@ -5705,6 +5742,17 @@
       {@render icon('news')}
     </button>
     <button
+      aria-label="Open X posts"
+      class:active={viewMode === 'x'}
+      class="global-action x-launcher"
+      data-tooltip="X posts in your notes"
+      disabled={!workspaceRoots.length}
+      type="button"
+      on:click={() => showXPosts()}
+    >
+      {@render icon('x')}
+    </button>
+    <button
       aria-label="Open meetings"
       class:active={viewMode === 'meetings'}
       class="global-action meetings-launcher"
@@ -6917,6 +6965,61 @@
                     {newsPapers.length
                       ? 'No paper matches this filter.'
                       : `arXiv has no announcements today. It publishes none on weekends.${newsDays.length ? ' Earlier days are in the day menu above.' : ''}`}
+                  </li>
+                {/if}
+              {/each}
+            </ol>
+          </section>
+        {/if}
+        {#if viewMode === 'x'}
+          <section class="news-pane" aria-label="X posts">
+            <header class="tasks-toolbar news-toolbar">
+              <h2>X</h2>
+              <div class="tasks-summary">
+                <span>{visibleXPosts.length} posts</span>
+                <div class="search-field news-filter">
+                  {@render icon('search')}
+                  <input
+                    class="tasks-filter"
+                    type="search"
+                    placeholder="Filter posts"
+                    aria-label="Filter posts"
+                    title="Every word must appear in the label, handle, or note"
+                    bind:value={xQuery}
+                  />
+                </div>
+              </div>
+            </header>
+            {#if xStatus}
+              <p class="tasks-note">{xStatus}</p>
+            {/if}
+            <ol class="news-list">
+              {#each visibleXPosts as post (post.url)}
+                <li class="news-paper">
+                  <h4 class="news-title-heading">
+                    <a
+                      class="news-title"
+                      href={post.url}
+                      rel="noreferrer"
+                      target="_blank">{post.label}</a
+                    >
+                  </h4>
+                  <p class="news-meta">
+                    <span class="news-id">@{post.handle}</span>
+                    <button
+                      class="x-note"
+                      title="Open the note that links to this post"
+                      type="button"
+                      on:click={() => openFile(post.path)}>{post.path}</button
+                    >
+                  </p>
+                </li>
+              {:else}
+                {#if !xStatus}
+                  <li class="preview-empty">
+                    {xPosts.length
+                      ? 'No post matches this filter.'
+                      : 'No note links to an X post yet. Paste one into a note and it shows up here.'}
                   </li>
                 {/if}
               {/each}

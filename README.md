@@ -613,6 +613,14 @@ score, with a note saying so. **arXiv** switches back to arXiv's own order.
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
 weekends; Friday's is in the day menu.
 
+## X posts
+
+The X button in the left bar lists every X (Twitter) post your notes link to,
+newest note first. A post shows the label its link carries, which a pasted X
+link fills in with the author and their words, and the note it came from;
+the note opens on click. A post linked from several notes is listed once.
+**Filter** keeps posts whose label, handle, or note contain every word typed.
+
 ## Meetings
 
 The lectern button in the left bar opens **Meetings**: the upcoming meetings of

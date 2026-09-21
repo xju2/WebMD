@@ -25,6 +25,8 @@ export const ICONS = {
     'M8 12.5h5',
     'M8 16h3'
   ],
+  // The X mark: one thick stroke crossed by a thin one.
+  x: ['M5 4.5h3.5l10.5 15h-3.5z', 'M18.5 4.5 13.2 10.5', 'M5.5 19.5l5.3-6'],
   // A lectern screen: a talk being given, which is what an Indico meeting is.
   meetings: [
     'M4 5h16',
@@ -68,11 +70,7 @@ export const ICONS = {
   check: ['m5 12.5 4.5 4.5L19 7.5'],
   voteUp: ['M12 19V5', 'm6 11 6-6 6 6'],
   voteDown: ['M12 5v14', 'm6 13 6 6 6-6'],
-  more: [
-    'M5.5 12h.01',
-    'M12 12h.01',
-    'M18.5 12h.01'
-  ],
+  more: ['M5.5 12h.01', 'M12 12h.01', 'M18.5 12h.01'],
   close: ['M6 6l12 12', 'M18 6 6 18'],
   panelLeft: [
     'M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V6A1.5 1.5 0 0 1 5 4.5z',

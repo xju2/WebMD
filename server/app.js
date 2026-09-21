@@ -109,7 +109,9 @@ export async function createApp({
   app.get(
     '/api/settings',
     asyncHandler(async (req, res) => {
-      res.json(await readWorkspaceSettings(workspaces.get(req.query.root), env));
+      res.json(
+        await readWorkspaceSettings(workspaces.get(req.query.root), env)
+      );
     })
   );
 
@@ -180,6 +182,13 @@ export async function createApp({
           limit: req.query.limit
         })
       );
+    })
+  );
+
+  app.get(
+    '/api/workspace/x-posts',
+    asyncHandler(async (req, res) => {
+      res.json(await workspaces.get(req.query.root).listXPosts());
     })
   );
 
@@ -497,7 +506,9 @@ export async function createApp({
   app.post(
     '/api/meetings/transcript',
     asyncHandler(async (req, res) => {
-      const { workspace, meeting, found, created } = await meetingWork(req.body);
+      const { workspace, meeting, found, created } = await meetingWork(
+        req.body
+      );
       const saved = await saveTranscript(workspace, meeting, {
         notePath: found.notePath,
         transcriptPath: found.transcriptPath,
@@ -540,7 +551,11 @@ export async function createApp({
       });
       const summary = parseSummary(reply);
       const paths = (await workspace.markdownFiles()).map((file) => file.path);
-      const link = shortestWikiTarget(found.transcriptPath, found.notePath, paths);
+      const link = shortestWikiTarget(
+        found.transcriptPath,
+        found.notePath,
+        paths
+      );
       await workspace.editFile(found.notePath, (content) =>
         insertSummary(content, summary, {
           source: `[[${link}]]${transcript.truncated ? ' (its first part only)' : ''}`

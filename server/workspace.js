@@ -13,6 +13,7 @@ import {
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
 import { collectTasks } from '../src/tasks.js';
+import { collectXPosts } from '../src/x-posts.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
@@ -96,6 +97,7 @@ export async function createWorkspace(workspaceRoot) {
     // Rides the same cached corpus as search and the link graph, so the Tasks
     // view costs no extra walk of the workspace.
     listTasks: async (options) => listTasks(await files(), options),
+    listXPosts: async () => listXPosts(await files()),
     readTree: async () => {
       invalidate();
       return readTree(root, root);
@@ -188,6 +190,31 @@ function listTasks(corpus, { includeDone = false, limit = TASK_LIMIT } = {}) {
 
   // `total` is reported before the cap so the view can say what it is hiding.
   return { tasks: tasks.slice(0, cap), total: tasks.length };
+}
+
+// Newest note first, so what was saved lately leads; a post linked from
+// several notes is listed once, under the note edited most recently, but with
+// the first real label any note gives it rather than the bare `handle on X`.
+function listXPosts(corpus) {
+  const posts = new Map();
+  const notes = corpus
+    .filter((file) => file.fileKind === 'markdown')
+    .sort((left, right) => right.mtimeMs - left.mtimeMs);
+  for (const file of notes) {
+    for (const post of collectXPosts(file.content)) {
+      const listed = posts.get(post.url);
+      if (!listed) {
+        posts.set(post.url, {
+          ...post,
+          path: file.path,
+          modified: file.mtimeMs
+        });
+      } else if (listed.label === `${listed.handle} on X`) {
+        listed.label = post.label;
+      }
+    }
+  }
+  return { posts: [...posts.values()] };
 }
 
 function buildWorkspaceGraph(corpus, references = []) {
