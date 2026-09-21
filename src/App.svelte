@@ -3620,10 +3620,14 @@
       retryTimer = null;
       await saveNow();
       if (
-        selectedPath &&
-        sessionStorage.getItem(storageKey(selectedRoot, selectedPath))
+        !selectedPath ||
+        !sessionStorage.getItem(storageKey(selectedRoot, selectedPath))
       )
-        queueRetry();
+        return;
+      // A buffered copy the server already matches leaves saveNow nothing to
+      // send, so it would never clear the copy or the Offline status itself.
+      if (hasUnsavedChanges()) queueRetry();
+      else clearBufferedContent(selectedRoot, selectedPath);
     }, 2000);
   }
 
