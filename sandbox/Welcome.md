@@ -22,7 +22,7 @@ WORKSPACE_ROOT=/absolute/path/to/notes
 - [[Links and the graph]]: wiki links, embeds, and linked mentions
 - [[Tasks]]: due dates, priorities, and the Tasks view
 - [[Citations]]: citing papers from `references.bib`
-- [[Daily notes]]: the Calendar and today's note
+- [[Daily notes]]: today's note and stepping between days
 - [[Workspace settings]]: the `.webmd/` folder
 
 The project note [[Garden planner]] ties these together, and the daily notes

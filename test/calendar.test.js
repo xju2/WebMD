@@ -1,33 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  calendarDays,
   dailyNoteContent,
   dailyNoteDate,
   dailyNoteDateFromPath,
   defaultDailyNoteTemplatePath,
   defaultReferencePath,
-  shiftMonth,
   stepDailyNote,
   templateNeedsQuote
 } from '../src/calendar.js';
-
-test('builds a Sunday-first six-week calendar', () => {
-  const days = calendarDays(new Date(2026, 6, 1));
-
-  assert.equal(days.length, 42);
-  assert.equal(days[0].date.getDay(), 0);
-  assert.equal(days[0].date.toISOString().slice(0, 10), '2026-06-28');
-  assert.equal(days[3].date.toISOString().slice(0, 10), '2026-07-01');
-  assert.equal(days[3].currentMonth, true);
-  assert.equal(days[34].date.toISOString().slice(0, 10), '2026-08-01');
-  assert.equal(
-    shiftMonth(new Date(2026, 0, 1), -1)
-      .toISOString()
-      .slice(0, 10),
-    '2025-12-01'
-  );
-});
 
 test('indexes the neighbouring daily note', () => {
   assert.equal(stepDailyNote(4, 2, -1), 1);

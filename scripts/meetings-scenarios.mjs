@@ -19,7 +19,6 @@ const PLACEHOLDER_TOKEN = 'fixture-placeholder-token';
 const DESTINATIONS = [
   'Open dashboard',
   'Open today’s note',
-  'Open daily notes calendar',
   'Open tasks',
   'Open arXiv news',
   'Open meetings'
@@ -199,7 +198,6 @@ try {
   for (const label of [
     'Open meetings',
     'Open tasks',
-    'Open daily notes calendar',
     'Open arXiv news',
     'Open meetings'
   ]) {

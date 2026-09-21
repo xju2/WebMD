@@ -10,8 +10,7 @@ daily-note folder: `/daily` in this sandbox.
 
 - Open today's note from the rail, or with `Cmd/Ctrl+Shift+D`. WebMD creates
   it from `daily/template.md` if it does not exist yet.
-- The Calendar in the rail shows which days have a note. Click a day to open
-  or create it.
+- The arrows in a daily note's toolbar step to the previous or next daily note.
 - `/today`, `/yesterday`, and `/tomorrow` insert a link to that day's note.
 
 The template can use `{{date}}`, `{{title}}`, `{{weekday}}`, and `{{quote}}`.

@@ -263,10 +263,7 @@ try {
   );
   check('News: Later day returns to the latest listing', true);
 
-  for (const [label, view] of [
-    ['Open tasks', 'Tasks'],
-    ['Open daily notes calendar', 'Daily Notes']
-  ]) {
+  for (const [label, view] of [['Open tasks', 'Tasks']]) {
     await page.click(`.global-action[aria-label="${label}"]`);
     await sleep(300);
     s = await state(page);

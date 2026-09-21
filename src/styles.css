@@ -201,7 +201,7 @@ body.resizing-panels {
 }
 
 /* A touch darker and firmer than the shared icon stroke, so the rail's thin
-   glyphs (calendar, tasks, AI) hold up against its pale ground. */
+   glyphs (tasks, AI) hold up against its pale ground. */
 .global-action .icon {
   width: 20px;
   height: 20px;
@@ -1638,13 +1638,9 @@ body.resizing-panels .resize-handle::after {
 .task-section-edit button,
 .news-section button,
 .news-days button,
-.calendar-toolbar button,
 .graph-controls button,
 .inline-edit-actions button,
-.ask footer button,
-.calendar-detail footer button,
-.calendar-detail-actions button,
-.calendar-detail-actions label {
+.ask footer button {
   display: inline-flex;
   height: var(--control-height);
   align-items: center;
@@ -1674,13 +1670,9 @@ body.resizing-panels .resize-handle::after {
 .task-section-edit button:hover:not(:disabled),
 .news-section button:hover:not(:disabled),
 .news-days button:hover:not(:disabled),
-.calendar-toolbar button:hover:not(:disabled),
 .graph-controls button:hover:not(:disabled),
 .inline-edit-actions button:hover:not(:disabled),
-.ask footer button:hover:not(:disabled),
-.calendar-detail footer button:hover:not(:disabled),
-.calendar-detail-actions button:hover:not(:disabled),
-.calendar-detail-actions label:hover {
+.ask footer button:hover:not(:disabled) {
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
@@ -2964,166 +2956,10 @@ input[type='radio'] {
   text-decoration: underline;
 }
 
-.calendar-pane {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  background: var(--surface-muted);
-}
-
-.calendar-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.calendar-month-nav,
-.calendar-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.calendar-month-nav h2 {
-  min-width: 180px;
-  margin: 0;
-  color: var(--ink);
-  font-size: 1.08rem;
-  text-align: center;
-}
-
-.calendar-month-nav button {
-  width: var(--control-height);
-  padding: 0;
-  color: var(--ink-muted);
-}
-
-.calendar-grid {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  min-height: 0;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: auto repeat(6, minmax(0, 1fr));
-  gap: 6px;
-  padding: 16px;
-}
-
-.calendar-weekday {
-  padding: 3px 8px;
-  color: var(--ink-muted);
-  font-size: 0.76rem;
-  font-weight: 750;
-  text-align: right;
-  text-transform: uppercase;
-}
-
 /* The cell holds two targets — the day, and its due-task badge — so neither is
    nested inside the other's button. */
-.calendar-cell {
-  position: relative;
-  display: grid;
-  min-width: 0;
-  min-height: 0;
-}
-
-.calendar-day {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-end;
-  min-width: 0;
-  min-height: 0;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-  text-align: right;
-  transition:
-    border-color 120ms,
-    background 120ms;
-}
-
-.calendar-day:hover,
-.calendar-day:focus-visible {
-  border-color: var(--accent);
-  background: var(--surface-hover);
-  outline: none;
-}
-
-.calendar-day.outside-month {
-  color: var(--ink-disabled);
-}
-
-.calendar-day.today {
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
 /* Meetings from Google Calendar, under the date. Only the links take clicks;
    the rest of the cell still opens the day's note. */
-.calendar-events {
-  position: absolute;
-  inset: 32px 7px 20px;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  color: var(--ink-muted);
-  font-size: 0.72rem;
-  line-height: 1.35;
-  list-style: none;
-  pointer-events: none;
-}
-
-.calendar-events li {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar-events li.all-day {
-  color: var(--ink);
-  font-weight: 650;
-}
-
-.calendar-events button {
-  max-width: 100%;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  pointer-events: auto;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar-events button:hover,
-.calendar-events button:focus-visible {
-  color: var(--accent);
-  outline: none;
-  text-decoration: underline;
-}
-
-.calendar-events.outside-month {
-  opacity: 0.6;
-}
-
 .graph-pane {
   position: absolute;
   inset: 0;
@@ -4618,72 +4454,6 @@ input[type='radio'] {
   font-size: 0.86rem;
 }
 
-/* The meeting dialog borrows the Markdown help's frame; below is its list. */
-.calendar-detail ul {
-  margin: 0;
-  padding: 8px 0;
-  list-style: none;
-}
-
-.calendar-detail summary {
-  display: flex;
-  gap: 12px;
-  padding: 8px 16px;
-  cursor: pointer;
-  color: var(--ink);
-}
-
-.calendar-detail summary:hover {
-  background: var(--surface-hover);
-}
-
-.calendar-detail summary span {
-  flex: 0 0 auto;
-  min-width: 9em;
-  color: var(--ink-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.calendar-detail dl {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 4px 16px 14px 32px;
-}
-
-.calendar-detail dt {
-  color: var(--ink-muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.calendar-detail dd {
-  display: block;
-  margin: 2px 0 0;
-  color: var(--ink);
-  overflow-wrap: anywhere;
-}
-
-.calendar-detail-description {
-  max-height: 16em;
-  overflow: auto;
-  white-space: pre-wrap;
-}
-
-.calendar-detail-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 16px 14px 32px;
-}
-
-.calendar-detail footer {
-  display: flex;
-  justify-content: flex-end;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-}
-
 .media-pane {
   height: 100%;
   min-height: 0;
@@ -5078,30 +4848,6 @@ input[type='radio'] {
 
   .home-grid {
     grid-template-columns: 1fr;
-  }
-
-  .calendar-toolbar {
-    align-items: start;
-    flex-direction: column;
-  }
-
-  .calendar-controls {
-    width: 100%;
-    flex-wrap: wrap;
-  }
-
-  .calendar-grid {
-    gap: 3px;
-    padding: 10px;
-  }
-
-  .calendar-day {
-    padding: 6px;
-  }
-
-  .calendar-events {
-    inset: 26px 4px 14px;
-    font-size: 0.66rem;
   }
 
   .graph-toolbar {

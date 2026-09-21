@@ -9,18 +9,12 @@
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
   import {
-    calendarDays as buildCalendarDays,
     dailyNoteContent as buildDailyNoteContent,
     dailyNoteDate,
     dailyNoteDateFromPath,
     dailyNotePath as buildDailyNotePath,
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
-    eventsByDay,
-    eventTimeRange,
-    linkParts,
-    meetingNoteSection,
-    shiftMonth,
     stepDailyNote,
     templateNeedsQuote
   } from './calendar.js';
@@ -154,11 +148,11 @@
   const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
-  // 'tasks', 'calendar', 'news', and 'meetings' are workspace-wide views rather
+  // 'tasks', 'news', and 'meetings' are workspace-wide views rather
   // than ways of looking at the open note, so none is remembered as a file's
   // view mode. They are still navigation destinations, so back and forward can
   // return to them.
-  const WORKSPACE_VIEWS = new Set(['tasks', 'calendar', 'news', 'meetings']);
+  const WORKSPACE_VIEWS = new Set(['tasks', 'news', 'meetings']);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   // Where a day's work lands in a project note. Fixed rather than configurable:
@@ -168,7 +162,6 @@
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
-  const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   function renderMath(source, displayMode = false) {
     return katex.renderToString(source, { throwOnError: false, displayMode });
@@ -365,11 +358,6 @@
   let imageAssetFolder = DEFAULT_IMAGE_ASSET_FOLDER;
   let settingsWarning = '';
   let meetingTimeZone = '';
-  let calendarMonth = new Date(
-    new Date().getFullYear(),
-    new Date().getMonth(),
-    1
-  );
   let expandedDirs = new Set();
   let loadedTreeOnce = false;
   let treeLoaded = false;
@@ -430,21 +418,17 @@
   $: dailyNoteTemplateMissing =
     activeDailyNoteTemplatePath &&
     !markdownFiles.some((file) => file.path === activeDailyNoteTemplatePath);
-  $: calendarDays = buildCalendarDays(calendarMonth);
-  // Google Calendar events for the month on screen, when a feed is configured.
-  let calendarEvents = [];
-  let calendarEventsError = '';
-  let calendarEventsRequest = 0;
-  // The day whose events the detail dialog lists: { day, events, open }.
-  let calendarDetail = null;
-  let calendarDetailClose = null;
-  $: if (viewMode === 'calendar') loadCalendarEvents(calendarDays);
-  $: calendarEventsOnDay = eventsByDay(calendarEvents);
-  $: calendarMonthName = calendarMonth.toLocaleDateString([], {
-    month: 'long',
-    year: 'numeric'
-  });
-  $: dailyNotePaths = new Set(markdownFiles.map((file) => file.path));
+  // Said when a daily note is created, the one moment these settings matter.
+  $: dailyNoteWarning = [
+    dailyNoteFolderMissing &&
+      `Using / because ${dailyNoteFolder}, set in .webmd/settings.json, is not in this workspace.`,
+    dailyNoteTemplateMissing &&
+      dailyNoteTemplatePath &&
+      `New daily notes start empty because ${dailyNoteTemplatePath}, set in .webmd/settings.json, does not exist.`,
+    settingsWarning
+  ]
+    .filter(Boolean)
+    .join(' ');
   // Only notes that already exist in the daily note folder, oldest to newest.
   $: dailyNoteEntries = markdownFiles
     .map((file) => ({
@@ -607,7 +591,6 @@
   // The views that take over the whole frame instead of showing the open file.
   $: workspacePaneOpen =
     viewMode === 'graph' ||
-    viewMode === 'calendar' ||
     viewMode === 'tasks' ||
     viewMode === 'news' ||
     viewMode === 'meetings';
@@ -615,15 +598,13 @@
   // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
   $: documentControls = !WORKSPACE_VIEWS.has(viewMode);
   $: toolbarTitle =
-    viewMode === 'calendar'
-      ? 'Daily Notes'
-      : viewMode === 'news'
-        ? 'arXiv News'
-        : viewMode === 'meetings'
-          ? 'Meetings'
-          : viewMode === 'tasks'
-            ? 'Tasks'
-            : selectedPath || 'Workspace Home';
+    viewMode === 'news'
+      ? 'arXiv News'
+      : viewMode === 'meetings'
+        ? 'Meetings'
+        : viewMode === 'tasks'
+          ? 'Tasks'
+          : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -633,7 +614,7 @@
     ? toolbarTitle.slice(toolbarFolder.length)
     : toolbarTitle;
   // The note chat may send: a Markdown note on screen. One left open behind
-  // Tasks, Calendar, or News is not on screen, so it stays out of the request
+  // Tasks, Meetings, or News is not on screen, so it stays out of the request
   // instead of travelling with it unseen.
   $: aiNotePath = selectedIsMarkdown && documentControls ? selectedPath : '';
   // Filing writes into notes the reader is not looking at, so it is offered
@@ -1646,6 +1627,7 @@
         showFile(root, path, nextContent, nextContent, 0);
         rememberEditedFile(path, root);
         status = '[Saved]';
+        error = dailyNoteWarning;
         rememberNavigationEntry(previousEntry, fileNavigationEntry(path));
         updateNavigationState(path);
         await loadTree(root);
@@ -1959,22 +1941,6 @@
       // fine without a quote, so this stays silent.
       dailyQuote = '';
     }
-  }
-
-  async function showCalendar({ remember = true } = {}) {
-    if (selectedPath && hasUnsavedChanges()) await saveNow();
-    if (remember) rememberViewNavigation('calendar');
-    viewMode = 'calendar';
-    todayText = dailyNoteDate(new Date());
-    calendarMonth = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1
-    );
-    selectedText = '';
-    selectedRange = null;
-    clearInlineEdit();
-    error = '';
   }
 
   async function showTasks({ remember = true } = {}) {
@@ -2393,176 +2359,6 @@
     setTimeout(() => target.classList.remove('line-flash'), 1200);
   }
 
-  // A copy up to a week old shows at once (the answer says `stale`); the
-  // fresh one the server fetched behind it is then asked for quietly.
-  async function loadCalendarEvents(days, { fresh = false } = {}) {
-    const request = ++calendarEventsRequest;
-    const from = dailyNoteDate(days[0].date);
-    const to = dailyNoteDate(days[days.length - 1].date);
-    try {
-      const response = await fetch(
-        `/api/calendar/events?from=${from}&to=${to}${fresh ? '&fresh=1' : ''}`
-      );
-      const body = await response.json();
-      if (request !== calendarEventsRequest) return;
-      if (!response.ok) throw new Error(body.error || 'Calendar failed.');
-      calendarEvents = body.events;
-      calendarEventsError = body.errors.join(' ');
-      if (body.stale && !fresh) loadCalendarEvents(days, { fresh: true });
-    } catch (err) {
-      // The quiet follow-up failing leaves the stale copy on screen.
-      if (request !== calendarEventsRequest || fresh) return;
-      calendarEvents = [];
-      calendarEventsError = err.message;
-    }
-  }
-
-  async function openCalendarDetail(day, events, open = -1) {
-    calendarDetail = { day, events, open };
-    await tick();
-    calendarDetailClose?.focus();
-  }
-
-  /**
-   * Opens the day's note (creating it as usual) and leaves the cursor under a
-   * heading for the meeting, adding the section only the first time.
-   */
-  async function addMeetingToDayNote(day, event) {
-    calendarDetail = null;
-    const path = todayNotePath(day.date);
-    await openDailyNote(day.date);
-    if (selectedPath !== path || !editorView) return null;
-    if (viewMode === 'preview') setViewMode('edit');
-
-    const { heading, text } = meetingNoteSection(
-      event,
-      calendarEventLabel(event)
-    );
-    const doc = editorView.state.doc.toString();
-    const found = doc.split('\n').indexOf(heading);
-    if (found >= 0) {
-      const line = editorView.state.doc.line(found + 1);
-      editorView.dispatch({
-        selection: { anchor: line.to },
-        scrollIntoView: true
-      });
-    } else {
-      const gap = !doc
-        ? ''
-        : doc.endsWith('\n\n')
-          ? ''
-          : doc.endsWith('\n')
-            ? '\n'
-            : '\n\n';
-      const insert = `${gap}${text}`;
-      editorView.dispatch({
-        changes: { from: doc.length, insert },
-        selection: { anchor: doc.length + insert.length },
-        scrollIntoView: true
-      });
-    }
-    editorView.focus();
-    return { path, heading };
-  }
-
-  /**
-   * The meeting's section in the day's note, saved, so the server can write
-   * a transcript link or summary into it; then `body` is posted to `url`.
-   */
-  async function postForCalendarMeeting(day, event, url, body = {}) {
-    const root = selectedRoot;
-    const section = await addMeetingToDayNote(day, event);
-    if (!section) return null;
-    if (hasUnsavedChanges()) await saveNow();
-    return requestJson(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        root,
-        ...section,
-        title: event.title,
-        date: dailyNoteDate(day.date),
-        ...body
-      })
-    });
-  }
-
-  async function addCalendarTranscript(day, event, input) {
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const saved = await postForCalendarMeeting(
-        day,
-        event,
-        '/api/calendar/transcript',
-        { name: file.name, text }
-      );
-      if (saved) status = `[Transcript saved: ${saved.turns} turns]`;
-    } catch (err) {
-      error = err.message;
-    }
-  }
-
-  async function summarizeCalendarMeeting(day, event) {
-    try {
-      const pending = postForCalendarMeeting(
-        day,
-        event,
-        '/api/calendar/summary'
-      );
-      status = '[Summarizing meeting…]';
-      const done = await pending;
-      if (done) {
-        status = `[Summary written: ${done.actions} action item${done.actions === 1 ? '' : 's'}]`;
-      }
-    } catch (err) {
-      status = '[Saved]';
-      error = err.message;
-    }
-  }
-
-  function closeCalendarDetailOnEscape(event) {
-    if (event.key !== 'Escape') return;
-    event.preventDefault();
-    calendarDetail = null;
-  }
-
-  function calendarEventLabel(event) {
-    if (event.allDay) return event.title;
-    const time = new Date(event.startsAt).toLocaleTimeString([], {
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-    return `${time} ${event.title}`;
-  }
-
-  function moveCalendarMonth(amount) {
-    calendarMonth = shiftMonth(calendarMonth, amount);
-  }
-
-  function showCurrentMonth() {
-    calendarMonth = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1
-    );
-  }
-
-  function calendarDayPath(day) {
-    return todayNotePath(day.date);
-  }
-
-  function calendarDayLabel(day) {
-    return new Intl.DateTimeFormat([], {
-      weekday: 'long',
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric'
-    }).format(day.date);
-  }
-
   function showFile(
     root,
     path,
@@ -2571,8 +2367,6 @@
     version = 0,
     { collaborate = true } = {}
   ) {
-    if (viewMode === 'calendar')
-      setViewMode(readWorkspaceViewMode(root), { remember: false });
     if (!nextContent.trim() && viewMode === 'preview')
       setViewMode('edit', { remember: false });
     selectedFileKind = 'markdown';
@@ -3547,10 +3341,6 @@
       return;
     }
     await loadOverview(root);
-    if (viewMode === 'calendar') {
-      status = '[Saved]';
-      return;
-    }
     if (viewMode === 'graph') {
       await loadGraph();
       status = '[Saved]';
@@ -4574,11 +4364,9 @@
       navigationBackStack = [...navigationBackStack, from];
     }
 
-    // Tasks and Calendar are places too, so going back to one reopens the view
-    // rather than the note that happened to be selected underneath it.
+    // Tasks, News, and Meetings are places too, so going back to one reopens
+    // the view rather than the note that happened to be selected underneath it.
     if (target.view === 'tasks') await showTasks({ remember: false });
-    else if (target.view === 'calendar')
-      await showCalendar({ remember: false });
     else if (target.view === 'news') await showNews({ remember: false });
     else if (target.view === 'meetings')
       await showMeetings({ remember: false });
@@ -5825,17 +5613,6 @@
       {@render icon('folder')}
     </button>
     <button
-      aria-label="Open daily notes calendar"
-      class:active={viewMode === 'calendar'}
-      class="global-action calendar-launcher"
-      data-tooltip="Daily notes calendar"
-      disabled={!workspaceRoots.length}
-      type="button"
-      on:click={() => showCalendar()}
-    >
-      {@render icon('calendar')}
-    </button>
-    <button
       aria-label="Open tasks"
       class:active={viewMode === 'tasks'}
       class="global-action tasks-launcher"
@@ -6388,143 +6165,6 @@
             <span>Up/Down to move</span>
             <span>Enter to open</span>
             <span>Esc to close</span>
-          </footer>
-        </dialog>
-      </div>
-    {/if}
-
-    {#if calendarDetail}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="markdown-help-layer" on:keydown={closeCalendarDetailOnEscape}>
-        <button
-          aria-label="Close meeting details"
-          class="markdown-help-backdrop"
-          tabindex="-1"
-          type="button"
-          on:click={() => (calendarDetail = null)}
-        ></button>
-        <dialog
-          aria-label="Meetings on {calendarDayLabel(calendarDetail.day)}"
-          class="markdown-help calendar-detail"
-          open
-        >
-          <header>
-            <h2>{calendarDayLabel(calendarDetail.day)}</h2>
-            <button
-              bind:this={calendarDetailClose}
-              aria-label="Close meeting details"
-              title="Close"
-              type="button"
-              on:click={() => (calendarDetail = null)}
-            >
-              {@render icon('close')}
-            </button>
-          </header>
-          <ul>
-            {#each calendarDetail.events as event, index}
-              <li>
-                <details open={index === calendarDetail.open}>
-                  <summary>
-                    <span>{eventTimeRange(event)}</span>
-                    <strong>{event.title}</strong>
-                  </summary>
-                  <dl>
-                    {#if event.url}
-                      <div>
-                        <dt>Join</dt>
-                        <dd>
-                          <a href={event.url} rel="noreferrer" target="_blank"
-                            >{event.url}</a
-                          >
-                        </dd>
-                      </div>
-                    {/if}
-                    {#if event.location}
-                      <div>
-                        <dt>Where</dt>
-                        <dd>
-                          {#each linkParts(event.location) as part}{#if part.url}<a
-                                href={part.url}
-                                rel="noreferrer"
-                                target="_blank">{part.text}</a
-                              >{:else}{part.text}{/if}{/each}
-                        </dd>
-                      </div>
-                    {/if}
-                    {#if event.organizer}
-                      <div>
-                        <dt>Organizer</dt>
-                        <dd>{event.organizer}</dd>
-                      </div>
-                    {/if}
-                    {#if event.attendees?.length}
-                      <div>
-                        <dt>Guests ({event.attendees.length})</dt>
-                        <dd>{event.attendees.join(', ')}</dd>
-                      </div>
-                    {/if}
-                    {#if event.description}
-                      <div>
-                        <dt>Description</dt>
-                        <dd class="calendar-detail-description">
-                          {#each linkParts(event.description) as part}{#if part.url}<a
-                                href={part.url}
-                                rel="noreferrer"
-                                target="_blank">{part.text}</a
-                              >{:else}{part.text}{/if}{/each}
-                        </dd>
-                      </div>
-                    {/if}
-                  </dl>
-                  <div class="calendar-detail-actions">
-                    <button
-                      type="button"
-                      on:click={() =>
-                        addMeetingToDayNote(calendarDetail.day, event)}
-                    >
-                      Add to the day's note
-                    </button>
-                    <!-- A label, so the native file picker opens without script. -->
-                    <label
-                      title="Zoom's audio transcript (.vtt), or .srt / .txt captions"
-                    >
-                      Add transcript…
-                      <input
-                        accept=".vtt,.srt,.txt,text/vtt,text/plain"
-                        hidden
-                        type="file"
-                        on:change={(changed) =>
-                          addCalendarTranscript(
-                            calendarDetail.day,
-                            event,
-                            changed.currentTarget
-                          )}
-                      />
-                    </label>
-                    <button
-                      title="AI minutes and action items from the transcript"
-                      type="button"
-                      on:click={() =>
-                        summarizeCalendarMeeting(calendarDetail.day, event)}
-                    >
-                      Summarize
-                    </button>
-                  </div>
-                </details>
-              </li>
-            {/each}
-          </ul>
-          <footer>
-            <button
-              type="button"
-              on:click={() => {
-                const { day } = calendarDetail;
-                calendarDetail = null;
-                openDailyNote(day.date);
-              }}
-            >
-              Open the day's note
-            </button>
           </footer>
         </dialog>
       </div>
@@ -7221,105 +6861,6 @@
             root={selectedRoot}
             timeZone={meetingTimeZone || undefined}
           />
-        {/if}
-        {#if viewMode === 'calendar'}
-          <section class="calendar-pane" aria-label="Daily notes calendar">
-            <header class="calendar-toolbar">
-              <div class="calendar-month-nav">
-                <button
-                  aria-label="Previous month"
-                  type="button"
-                  on:click={() => moveCalendarMonth(-1)}
-                >
-                  {@render icon('chevronLeft')}
-                </button>
-                <h2>{calendarMonthName}</h2>
-                <button
-                  aria-label="Next month"
-                  type="button"
-                  on:click={() => moveCalendarMonth(1)}
-                >
-                  {@render icon('chevronRight')}
-                </button>
-              </div>
-              <div class="calendar-controls">
-                <button type="button" on:click={showCurrentMonth}>Today</button>
-              </div>
-              {#if dailyNoteFolderMissing}
-                <p class="calendar-folder-warning">
-                  Using / because {dailyNoteFolder}, set in
-                  .webmd/settings.json, is not in this workspace.
-                </p>
-              {/if}
-              {#if dailyNoteTemplateMissing && dailyNoteTemplatePath}
-                <p class="calendar-folder-warning">
-                  New daily notes start empty because {dailyNoteTemplatePath},
-                  set in .webmd/settings.json, does not exist.
-                </p>
-              {/if}
-              {#if settingsWarning}
-                <p class="calendar-folder-warning">{settingsWarning}</p>
-              {/if}
-              {#if calendarEventsError}
-                <p class="calendar-folder-warning">{calendarEventsError}</p>
-              {/if}
-            </header>
-            <div class="calendar-grid" aria-label={calendarMonthName}>
-              {#each WEEK_DAYS as weekday}
-                <span class="calendar-weekday">{weekday}</span>
-              {/each}
-              {#each calendarDays as day}
-                {@const path = calendarDayPath(day)}
-                {@const hasNote = dailyNotePaths.has(path)}
-                {@const dateText = dailyNoteDate(day.date)}
-                {@const dayEvents = calendarEventsOnDay.get(dateText) ?? []}
-                <div class="calendar-cell">
-                  <button
-                    aria-label={`${hasNote ? 'Open' : 'Create'} note for ${calendarDayLabel(day)}`}
-                    class:outside-month={!day.currentMonth}
-                    class:today={day.today}
-                    class:has-note={hasNote}
-                    class="calendar-day"
-                    title={`${hasNote ? 'Open' : 'Create'} ${path}`}
-                    type="button"
-                    on:click={() => openDailyNote(day.date)}
-                  >
-                    <span>{day.date.getDate()}</span>
-                  </button>
-                  {#if dayEvents.length}
-                    <!-- Beside the day button, not in it: an event opens its
-                         details, the rest of the cell still opens the note. -->
-                    <ul
-                      class="calendar-events"
-                      class:outside-month={!day.currentMonth}
-                    >
-                      {#each dayEvents.slice(0, 3) as event, index}
-                        <li class:all-day={event.allDay}>
-                          <button
-                            type="button"
-                            on:click={() =>
-                              openCalendarDetail(day, dayEvents, index)}
-                          >
-                            {calendarEventLabel(event)}
-                          </button>
-                        </li>
-                      {/each}
-                      {#if dayEvents.length > 3}
-                        <li class="calendar-events-more">
-                          <button
-                            type="button"
-                            on:click={() => openCalendarDetail(day, dayEvents)}
-                          >
-                            +{dayEvents.length - 3} more
-                          </button>
-                        </li>
-                      {/if}
-                    </ul>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          </section>
         {/if}
         {#if viewMode === 'graph'}
           <section class="graph-pane" aria-label="Workspace graph">

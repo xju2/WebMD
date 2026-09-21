@@ -123,10 +123,9 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
 - `WEBMD_CACHE_DIR`: where the News listings (a month of them), their AI
-  rankings, the Meetings view's Indico answers, and the Calendar's Google
-  Calendar events are kept across restarts, defaults to `~/.cache/webmd`.
-  Meetings and the Calendar show their last copy at once and refresh it behind
-  the scenes; protected meetings and private calendars are cached there too,
+  rankings, and the Meetings view's Indico answers are kept across restarts,
+  defaults to `~/.cache/webmd`. Meetings shows its last copy at once and
+  refreshes it behind the scenes; protected meetings are cached there too,
   readable only by you. Nothing there is needed; delete it any time.
 
 ## Workspace settings
@@ -150,14 +149,14 @@ Every key is optional:
   created on the first upload. If you leave it out, WebMD uses
   `IMAGE_ASSET_FOLDER` from the environment or `~/.webmd.conf`, and then
   `/assets`.
-- `dailyNoteFolder`: where the Calendar, Tasks, and date links look for daily
+- `dailyNoteFolder`: where today's note, Tasks, and date links look for daily
   notes. If you leave it out, WebMD uses `/raw/dailynotes`, or `/` when the
   workspace has no such folder.
 - `dailyNoteTemplate`: the note a new daily note starts from (see
   [Daily note template](#daily-note-template)). `""` means no template.
 
-WebMD skips a value it cannot use, keeps the rest, and names the problem at
-the top of the Calendar.
+WebMD skips a value it cannot use, keeps the rest, and names the problem when
+it next creates a daily note.
 
 ## Prompt presets
 
@@ -479,35 +478,6 @@ finished tasks as well, and shows them struck through in place.
 The note button in the global bar (or `Cmd/Ctrl+Shift+D`) opens today's note
 from wherever you are, creating it from the template if the day has none. The
 dashboard's **Open today's note** card does the same thing.
-
-### Google Calendar on the Calendar
-
-The Calendar shows your Google Calendar events under each day, and an event's
-link opens its Meet or Zoom room. In Google Calendar open **Settings → your
-calendar → Integrate calendar**, copy **Secret address in iCal format**, and add
-it to `~/.webmd.conf` (several addresses may be separated by spaces):
-
-```sh
-GOOGLE_CALENDAR_ICS=https://calendar.google.com/calendar/ical/.../private-.../basic.ics
-```
-
-Restart WebMD after setting it. The address works like a password, so it stays
-on the server (its cache file is named by a hash of it). Google refreshes the
-feed every few hours and WebMD rereads it every 10 minutes, showing its last
-copy meanwhile, so a new invite can take a while to appear.
-
-Click a meeting on the Calendar for its details. **Add to the day's note**
-puts a `## 10:00 AM Title` section with its guests and Join link in that day's
-note, with the cursor under it; a second click jumps back to it.
-
-For a meeting recorded on Zoom, download the recording page's *Audio
-transcript* (`.vtt`) and choose it with **Add transcript…**. It becomes a note
-of its own in the Meetings note folder (`/meetings` by default), linked from
-the meeting's section as `- Transcript: [[…]]`; choosing another file replaces
-it. **Summarize** then asks the AI provider for the minutes and writes them at
-the end of that section: `### Summary`, any decisions, and `### Action items` in
-task syntax, which the Tasks view lists. A meeting's summary is never replaced;
-delete it to write a new one.
 
 ### Daily note template
 

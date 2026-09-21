@@ -88,7 +88,7 @@ content carries the contrast.
   `:focus-visible` outline; rail tooltips also appear on keyboard focus.
 * **View-aware toolbar.** Document actions (daily-note stepping, Upload,
   Delete, Reference, Edit/Preview, Diff) appear only in document views. The
-  workspace views launched from the rail (Tasks, Calendar, arXiv News) own
+  workspace views launched from the rail (Tasks, arXiv News) own
   their own toolbars and keep only navigation and the overflow menu above.
   Meetings is one of them too. It stays mounted once visited, so its list and
   selection survive a trip to a note.
@@ -195,7 +195,7 @@ The AI context shown in the composer and the context sent come from one object
 (`chatContext` in `src/ai-context.js`), which mirrors the server's
 `chatMessages`: a selection is sent alone; otherwise the open note is sent
 (read from disk, up to 12,000 characters) only while it is visible, so Tasks,
-Calendar, and arXiv News send no note even when one is open underneath. The
+Meetings, and arXiv News send no note even when one is open underneath. The
 underlying note is never labelled as a paper; paper context is deferred.
 
 ---
@@ -265,10 +265,6 @@ rather than workspace content.
 The first version contains Today, Continue, Recently modified, and Workspace
 changes. Workspace-wide AI summaries, charts, and activity metrics remain
 deferred until their underlying data exists.
-
-Daily notes have a separate Calendar view launched from the global rail. It
-uses the workspace's daily-note folder (`GET /api/settings`) and browser-local dates, marks existing
-date-named Markdown files, and lets a date either open its note or create it.
 
 `GET /api/workspace/graph` builds a server-side index of Markdown notes and
 resolved wiki links, caches it until the workspace changes, and returns only
