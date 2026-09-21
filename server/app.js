@@ -43,6 +43,7 @@ import {
 import {
   buildInterestProfile,
   buildRankMessages,
+  newsCandidateLimit,
   orderByScore,
   parseRankedPicks,
   profileIsEmpty,
@@ -703,7 +704,8 @@ export async function createApp({
     // Updates are hidden by default and were judged when they first came out.
     const candidates = rankCandidates(
       news.papers.filter((paper) => !/^replace/.test(paper.announceType)),
-      scores
+      scores,
+      newsCandidateLimit(env)
     );
     if (!candidates.length)
       return { ...base, order: lexical, method: 'similarity' };

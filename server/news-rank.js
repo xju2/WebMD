@@ -7,7 +7,8 @@ const MAX_INSTRUCTIONS_CHARS = 4000;
 
 // Enough of each paper for the model to tell a method paper from a physics
 // result, few enough that a day of hep-ex through cs.AI stays one sane call.
-const MAX_CANDIDATES = 120;
+// `ARXIV_NEWS_MAX_CANDIDATES` overrides it; each extra paper is ~150 tokens.
+export const MAX_CANDIDATES = 120;
 const ABSTRACT_CHARS = 360;
 export const MAX_PICKS = 20;
 export const TOP_PICKS = 5;
@@ -157,6 +158,12 @@ export function orderByScore(papers, scores) {
     .map((paper, index) => ({ paper, index, score: scores.get(paper.id) || 0 }))
     .sort((left, right) => right.score - left.score || left.index - right.index)
     .map((item) => item.paper);
+}
+
+/** How many papers the model reads: `ARXIV_NEWS_MAX_CANDIDATES`, or 120. */
+export function newsCandidateLimit(env = process.env) {
+  const limit = Number(env?.ARXIV_NEWS_MAX_CANDIDATES);
+  return Number.isInteger(limit) && limit > 0 ? limit : MAX_CANDIDATES;
 }
 
 export function rankCandidates(papers, scores, limit = MAX_CANDIDATES) {

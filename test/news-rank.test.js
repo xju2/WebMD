@@ -9,6 +9,7 @@ import { DEFAULT_NEWS_CATEGORIES, resetNewsCache } from '../server/news.js';
 import {
   buildInterestProfile,
   buildRankMessages,
+  newsCandidateLimit,
   orderByScore,
   parseRankedPicks,
   profileIsEmpty,
@@ -375,4 +376,11 @@ test('serves and ranks the listings of earlier days', async () => {
     await rank();
     assert.equal(prompts.length, 2, 'both rankings are saved on disk');
   });
+});
+
+test('the candidate limit reads a positive integer from the environment', () => {
+  assert.equal(newsCandidateLimit({}), 120);
+  assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: '300' }), 300);
+  assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: '0' }), 120);
+  assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: 'lots' }), 120);
 });

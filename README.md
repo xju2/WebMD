@@ -122,6 +122,10 @@ on the phone; do not use Tailscale Funnel, which would make WebMD public.
   News view, defaults to `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: optional ranking instructions for the News view, used
   when the workspace has no `.webmd/news.md`.
+- `ARXIV_NEWS_MAX_CANDIDATES`: optional number of papers the News view's AI
+  ranking reads each day, the best matches by lexical score, defaults to `120`.
+  More papers mean a longer, costlier model call. Press **Re-rank** to apply a
+  change to a day already ranked.
 - `WEBMD_CACHE_DIR`: where the News listings (a month of them), their AI
   rankings, and the Meetings view's Indico answers are kept across restarts,
   defaults to `~/.cache/webmd`. Meetings shows its last copy at once and
@@ -587,7 +591,8 @@ The model picks up to 20 papers, each with a score from 1 to 10, the research
 area it connects to, and a one-sentence reason. The five strongest are listed
 first as **Top picks**, then **Also relevant**. Everything else follows,
 ordered by how much of your profile's rarer vocabulary each paper uses. That
-same lexical score chooses the 120 papers the model reads, which keeps a day
+same lexical score chooses the 120 papers the model reads (see
+`ARXIV_NEWS_MAX_CANDIDATES`), which keeps a day
 of listings to one call. Replacements — new versions of older papers — are not
 listed at all.
 
