@@ -408,3 +408,24 @@ test('a paper matches the profile through a different word form', () => {
   });
   assert.ok(scores.get('a') > scores.get('b'));
 });
+
+test('a profile word in the title outweighs the same word in the abstract', () => {
+  const papers = [
+    {
+      id: 'mention',
+      title: 'Language models',
+      abstract: 'Tested on calorimeter data.'
+    },
+    {
+      id: 'about',
+      title: 'Calorimeter simulation',
+      abstract: 'Tested on language data.'
+    }
+  ];
+  const scores = scorePapers(papers, {
+    interests: 'calorimeter',
+    reading: [],
+    recent: []
+  });
+  assert.ok(scores.get('about') > scores.get('mention'));
+});

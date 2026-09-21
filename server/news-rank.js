@@ -12,6 +12,7 @@ export const MAX_CANDIDATES = 120;
 const ABSTRACT_CHARS = 360;
 export const MAX_PICKS = 20;
 export const TOP_PICKS = 5;
+const TITLE_WEIGHT = 2;
 const MAX_CONNECTION_CHARS = 48;
 const MAX_READING = 40;
 const MAX_RECENT_NOTES = 8;
@@ -114,6 +115,7 @@ export function profileIsEmpty(profile) {
  * uses, weighted by how rare each word is in today's listing, so "learning" or
  * "detector" count for little and "calorimeter" or "diffusion" for a lot. It
  * orders the tail and chooses what the model reads; the model does the judging.
+ * A word in the title counts double: the title says what the paper is about.
  */
 export function scorePapers(papers = [], profile) {
   const profileWeights = new Map();
@@ -128,7 +130,8 @@ export function scorePapers(papers = [], profile) {
 
   const documents = papers.map((paper) => ({
     id: paper.id,
-    terms: new Set(terms(`${paper.title} ${paper.title} ${paper.abstract}`))
+    title: new Set(terms(paper.title)),
+    terms: new Set(terms(`${paper.title} ${paper.abstract}`))
   }));
   const frequencies = new Map();
   for (const { terms: paperTerms } of documents) {
@@ -139,13 +142,15 @@ export function scorePapers(papers = [], profile) {
 
   const total = documents.length || 1;
   const scores = new Map();
-  for (const { id, terms: paperTerms } of documents) {
+  for (const { id, title, terms: paperTerms } of documents) {
     let score = 0;
     for (const term of paperTerms) {
       const weight = profileWeights.get(term);
       if (!weight) continue;
       score +=
-        Math.log(1 + weight) * Math.log(1 + total / frequencies.get(term));
+        (title.has(term) ? TITLE_WEIGHT : 1) *
+        Math.log(1 + weight) *
+        Math.log(1 + total / frequencies.get(term));
     }
     scores.set(id, paperTerms.size ? score / Math.sqrt(paperTerms.size) : 0);
   }
