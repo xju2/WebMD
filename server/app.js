@@ -41,6 +41,7 @@ import {
   writeCacheFile
 } from './news.js';
 import {
+  applyNewsVote,
   buildInterestProfile,
   buildRankMessages,
   newsCandidateLimit,
@@ -49,7 +50,9 @@ import {
   profileIsEmpty,
   rankCandidates,
   readNewsInstructions,
-  scorePapers
+  readNewsVotes,
+  scorePapers,
+  writeNewsVotes
 } from './news-rank.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
@@ -657,6 +660,57 @@ export async function createApp({
     })
   );
 
+  // Votes change the next ranking, not the page you are reading: like clipping,
+  // they take effect on the next day's listing or when you press Re-rank.
+  const voteWrites = new Map();
+
+  app.get(
+    '/api/news/votes',
+    asyncHandler(async (req, res) => {
+      const votes = await readNewsVotes(workspaces.get(req.query.root));
+      res.json({ votes: voteMap(votes) });
+    })
+  );
+
+  app.post(
+    '/api/news/vote',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const paper = req.body?.paper ?? {};
+      const vote = Number(req.body?.vote);
+      const id = String(paper.id ?? '').trim();
+      if (!isArxivId(id)) {
+        throw new WorkspaceError(400, `"${id}" is not an arXiv identifier.`);
+      }
+      if (![1, -1, 0].includes(vote)) {
+        throw new WorkspaceError(400, 'A vote is 1, -1, or 0.');
+      }
+      // One write at a time per workspace, so two quick votes both land.
+      const write = (voteWrites.get(workspace.root) ?? Promise.resolve()).then(
+        async () => {
+          const votes = applyNewsVote(await readNewsVotes(workspace), {
+            id,
+            vote,
+            date: new Date().toISOString().slice(0, 10),
+            title: String(paper.title ?? ''),
+            abstract: String(paper.abstract ?? '')
+          });
+          await writeNewsVotes(workspace, votes);
+          return votes;
+        }
+      );
+      voteWrites.set(
+        workspace.root,
+        write.catch(() => {})
+      );
+      res.json({ votes: voteMap(await write) });
+    })
+  );
+
+  function voteMap(votes) {
+    return Object.fromEntries(votes.map((entry) => [entry.id, entry.vote]));
+  }
+
   /**
    * Adds one listing's ranking to the workspace's file and drops the days no
    * longer kept. Writes to one file queue up, so two days ranked at once
@@ -686,7 +740,8 @@ export async function createApp({
     const profile = buildInterestProfile({
       files: await workspace.markdownFiles(),
       references: await workspace.references(),
-      interests: instructions
+      interests: instructions,
+      votes: await readNewsVotes(workspace)
     });
     const scores = scorePapers(news.papers, profile);
     const base = { published: news.published, picks: [] };
@@ -701,9 +756,14 @@ export async function createApp({
     }
 
     const lexical = orderByScore(news.papers, scores).map((paper) => paper.id);
-    // Updates are hidden by default and were judged when they first came out.
+    // Updates are hidden by default and were judged when they first came out,
+    // and a paper you already voted down is not a pick whatever the model says.
+    const downvoted = new Set(profile.downvoted.map((paper) => paper.id));
     const candidates = rankCandidates(
-      news.papers.filter((paper) => !/^replace/.test(paper.announceType)),
+      news.papers.filter(
+        (paper) =>
+          !/^replace/.test(paper.announceType) && !downvoted.has(paper.id)
+      ),
       scores,
       newsCandidateLimit(env)
     );

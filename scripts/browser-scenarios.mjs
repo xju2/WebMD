@@ -229,6 +229,17 @@ try {
     chat.reply
   );
   await page.shot('2-news-ai-open');
+  await page.click('.news-paper .news-vote[aria-label="More papers like this"]');
+  await page.waitFor(
+    `document.querySelector('.news-paper .news-vote[aria-pressed="true"]')`
+  );
+  check(
+    'News: an upvote stays pressed and keeps the order',
+    await page.eval(
+      `return document.querySelectorAll('.news-vote[aria-pressed="true"]').length === 1`
+    )
+  );
+  await page.shot('2-news-voted');
 
   const newsDays = () =>
     page.eval(`

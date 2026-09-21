@@ -355,6 +355,44 @@ Deferred:
 - Signing in to Zoom to fetch recordings and transcripts automatically (only
   works for meetings the user hosts).
 
+### 13. News: Learn From Up and Down Votes
+
+Status: Done (Rocchio stage). Review the upgrade path around 2026-10-21, once
+there are a month of votes.
+
+Done:
+- [x] ↑ / ↓ on every News paper, stored in `.webmd/news-votes.json` (id, vote,
+      date, title, abstract; tracked with the notes). Pressing again takes the
+      vote back. The page keeps its order; the next ranking or **Re-rank** uses
+      the votes.
+- [x] Keyword stage: Rocchio relevance feedback in `scorePapers`. The profile
+      moves towards the average upvoted paper (`UPVOTE_WEIGHT` 4) and away from
+      the average downvoted one (`DOWNVOTE_WEIGHT` 2); downvoted words score
+      negative.
+- [x] AI stage: the 20 most recent upvoted and downvoted titles go into the
+      prompt, and a downvoted paper is never offered as a pick.
+
+Upgrade path (do these in order, only when the previous stage falls short):
+1. **Check it works.** `jq '[.votes[].vote] | group_by(.) | map({vote: .[0],
+   n: length})' .webmd/news-votes.json` for the counts. If upvotes keep landing
+   in "Everything else" or outside the AI's shortlist, tune the weights or go
+   on to step 2.
+2. **Logistic regression on TF-IDF, at about 50 votes.** What Scholar Inbox
+   (arXiv:2504.08385) runs for 23k users; arxiv-sanity-lite uses a linear SVM
+   on the same features. Train per workspace on the stored votes: upvotes are
+   positives, downvotes are negatives weighted up (Scholar Inbox uses 5x), and
+   a few thousand random unvoted papers from the kept listings are weak
+   negatives. Class-balanced loss, L2 regularization (C around 0.03), plain
+   gradient descent in JS over sparse vectors; no dependency needed. Keep the
+   Rocchio profile as the fallback under the vote threshold. Its score
+   replaces `scorePapers` for the shortlist and the tail.
+3. **Embeddings, only if word matching is the bottleneck.** Scholar Inbox
+   found TF-IDF slightly better on ranking (88.7 vs 85.8 nDCG) and GTE-Large
+   slightly better on explicit downvotes, so this is the last step, not the
+   next one. Needs an embedding model (local or API) and a vector cache.
+4. **Active learning.** Ask for votes on papers near the classifier's decision
+   boundary, as Scholar Inbox does, if votes come in too slowly.
+
 ## First Implementation Pass
 
 1. [x] Scaffold frontend and backend.

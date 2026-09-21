@@ -66,6 +66,8 @@ export const ICONS = {
     'M10 14h5'
   ],
   check: ['m5 12.5 4.5 4.5L19 7.5'],
+  voteUp: ['M12 19V5', 'm6 11 6-6 6 6'],
+  voteDown: ['M12 5v14', 'm6 13 6 6 6-6'],
   more: [
     'M5.5 12h.01',
     'M12 12h.01',

@@ -306,6 +306,8 @@
   let newsExpanded = new Set();
   let newsNoteClipped = new Set();
   let newsClipping = new Set();
+  // arXiv id -> 1 or -1, as `.webmd/news-votes.json` holds them.
+  let newsVotes = {};
   let newsRanking = null;
   let newsRankStatus = '';
   // The Tasks view opens on the board: four ranked lanes, which is the only one
@@ -1963,7 +1965,11 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
-    await Promise.all([loadNews(), loadNewsClipped(selectedRoot)]);
+    await Promise.all([
+      loadNews(),
+      loadNewsClipped(selectedRoot),
+      loadNewsVotes(selectedRoot)
+    ]);
     if (viewMode === 'news' && newsPapers.length) rankNews();
   }
 
@@ -2105,6 +2111,46 @@
   function refreshVisibleNews() {
     if (document.visibilityState === 'visible' && viewMode === 'news') {
       loadNewsClipped(selectedRoot);
+    }
+  }
+
+  async function loadNewsVotes(root) {
+    try {
+      const { votes } = await requestJson(
+        `/api/news/votes?root=${encodeURIComponent(root)}`
+      );
+      if (root === selectedRoot) newsVotes = votes;
+    } catch {
+      // Votes only feed the next ranking; the page works without them.
+      if (root === selectedRoot) newsVotes = {};
+    }
+  }
+
+  /**
+   * Records an up or down vote, or takes it back when the same button is
+   * pressed again. The page keeps its order; the next ranking uses the vote.
+   */
+  async function votePaper(paper, value) {
+    const root = selectedRoot;
+    const before = newsVotes;
+    const vote = newsVotes[paper.id] === value ? 0 : value;
+    const { [paper.id]: _previous, ...rest } = newsVotes;
+    newsVotes = vote ? { ...rest, [paper.id]: vote } : rest;
+    try {
+      const { votes } = await requestJson('/api/news/vote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          root,
+          vote,
+          paper: { id: paper.id, title: paper.title, abstract: paper.abstract }
+        })
+      });
+      if (root === selectedRoot) newsVotes = votes;
+    } catch (err) {
+      if (root !== selectedRoot) return;
+      newsVotes = before;
+      error = `Could not save your vote on ${paper.id}: ${err.message}`;
     }
   }
 
@@ -5143,23 +5189,37 @@
           >{@render inline(newsSegments(paper.title, { links: false }))}</a
         >
       </h4>
-      <button
-        class="news-clip"
-        class:clipped
-        disabled={clipped || newsClipping.has(paper.id)}
-        title={clipped
-          ? 'Already in today’s note'
-          : 'Add to the Reading section of today’s note'}
-        type="button"
-        on:click={() => clipPaper(paper)}
-      >
-        {@render icon(clipped ? 'check' : 'clip')}
-        {clipped
-          ? 'Clipped'
-          : newsClipping.has(paper.id)
-            ? 'Clipping...'
-            : 'Clip'}
-      </button>
+      <div class="news-actions">
+        {#each [[1, 'voteUp', 'More papers like this'], [-1, 'voteDown', 'Fewer papers like this']] as [value, name, label]}
+          <button
+            aria-label={label}
+            aria-pressed={newsVotes[paper.id] === value}
+            class="news-vote"
+            title={`${label}. Used from the next ranking, or press Re-rank.`}
+            type="button"
+            on:click={() => votePaper(paper, value)}
+          >
+            {@render icon(name)}
+          </button>
+        {/each}
+        <button
+          class="news-clip"
+          class:clipped
+          disabled={clipped || newsClipping.has(paper.id)}
+          title={clipped
+            ? 'Already in today’s note'
+            : 'Add to the Reading section of today’s note'}
+          type="button"
+          on:click={() => clipPaper(paper)}
+        >
+          {@render icon(clipped ? 'check' : 'clip')}
+          {clipped
+            ? 'Clipped'
+            : newsClipping.has(paper.id)
+              ? 'Clipping...'
+              : 'Clip'}
+        </button>
+      </div>
     </div>
     <p class="news-meta">
       <span class="news-authors">{shortAuthorList(paper.authors)}</span>

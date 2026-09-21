@@ -2845,6 +2845,44 @@ input[type='radio'] {
   color: var(--accent-ink);
 }
 
+.news-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.news-vote {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: var(--control-height);
+  height: var(--control-height);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.news-vote .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.news-vote:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.news-vote[aria-pressed='true'] {
+  border-color: var(--accent-soft-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
 .news-meta {
   display: flex;
   flex-wrap: wrap;

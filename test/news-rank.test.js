@@ -429,3 +429,98 @@ test('a profile word in the title outweighs the same word in the abstract', () =
   });
   assert.ok(scores.get('about') > scores.get('mention'));
 });
+
+test('votes pull papers like them up and push papers like them down', () => {
+  const papers = [
+    paper('a', 'Diffusion for calorimeter showers'),
+    paper('b', 'Diffusion for jet images'),
+    paper('c', 'Weather forecasts', 'Rain.')
+  ];
+  const base = { interests: 'diffusion models', reading: [], recent: [] };
+  const scores = (votes) => scorePapers(papers, { ...base, ...votes });
+  assert.equal(scores({}).get('a'), scores({}).get('b'), 'a tie to start');
+
+  const up = scores({
+    upvoted: [{ title: 'Calorimeter shower generation', abstract: '' }]
+  });
+  assert.ok(up.get('a') > up.get('b'), 'an upvote lifts its neighbours');
+
+  const down = scores({
+    downvoted: [{ title: 'Jet image generation', abstract: '' }]
+  });
+  assert.ok(down.get('a') > down.get('b'), 'a downvote sinks its neighbours');
+});
+
+test('votes are stored in the workspace and reach the ranking', async () => {
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'webmd-news-'));
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd', 'news.md'),
+    'Rank by HL-LHC tracking.\n'
+  );
+  const prompts = [];
+  const app = await createApp({
+    workspaceRoots: [root],
+    env: {},
+    newsFetch: async () => new Response(RSS, { status: 200 }),
+    aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+    aiFetch: async (_url, options) => {
+      prompts.push(JSON.parse(options.body).messages[1].content);
+      return ollamaReply('[]');
+    }
+  });
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const post = async (route, body) =>
+    fetch(`${url}${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: '0', ...body })
+    });
+  const vote = (item, value) =>
+    post('/api/news/vote', { paper: item, vote: value });
+
+  try {
+    await vote(
+      { id: '2609.00003', title: 'Language agents for chemistry' },
+      -1
+    );
+    await vote(
+      { id: '2609.00001', title: 'Gluon splitting', abstract: 'Dijets.' },
+      1
+    );
+    await vote({ id: '2609.00009', title: 'Taken back' }, 1);
+    const last = await (await vote({ id: '2609.00009' }, 0)).json();
+    assert.deepEqual(last.votes, { 2609.00003: -1, 2609.00001: 1 });
+    assert.equal((await vote({ id: 'not an id' }, 1)).status, 400);
+    assert.equal((await vote({ id: '2609.00001' }, 5)).status, 400);
+
+    const saved = JSON.parse(
+      await fs.readFile(path.join(root, '.webmd', 'news-votes.json'), 'utf8')
+    );
+    assert.deepEqual(
+      saved.votes.map((entry) => [entry.id, entry.vote, entry.abstract]),
+      [
+        ['2609.00003', -1, ''],
+        ['2609.00001', 1, 'Dijets.']
+      ]
+    );
+    assert.deepEqual(
+      (await (await fetch(`${url}/api/news/votes?root=0`)).json()).votes,
+      last.votes
+    );
+
+    const ranking = await (await post('/api/news/rank', {})).json();
+    assert.match(prompts[0], /Papers they upvoted[^\n]*\n- Gluon splitting/);
+    assert.match(prompts[0], /Papers they downvoted[^\n]*\n- Language agents/);
+    assert.doesNotMatch(
+      prompts[0],
+      /id: 2609\.00003/,
+      'a downvoted paper is not offered as a pick'
+    );
+    assert.equal(ranking.order.at(-1), '2609.00003', 'and sinks to the bottom');
+  } finally {
+    server.close();
+  }
+});

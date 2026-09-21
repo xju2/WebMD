@@ -596,6 +596,14 @@ same lexical score chooses the 120 papers the model reads (see
 of listings to one call. Replacements — new versions of older papers — are not
 listed at all.
 
+**↑** and **↓** on a paper say more or fewer papers like this. Votes are kept
+in `.webmd/news-votes.json`, with each paper's title and abstract, so they
+outlast the listing. They move the lexical score towards the words of papers
+you upvoted and away from those you downvoted, and the AI sees the titles of
+your most recent votes. A paper you voted down is never a pick. Press the same
+arrow again to take a vote back. Like clipping, a vote does not reshuffle the
+page; it counts from the next day's ranking, or straight away with **Re-rank**.
+
 A listing is ranked once per day, so reloads and other tabs reuse it, and
 clipping a paper does not reshuffle the page. Editing the instructions note
 earns a fresh ranking the next time you open News. **Re-rank** asks again

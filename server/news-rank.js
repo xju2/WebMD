@@ -3,6 +3,8 @@ import { parseFrontmatter } from '../src/frontmatter.js';
 
 /** A note in the workspace, so the instructions are edited like any other. */
 export const NEWS_INSTRUCTIONS_PATH = '/.webmd/news.md';
+/** Your up and down votes on papers, kept with the notes like quotes.json. */
+export const NEWS_VOTES_PATH = '/.webmd/news-votes.json';
 const MAX_INSTRUCTIONS_CHARS = 4000;
 
 // Enough of each paper for the model to tell a method paper from a physics
@@ -13,6 +15,14 @@ const ABSTRACT_CHARS = 360;
 export const MAX_PICKS = 20;
 export const TOP_PICKS = 5;
 const TITLE_WEIGHT = 2;
+// Rocchio: the profile moves towards the average upvoted paper and, half as
+// far, away from the average downvoted one. A word in every upvoted paper then
+// weighs a little more than one mention in the instructions (3).
+const UPVOTE_WEIGHT = 4;
+const DOWNVOTE_WEIGHT = 2;
+const MAX_VOTED_TITLES = 20;
+const MAX_VOTE_TITLE_CHARS = 300;
+const MAX_VOTE_ABSTRACT_CHARS = 2000;
 const MAX_CONNECTION_CHARS = 48;
 const MAX_READING = 40;
 const MAX_RECENT_NOTES = 8;
@@ -43,7 +53,8 @@ const CITED_TITLE = /"([^"\n]{12,300})"\s*[—–-]+\s*\[arXiv:/g;
 export function buildInterestProfile({
   files = [],
   references = [],
-  interests = ''
+  interests = '',
+  votes = []
 }) {
   const notes = files
     .filter(
@@ -71,10 +82,19 @@ export function buildInterestProfile({
     .filter((note) => note.snippet)
     .slice(0, MAX_RECENT_NOTES);
 
+  // Newest vote first, as the file keeps them oldest first.
+  const voted = (vote) =>
+    votes
+      .filter((entry) => entry.vote === vote)
+      .reverse()
+      .map(({ id, title, abstract }) => ({ id, title, abstract }));
+
   return {
     interests: String(interests ?? '').trim(),
     reading: reading.slice(0, MAX_READING),
-    recent
+    recent,
+    upvoted: voted(1),
+    downvoted: voted(-1)
   };
 }
 
@@ -106,8 +126,71 @@ export async function readNewsInstructions(workspace) {
 
 export function profileIsEmpty(profile) {
   return (
-    !profile.interests && !profile.reading.length && !profile.recent.length
+    !profile.interests &&
+    !profile.reading.length &&
+    !profile.recent.length &&
+    !profile.upvoted?.length &&
+    !profile.downvoted?.length
   );
+}
+
+/**
+ * The votes file, oldest first, as `{ id, vote, date, title, abstract }`. The
+ * title and abstract are kept because a listing is only kept for a month.
+ */
+export async function readNewsVotes(workspace) {
+  let raw;
+  try {
+    raw = await fs.readFile(
+      await workspace.resolvePath(NEWS_VOTES_PATH),
+      'utf8'
+    );
+  } catch (error) {
+    if (error.status === 404 || error.status === 403 || error.code === 'ENOENT')
+      return [];
+    throw error;
+  }
+  let entries;
+  try {
+    entries = JSON.parse(raw)?.votes;
+  } catch {
+    // Unreadable votes cost the ranking its feedback, not the page.
+    return [];
+  }
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .filter(
+      (entry) =>
+        entry && typeof entry.id === 'string' && [1, -1].includes(entry.vote)
+    )
+    .map((entry) => cleanVote(entry));
+}
+
+export async function writeNewsVotes(workspace, votes) {
+  const absolute = await workspace.resolvePath(NEWS_VOTES_PATH, {
+    forWrite: true
+  });
+  await fs.mkdir(absolute.replace(/\/[^/]*$/, ''), { recursive: true });
+  await fs.writeFile(absolute, `${JSON.stringify({ votes }, null, 2)}\n`);
+}
+
+/**
+ * The votes with this one applied: a new vote goes to the end, so the file
+ * reads oldest first, and `vote: 0` takes one back.
+ */
+export function applyNewsVote(votes, entry) {
+  const rest = votes.filter((item) => item.id !== entry.id);
+  return entry.vote ? [...rest, cleanVote(entry)] : rest;
+}
+
+function cleanVote({ id, vote, date = '', title = '', abstract = '' }) {
+  return {
+    id,
+    vote,
+    date: String(date),
+    title: clip(collapse(title), MAX_VOTE_TITLE_CHARS),
+    abstract: clip(collapse(abstract), MAX_VOTE_ABSTRACT_CHARS)
+  };
 }
 
 /**
@@ -127,6 +210,19 @@ export function scorePapers(papers = [], profile) {
   add(profile.interests, 3);
   for (const title of profile.reading) add(title, 2);
   for (const note of profile.recent) add(note.snippet, 1);
+  // Each voted paper counts once per word, so the average stays in [0, 1].
+  const addCentroid = (voted = [], weight) => {
+    for (const paper of voted) {
+      for (const term of new Set(terms(`${paper.title} ${paper.abstract}`))) {
+        profileWeights.set(
+          term,
+          (profileWeights.get(term) || 0) + weight / voted.length
+        );
+      }
+    }
+  };
+  addCentroid(profile.upvoted, UPVOTE_WEIGHT);
+  addCentroid(profile.downvoted, -DOWNVOTE_WEIGHT);
 
   const documents = papers.map((paper) => ({
     id: paper.id,
@@ -147,9 +243,11 @@ export function scorePapers(papers = [], profile) {
     for (const term of paperTerms) {
       const weight = profileWeights.get(term);
       if (!weight) continue;
+      // A downvoted word pulls the score down as much as an upvoted one lifts it.
       score +=
         (title.has(term) ? TITLE_WEIGHT : 1) *
-        Math.log(1 + weight) *
+        Math.sign(weight) *
+        Math.log(1 + Math.abs(weight)) *
         Math.log(1 + total / frequencies.get(term));
     }
     scores.set(id, paperTerms.size ? score / Math.sqrt(paperTerms.size) : 0);
@@ -177,10 +275,12 @@ export function rankCandidates(papers, scores, limit = MAX_CANDIDATES) {
 
 const SYSTEM_PROMPT = `You triage today's arXiv listing for one researcher, so the papers worth their time are at the top.
 
-You get their profile and a numbered list of today's papers. The profile has up to three parts:
+You get their profile and a numbered list of today's papers. The profile has up to five parts:
 - Instructions: what they wrote about their research and how they want papers judged, in their own words. This is the authority on what counts as relevant and how to weigh it; when the other parts suggest something else, it wins. Follow it, except that the reply format below is fixed.
 - Papers they read: titles they cited or saved. This shows their taste within those areas.
 - Recent notes: what they are working on this week. Use it to break ties towards their current work.
+- Papers they upvoted: earlier papers they marked as worth their time. Rank papers like these up.
+- Papers they downvoted: earlier papers they marked as not worth their time, even where the words matched. Work out what these have in common and rank papers like them down.
 
 Judge each paper on what it contributes, not on the words it uses. Prioritize papers with a substantive methodological or systems contribution to one of their research areas: a new method, architecture, system, benchmark, or result they could build on. A paper that only mentions their topics, applies an off-the-shelf model without new insight, or shares a buzzword with their profile is superficial overlap and does not qualify.
 
@@ -218,6 +318,18 @@ export function buildRankMessages(profile, candidates) {
     sections.push(
       `Recent notes, most recent first:\n${profile.recent.map((note) => `- ${note.path}: ${note.snippet}`).join('\n')}`
     );
+  for (const [label, voted] of [
+    ['Papers they upvoted', profile.upvoted],
+    ['Papers they downvoted', profile.downvoted]
+  ]) {
+    if (voted?.length)
+      sections.push(
+        `${label}, most recent first:\n${voted
+          .slice(0, MAX_VOTED_TITLES)
+          .map((paper) => `- ${collapse(paper.title)}`)
+          .join('\n')}`
+      );
+  }
 
   const papers = candidates
     .map(
