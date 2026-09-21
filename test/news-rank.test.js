@@ -14,7 +14,8 @@ import {
   parseRankedPicks,
   profileIsEmpty,
   readNewsInstructions,
-  scorePapers
+  scorePapers,
+  stem
 } from '../server/news-rank.js';
 import { createWorkspace } from '../server/workspace.js';
 
@@ -383,4 +384,27 @@ test('the candidate limit reads a positive integer from the environment', () => 
   assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: '300' }), 300);
   assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: '0' }), 120);
   assert.equal(newsCandidateLimit({ ARXIV_NEWS_MAX_CANDIDATES: 'lots' }), 120);
+});
+
+test('stemming folds word forms together', () => {
+  for (const word of ['tracker', 'tracking', 'tracks', 'tracked'])
+    assert.equal(stem(word), 'track');
+  assert.equal(stem('encoder'), stem('encoding'));
+  assert.equal(stem('studies'), 'study');
+  assert.equal(stem('mapping'), 'map');
+  assert.equal(stem('install'), 'install');
+  assert.equal(stem('analysis'), 'analysis');
+});
+
+test('a paper matches the profile through a different word form', () => {
+  const papers = [
+    { id: 'a', title: 'Tracking charged particles', abstract: '' },
+    { id: 'b', title: 'Weather forecasts', abstract: '' }
+  ];
+  const scores = scorePapers(papers, {
+    interests: 'particle tracker',
+    reading: [],
+    recent: []
+  });
+  assert.ok(scores.get('a') > scores.get('b'));
 });

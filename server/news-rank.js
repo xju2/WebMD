@@ -305,7 +305,31 @@ function terms(text) {
     .filter(
       (token) =>
         token.length >= 3 && !STOPWORDS.has(token) && !/^\d+$/.test(token)
-    );
+    )
+    .map(stem);
+}
+
+/**
+ * A few suffix rules, so "tracker", "tracking", and "tracks" all count as
+ * "track". Both sides go through it, so a stem only has to be consistent, not a
+ * real word.
+ */
+// ponytail: suffix stripping, not Porter; swap in a real stemmer if matches miss.
+export function stem(word) {
+  let root = word;
+  if (/[^aeiou]ies$/.test(root) || /[^aeiou]ied$/.test(root))
+    root = `${root.slice(0, -3)}y`;
+  else if (root.endsWith('sses')) root = root.slice(0, -2);
+  else if (/[^su]s$/.test(root) && !/is$/.test(root) && root.length > 3)
+    root = root.slice(0, -1);
+  const suffix = /(ing|ed|er)$/.exec(root);
+  if (suffix && root.length - suffix[1].length >= 3) {
+    root = root.slice(0, -suffix[1].length);
+    // "mapping" is "map", but "install" keeps its double l.
+    if (/([^aeioulsz])\1$/.test(root)) root = root.slice(0, -1);
+  }
+  if (root.endsWith('e') && root.length > 4) root = root.slice(0, -1);
+  return root;
 }
 
 function collapse(value) {
