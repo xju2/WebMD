@@ -2969,8 +2969,14 @@
         if (root === selectedRoot && path === selectedPath) error = err.message;
       }
     };
+    // EventSource reconnects by itself and saves go over plain requests, so a
+    // dropped stream only means offline when there are edits it could lose.
     source.onerror = () => {
-      if (root === selectedRoot && path === selectedPath) {
+      if (
+        root === selectedRoot &&
+        path === selectedPath &&
+        hasUnsavedChanges()
+      ) {
         status = '[Offline - Retrying]';
       }
     };

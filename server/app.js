@@ -226,8 +226,10 @@ export async function createApp({
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
-      res.flushHeaders?.();
       for (const event of subscription.backlog) send(event);
+      // A comment now, so a proxy holding headers until the first byte (Vite's
+      // does) lets the stream open instead of waiting for the heartbeat.
+      res.write(':\n\n');
 
       const heartbeat = setInterval(() => res.write(':\n\n'), 30000);
       req.on('close', () => {
