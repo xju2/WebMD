@@ -1227,11 +1227,11 @@ test('swaps an arXiv fallback key for INSPIRE once INSPIRE has the paper', async
   const root = await tempRoot();
   await fs.writeFile(
     path.join(root, 'references.bib'),
-    '@misc{arXiv:2609.09159,\n  title = {Graph Paper},\n  eprint = {2609.09159}\n}\n\n@article{Keep:2020, title={Other}}\n'
+    '@misc{juGraphPaper2026,\n  title = {Graph Paper},\n  eprint = {2609.09159},\n  webmdfallback = {2609.09159}\n}\n\n@article{Keep:2020, title={Other}}\n'
   );
   await fs.writeFile(
     path.join(root, 'daily.md'),
-    'Read [@arXiv:2609.09159] today, next to [@Keep:2020].\n'
+    'Read [@juGraphPaper2026] today, next to [@Keep:2020].\n'
   );
 
   const { server, url } = await listen(
@@ -1256,17 +1256,55 @@ test('swaps an arXiv fallback key for INSPIRE once INSPIRE has the paper', async
     const result = await response.json();
     assert.equal(result.checked, 1);
     assert.deepEqual(result.upgraded, [
-      { from: 'arXiv:2609.09159', to: 'Ju:2026abc', notes: ['/daily.md'] }
+      { from: 'juGraphPaper2026', to: 'Ju:2026abc', notes: ['/daily.md'] }
     ]);
 
     const bib = await fs.readFile(path.join(root, 'references.bib'), 'utf8');
     assert.match(bib, /Ju:2026abc/);
-    assert.doesNotMatch(bib, /arXiv:2609\.09159,/);
+    assert.doesNotMatch(bib, /juGraphPaper2026/);
     // The entry that was already fine is left where it was.
     assert.match(bib, /Keep:2020/);
     assert.equal(
       await fs.readFile(path.join(root, 'daily.md'), 'utf8'),
       'Read [@Ju:2026abc] today, next to [@Keep:2020].\n'
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('files a paper once, whichever key the catalogue gives it', async () => {
+  const root = await tempRoot();
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      citationFetch: async (target) =>
+        /inspirehep/.test(target)
+          ? new Response('', { status: 404 })
+          : new Response(
+              '@misc{https://doi.org/10.48550/arxiv.2609.09159, author={Ju, Xiangyang}, title={Graph Paper}, year={2026}}'
+            )
+    })
+  );
+
+  const add = () =>
+    fetch(`${url}/api/workspace/citations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        root: '0',
+        source: 'https://arxiv.org/abs/2609.09159'
+      })
+    }).then((response) => response.json());
+
+  try {
+    assert.equal((await add()).entry.key, 'juGraphPaper2026');
+    assert.equal((await add()).entries.length, 1);
+    assert.equal(
+      (await fs.readFile(path.join(root, 'references.bib'), 'utf8')).match(
+        /@misc/g
+      ).length,
+      1
     );
   } finally {
     server.close();

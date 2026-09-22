@@ -1,4 +1,8 @@
-import { citationSource, parseBibtex } from '../src/citations.js';
+import {
+  citationFallbackKey,
+  citationSource,
+  parseBibtex
+} from '../src/citations.js';
 import { WorkspaceError } from './workspace.js';
 
 // INSPIRE only indexes high-energy physics, so an arXiv paper from any other
@@ -58,18 +62,23 @@ export async function fetchCitationBibtex(source, { fetchImpl = fetch } = {}) {
   );
 }
 
-// DataCite keys its entries by the DOI URL, which makes for an unusable
-// `[@https://doi.org/...]` in the note, and it drops the eprint field that
-// names the preprint. Both are worth fixing before the entry is filed away.
+/**
+ * DataCite keys its entries by the DOI URL, which makes for an unusable
+ * `[@https://doi.org/...]` in the note, and it drops the eprint field that
+ * names the preprint. The entry is rekeyed the way Zotero would key it, and
+ * marked `webmdfallback` so the Update keys sweep knows to ask INSPIRE about
+ * this paper again — INSPIRE's own entry carries no such field.
+ */
 function tidyArxivEntry(bibtex, { kind, id }) {
   if (kind !== 'arxiv' || !/@\w+\s*\{\s*https?:\/\//i.test(bibtex)) {
     return bibtex;
   }
+  const key = citationFallbackKey(parseBibtex(bibtex)[0] ?? {});
   return bibtex
-    .replace(/(@\w+\s*\{\s*)[^,]+/i, `$1arXiv:${id}`)
+    .replace(/(@\w+\s*\{\s*)[^,]+/i, `$1${key}`)
     .replace(
-      /\n\}\s*$/,
-      `,\n  eprint = {${id}},\n  archivePrefix = {arXiv}\n}`
+      /\n?\}\s*$/,
+      `,\n  eprint = {${id}},\n  archivePrefix = {arXiv},\n  webmdfallback = {${id}}\n}`
     );
 }
 
@@ -84,23 +93,30 @@ export async function upgradeArxivCitationKeys(
   { fetchImpl = fetch, limit = 25 } = {}
 ) {
   const pending = (await workspace.references())
-    .filter((entry) => /^arxiv:/i.test(entry.key) && entry.arxiv)
+    .map((entry) => ({
+      entry,
+      // Entries WebMD filed from arXiv's DOI record. The `arXiv:<id>` key is
+      // how they were marked before `webmdfallback` existed.
+      id:
+        entry.fields?.webmdfallback ||
+        (/^arxiv:/i.test(entry.key) ? entry.arxiv : '')
+    }))
+    .filter((pending) => pending.id)
     .slice(0, limit);
   const upgraded = [];
 
-  for (const entry of pending) {
+  for (const { entry, id } of pending) {
     let citation;
     try {
-      citation = await fetchCitationBibtex(
-        `https://arxiv.org/abs/${entry.arxiv}`,
-        { fetchImpl }
-      );
+      citation = await fetchCitationBibtex(`https://arxiv.org/abs/${id}`, {
+        fetchImpl
+      });
     } catch {
       // No catalogue answered; the next press can try this paper again.
       continue;
     }
-    // The same fallback entry: INSPIRE still does not hold the paper.
-    if (citation.entry.key === entry.key) continue;
+    // Another fallback entry: INSPIRE still does not hold the paper.
+    if (citation.entry.fields?.webmdfallback) continue;
 
     await workspace.replaceReference(entry.key, citation.bibtex);
     const notes = [];

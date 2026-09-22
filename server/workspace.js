@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import {
+  citationFallbackKey,
   citationKeys,
   citationSummary,
   citationUrl,
@@ -372,10 +373,23 @@ async function appendReference(root, bibtex) {
     if (error.code !== 'ENOENT') throw error;
   }
   const entries = parseBibtex(content);
-  const existing = entries.find((item) => item.key === entry.key);
+  // The same paper under either key — clipped from News, then pasted as a link
+  // once INSPIRE had rekeyed it — is one entry, not two.
+  const existing =
+    entries.find((item) => samePaper(item, entry)) ??
+    entries.find((item) => item.key === entry.key);
   if (existing) return { entry: existing, entries, added: false };
 
-  const next = `${content.trimEnd()}${content.trim() ? '\n\n' : ''}${bibtex.trim()}\n`;
+  let text = bibtex.trim();
+  let filed = entry;
+  const taken = new Set(entries.map((item) => item.key));
+  if (taken.has(entry.key)) {
+    // A different paper already holds this key, so this one is nudged aside.
+    const key = citationFallbackKey(entry, taken);
+    text = text.replace(/(@\w+\s*[({]\s*)[^,]+/, `$1${key}`);
+    filed = parseBibtex(text)[0] ?? entry;
+  }
+  const next = `${content.trimEnd()}${content.trim() ? '\n\n' : ''}${text}\n`;
   const temp = path.join(root, `.references.${randomUUID()}.tmp`);
   try {
     await fs.writeFile(temp, next, { encoding: 'utf8', flag: 'wx' });
@@ -384,7 +398,24 @@ async function appendReference(root, bibtex) {
     await fs.rm(temp, { force: true });
     throw error;
   }
-  return { entry, entries: [...entries, entry], added: true };
+  return { entry: filed, entries: [...entries, filed], added: true };
+}
+
+/** Two BibTeX entries for one paper, as its preprint or its DOI names it. */
+function samePaper(left, right) {
+  const eprint = (entry) =>
+    String(entry.arxiv ?? '')
+      .trim()
+      .replace(/v\d+$/i, '')
+      .toLowerCase();
+  const doi = (entry) =>
+    String(entry.doi ?? '')
+      .trim()
+      .toLowerCase();
+  return (
+    (Boolean(eprint(left)) && eprint(left) === eprint(right)) ||
+    (Boolean(doi(left)) && doi(left) === doi(right))
+  );
 }
 
 /**

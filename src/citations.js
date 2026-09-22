@@ -269,3 +269,51 @@ function surname(name = '') {
   if (trimmed.includes(',')) return trimmed.split(',')[0].trim();
   return trimmed.split(/\s+/).at(-1);
 }
+
+// Title words that say nothing about which paper this is.
+const TITLE_STOP = new Set([
+  'and',
+  'are',
+  'but',
+  'for',
+  'from',
+  'its',
+  'new',
+  'not',
+  'the',
+  'their',
+  'this',
+  'that',
+  'these',
+  'those',
+  'using',
+  'via',
+  'with',
+  'without'
+]);
+
+/**
+ * A readable key for a paper no catalogue has keyed yet, in the shape Zotero
+ * writes: first author in lowercase, the first two telling words of the title,
+ * and the year — `juGraphNeural2026`. `taken` are the keys already in the
+ * bibliography, which a repeat suffixes `a`, `b`, and so on to stay clear of.
+ */
+export function citationFallbackKey(entry = {}, taken = new Set()) {
+  const author = firstAuthor(entry.author ?? '')
+    .toLowerCase()
+    .replace(/[^a-z]/g, '');
+  const words = cleanBibtex(entry.title ?? '')
+    .split(/[^A-Za-z]+/)
+    .filter((word) => word.length > 2 && !TITLE_STOP.has(word.toLowerCase()))
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
+    .join('');
+  const year = /\d{4}/.exec(cleanBibtex(entry.year ?? ''))?.[0] ?? '';
+  const base = `${author}${words}${year}` || 'reference';
+
+  let key = base;
+  for (let suffix = 0; taken.has(key); suffix += 1) {
+    key = `${base}${String.fromCharCode(97 + (suffix % 26)).repeat(Math.floor(suffix / 26) + 1)}`;
+  }
+  return key;
+}

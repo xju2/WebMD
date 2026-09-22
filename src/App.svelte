@@ -536,8 +536,8 @@
   $: newsCiteKeys = bibArxivKeys(bibliography);
   // Papers filed under arXiv's DOI record because INSPIRE had not indexed them
   // yet; the Update keys button asks INSPIRE about these again.
-  $: newsFallbackKeys = bibliography.filter((entry) =>
-    /^arxiv:/i.test(entry.key)
+  $: newsFallbackKeys = bibliography.filter(
+    (entry) => entry.fields?.webmdfallback || /^arxiv:/i.test(entry.key)
   ).length;
   $: newsClipped = new Set([...newsNoteClipped, ...newsCiteKeys.keys()]);
 

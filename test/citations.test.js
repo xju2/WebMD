@@ -4,6 +4,7 @@ import {
   citationArxiv,
   citationAuthors,
   citationCompletionQuery,
+  citationFallbackKey,
   citationCompletions,
   citationKeys,
   citationPasteSource,
@@ -205,11 +206,14 @@ test('falls back to arXiv’s DOI when INSPIRE has no such paper', async () => {
     'https://inspirehep.net/api/arxiv/2401.01234?format=bibtex',
     'https://doi.org/10.48550/arXiv.2401.01234'
   ]);
-  // The DataCite key is a URL, which would be unusable as [@...] in a note.
-  assert.equal(entry.key, 'arXiv:2401.01234');
+  // The DataCite key is a URL, which would be unusable as [@...] in a note,
+  // so the entry is keyed the way Zotero would key it and marked as the
+  // stand-in it is until INSPIRE indexes the paper.
+  assert.equal(entry.key, 'liMixtureCure2024');
   assert.equal(entry.arxiv, '2401.01234');
+  assert.equal(entry.fields.webmdfallback, '2401.01234');
   assert.equal(citationArxiv(entry), 'arXiv:2401.01234');
-  assert.match(bibtex, /@misc\{arXiv:2401\.01234,/);
+  assert.match(bibtex, /@misc\{liMixtureCure2024,/);
 });
 
 test('names the paper when no catalogue has it', async () => {
@@ -225,4 +229,24 @@ test('names the paper when no catalogue has it', async () => {
     }),
     /Citation lookup failed with 500/
   );
+});
+
+test('keys a paper no catalogue has keyed the way Zotero would', () => {
+  assert.equal(
+    citationFallbackKey({
+      author: 'Ju, Xiangyang and Murnane, Daniel',
+      title: 'Graph neural networks for the tracking of charged particles',
+      year: '2026'
+    }),
+    'juGraphNeural2026'
+  );
+  // A second paper by the same author, on the same subject, in the same year.
+  assert.equal(
+    citationFallbackKey(
+      { author: 'Ju, X.', title: 'The {Higgs} boson', year: '2026' },
+      new Set(['juHiggsBoson2026'])
+    ),
+    'juHiggsBoson2026a'
+  );
+  assert.equal(citationFallbackKey({}), 'reference');
 });
