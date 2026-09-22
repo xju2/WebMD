@@ -318,6 +318,7 @@
   let xStatus = '';
   let xQuery = '';
   let newsRankStatus = '';
+  let newsKeyStatus = '';
   // The Tasks view opens on the board: four ranked lanes, which is the only one
   // of the three that answers "what now". Sections (a dashboard of filters the
   // reader defines) and urgency (strictly by due date) stay as the other two
@@ -533,6 +534,11 @@
   // A paper counts as clipped once it is in the bibliography, so yesterday's
   // listing still shows the papers it was read from.
   $: newsCiteKeys = bibArxivKeys(bibliography);
+  // Papers filed under arXiv's DOI record because INSPIRE had not indexed them
+  // yet; the Update keys button asks INSPIRE about these again.
+  $: newsFallbackKeys = bibliography.filter((entry) =>
+    /^arxiv:/i.test(entry.key)
+  ).length;
   $: newsClipped = new Set([...newsNoteClipped, ...newsCiteKeys.keys()]);
 
   $: bibliographyByKey = new Map(
@@ -680,7 +686,11 @@
   $: olderNewsDay =
     newsDayIndex >= 0 ? (newsDayOptions[newsDayIndex + 1] ?? '') : '';
   $: newerNewsDay = newsDayIndex > 0 ? newsDayOptions[newsDayIndex - 1] : '';
-  $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsListFilter);
+  $: newsCounts = newsCategoryCounts(
+    newsPapers,
+    newsCategories,
+    newsListFilter
+  );
   $: rankIndex = new Map(
     (newsRanking?.order ?? []).map((id, index) => [id, index])
   );
@@ -821,6 +831,28 @@
       // Fall back to the HTTP status text below.
     }
     return response.statusText || `HTTP ${response.status}`;
+  }
+
+  async function upgradeCiteKeys() {
+    const root = selectedRoot;
+    newsKeyStatus = 'Asking INSPIRE...';
+    try {
+      const result = await requestJson('/api/workspace/citations/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root })
+      });
+      if (root !== selectedRoot) return;
+      bibliography = result.entries ?? bibliography;
+      newsKeyStatus = result.upgraded.length
+        ? `Updated ${result.upgraded.length} of ${result.checked}: ${result.upgraded
+            .map((change) => `${change.from} to ${change.to}`)
+            .join(', ')}.`
+        : `INSPIRE still has none of the ${result.checked} waiting papers.`;
+    } catch (err) {
+      newsKeyStatus = '';
+      error = `Could not update citation keys: ${err.message}`;
+    }
   }
 
   async function copyCiteKey(key) {
@@ -6978,6 +7010,15 @@
                       setNewsFilter({ query: event.currentTarget.value })}
                   />
                 </div>
+                {#if newsFallbackKeys}
+                  <button
+                    type="button"
+                    title="Papers clipped before INSPIRE indexed them are cited as @arXiv:id. This asks INSPIRE again and rewrites the citations in your notes."
+                    on:click={upgradeCiteKeys}
+                  >
+                    Update keys ({newsFallbackKeys})
+                  </button>
+                {/if}
                 <button
                   type="button"
                   title="Edit what the AI ranks papers against"
@@ -7026,6 +7067,9 @@
               <p class="tasks-note">
                 {newsStatus || `Showing the last listing: ${newsWarning}`}
               </p>
+            {/if}
+            {#if newsKeyStatus}
+              <p class="tasks-note">{newsKeyStatus}</p>
             {/if}
             {#if newsRankStatus || newsRanking?.warning}
               <p class="tasks-note news-rank-note">

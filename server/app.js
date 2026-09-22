@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, isArxivId } from './arxiv.js';
-import { fetchCitationBibtex } from './citations.js';
+import { fetchCitationBibtex, upgradeArxivCitationKeys } from './citations.js';
 import { fetchIndicoTitle, indicoSites, isIndicoUrl } from './indico.js';
 import {
   ensureMeetingNote,
@@ -150,6 +150,17 @@ export async function createApp({
       });
       res.json(
         await workspaces.get(req.body?.root).addReference(citation.bibtex)
+      );
+    })
+  );
+
+  app.post(
+    '/api/workspace/citations/upgrade',
+    asyncHandler(async (req, res) => {
+      res.json(
+        await upgradeArxivCitationKeys(workspaces.get(req.body?.root), {
+          fetchImpl: citationFetch
+        })
       );
     })
   );

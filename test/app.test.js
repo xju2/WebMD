@@ -1222,3 +1222,53 @@ test('downloads the web images a note embeds into its asset folder', async () =>
     server.close();
   }
 });
+
+test('swaps an arXiv fallback key for INSPIRE once INSPIRE has the paper', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(
+    path.join(root, 'references.bib'),
+    '@misc{arXiv:2609.09159,\n  title = {Graph Paper},\n  eprint = {2609.09159}\n}\n\n@article{Keep:2020, title={Other}}\n'
+  );
+  await fs.writeFile(
+    path.join(root, 'daily.md'),
+    'Read [@arXiv:2609.09159] today, next to [@Keep:2020].\n'
+  );
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      citationFetch: async (target) =>
+        /inspirehep/.test(target)
+          ? new Response(
+              '@article{Ju:2026abc, title={Graph Paper}, author={Ju, Xiangyang}, year={2026}, eprint={2609.09159}}'
+            )
+          : new Response('not found', { status: 404 })
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/workspace/citations/upgrade`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: '0' })
+    });
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.equal(result.checked, 1);
+    assert.deepEqual(result.upgraded, [
+      { from: 'arXiv:2609.09159', to: 'Ju:2026abc', notes: ['/daily.md'] }
+    ]);
+
+    const bib = await fs.readFile(path.join(root, 'references.bib'), 'utf8');
+    assert.match(bib, /Ju:2026abc/);
+    assert.doesNotMatch(bib, /arXiv:2609\.09159,/);
+    // The entry that was already fine is left where it was.
+    assert.match(bib, /Keep:2020/);
+    assert.equal(
+      await fs.readFile(path.join(root, 'daily.md'), 'utf8'),
+      'Read [@Ju:2026abc] today, next to [@Keep:2020].\n'
+    );
+  } finally {
+    server.close();
+  }
+});

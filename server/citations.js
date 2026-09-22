@@ -72,3 +72,51 @@ function tidyArxivEntry(bibtex, { kind, id }) {
       `,\n  eprint = {${id}},\n  archivePrefix = {arXiv}\n}`
     );
 }
+
+/**
+ * A paper clipped before INSPIRE indexed it is filed under arXiv's DOI record,
+ * keyed `arXiv:<id>`. This asks INSPIRE about each of those again, and for
+ * every paper it now holds swaps the entry for INSPIRE's and rewrites the
+ * citations in the notes, so nothing that was already cited breaks.
+ */
+export async function upgradeArxivCitationKeys(
+  workspace,
+  { fetchImpl = fetch, limit = 25 } = {}
+) {
+  const pending = (await workspace.references())
+    .filter((entry) => /^arxiv:/i.test(entry.key) && entry.arxiv)
+    .slice(0, limit);
+  const upgraded = [];
+
+  for (const entry of pending) {
+    let citation;
+    try {
+      citation = await fetchCitationBibtex(
+        `https://arxiv.org/abs/${entry.arxiv}`,
+        { fetchImpl }
+      );
+    } catch {
+      // No catalogue answered; the next press can try this paper again.
+      continue;
+    }
+    // The same fallback entry: INSPIRE still does not hold the paper.
+    if (citation.entry.key === entry.key) continue;
+
+    await workspace.replaceReference(entry.key, citation.bibtex);
+    const notes = [];
+    for (const file of await workspace.markdownFiles()) {
+      if (!file.content.includes(`[@${entry.key}]`)) continue;
+      await workspace.editFile(file.path, (content) =>
+        content.split(`[@${entry.key}]`).join(`[@${citation.entry.key}]`)
+      );
+      notes.push(file.path);
+    }
+    upgraded.push({ from: entry.key, to: citation.entry.key, notes });
+  }
+
+  return {
+    checked: pending.length,
+    upgraded,
+    entries: await workspace.references()
+  };
+}

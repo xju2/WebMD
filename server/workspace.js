@@ -78,6 +78,15 @@ export async function createWorkspace(workspaceRoot) {
     graph: async () =>
       (graphIndex ??= buildWorkspaceGraph(await files(), await references())),
     references,
+    replaceReference: async (oldKey, bibtex) => {
+      const write = referenceWrite.then(() =>
+        replaceReference(root, oldKey, bibtex)
+      );
+      referenceWrite = write.catch(() => {});
+      const result = await write;
+      invalidate();
+      return result;
+    },
     addReference: async (bibtex) => {
       const write = referenceWrite.then(() => appendReference(root, bibtex));
       referenceWrite = write.catch(() => {});
@@ -301,6 +310,50 @@ async function readReferences(root) {
     if (error.code === 'ENOENT') return [];
     throw error;
   }
+}
+
+/**
+ * Swaps one entry of `references.bib` for a better one — the INSPIRE record of
+ * a paper that was filed under arXiv's DOI before INSPIRE had indexed it. The
+ * entry is matched by key, and rewritten in place so the file keeps its order.
+ */
+async function replaceReference(root, oldKey, bibtex) {
+  const entry = parseBibtex(bibtex)[0];
+  if (!entry)
+    throw new WorkspaceError(400, 'A valid BibTeX entry is required.');
+
+  const target = path.join(root, 'references.bib');
+  const content = await fs.readFile(target, 'utf8');
+  const span = bibtexEntrySpan(content, oldKey);
+  if (!span) throw new WorkspaceError(404, `No entry is keyed ${oldKey}.`);
+
+  const next = `${content.slice(0, span.from)}${bibtex.trim()}${content.slice(span.to)}`;
+  const temp = path.join(root, `.references.${randomUUID()}.tmp`);
+  try {
+    await fs.writeFile(temp, next, { encoding: 'utf8', flag: 'wx' });
+    await fs.rename(temp, target);
+  } catch (error) {
+    await fs.rm(temp, { force: true });
+    throw error;
+  }
+  return { entry, entries: parseBibtex(next) };
+}
+
+/** Where the entry keyed `key` starts and ends in a `.bib` file's text. */
+function bibtexEntrySpan(content, key) {
+  const start = new RegExp(
+    String.raw`@[A-Za-z]+\s*[({]\s*${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\s*,`
+  ).exec(content);
+  if (!start) return null;
+  const open = /[({]/.exec(start[0])[0];
+  const close = open === '(' ? ')' : '}';
+  let depth = 0;
+  for (let at = start.index; at < content.length; at += 1) {
+    if (content[at] === open) depth += 1;
+    else if (content[at] === close && (depth -= 1) === 0)
+      return { from: start.index, to: at + 1 };
+  }
+  return null;
 }
 
 async function appendReference(root, bibtex) {
