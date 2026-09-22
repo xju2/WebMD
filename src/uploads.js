@@ -131,3 +131,15 @@ async function convertHeicToJpegBlob(file) {
     bitmap?.close?.();
   }
 }
+
+// `![alt](https://…)`, with or without a `"title"` after the address.
+const REMOTE_IMAGE = /!\[[^\]\n]*\]\((https?:\/\/[^\s)]+)(?:\s+"[^"\n]*")?\)/g;
+
+/** The web images a note embeds, as `{ from, to, url }` source ranges. */
+export function remoteImageLinks(text = '') {
+  return [...text.matchAll(REMOTE_IMAGE)].map((match) => ({
+    from: match.index,
+    to: match.index + match[0].length,
+    url: match[1]
+  }));
+}

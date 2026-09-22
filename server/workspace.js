@@ -119,6 +119,11 @@ export async function createWorkspace(workspaceRoot) {
       invalidate();
       return result;
     },
+    uploadNote: async (file) => {
+      const result = await uploadNote(root, file);
+      invalidate();
+      return result;
+    },
     diffFile: (filePath) => diffFile(root, filePath),
     saveFile: async (filePath, content) => {
       const result = await saveFile(root, filePath, content);
@@ -654,6 +659,34 @@ async function saveMediaFile(
       };
     } catch (error) {
       if (error.code !== 'EEXIST') throw error;
+    }
+  }
+
+  throw new WorkspaceError(409, 'Could not choose a unique file name.');
+}
+
+// Keeps the uploaded file's own name, spaces and all, as notes are named; a
+// name already taken gets ` 2`, ` 3`, … rather than replacing that note.
+async function uploadNote(root, { folder = '/', name, data } = {}) {
+  if (typeof data !== 'string') {
+    throw new WorkspaceError(400, 'File data is required.');
+  }
+  const content = Buffer.from(data, 'base64').toString('utf8');
+  const stem =
+    path
+      .basename(String(name || ''), path.extname(String(name || '')))
+      .replace(/^\.+/, '')
+      .trim() || timestampStem();
+  const directory = normalizeWorkspaceFolder(folder);
+
+  for (let index = 1; index <= 1000; index += 1) {
+    const suffix = index > 1 ? ` ${index}` : '';
+    const filePath = `${directory === '/' ? '' : directory}/${stem}${suffix}.md`;
+    try {
+      const result = await createFile(root, filePath, content);
+      return { path: result.path, fileKind: 'markdown' };
+    } catch (error) {
+      if (error.status !== 409) throw error;
     }
   }
 

@@ -1139,3 +1139,86 @@ test('refuses to fetch a link that is not an Indico page', async () => {
     server.close();
   }
 });
+
+test('uploads a Markdown file as a new note without replacing one', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'notes'));
+  await fs.writeFile(path.join(root, 'notes', 'Clipped page.md'), 'mine\n');
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root] })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/workspace/files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: '/notes',
+        name: 'Clipped page.md',
+        mimeType: 'text/markdown',
+        data: Buffer.from('# Clipped\n').toString('base64')
+      })
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      path: '/notes/Clipped page 2.md',
+      fileKind: 'markdown'
+    });
+    assert.equal(
+      await fs.readFile(path.join(root, 'notes', 'Clipped page 2.md'), 'utf8'),
+      '# Clipped\n'
+    );
+    assert.equal(
+      await fs.readFile(path.join(root, 'notes', 'Clipped page.md'), 'utf8'),
+      'mine\n'
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test('downloads the web images a note embeds into its asset folder', async () => {
+  const root = await tempRoot();
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      imageFetch: async (target) =>
+        target.endsWith('cat.png')
+          ? new Response(new Uint8Array([137, 80, 78, 71]), {
+              headers: { 'Content-Type': 'image/png' }
+            })
+          : new Response('<html>', { headers: { 'Content-Type': 'text/html' } })
+    })
+  );
+
+  try {
+    const response = await fetch(`${url}/api/workspace/remote-images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: '/assets',
+        notePath: '/Clip.md',
+        urls: [
+          'https://img.example/cat.png',
+          'https://img.example/page',
+          'file:///etc/passwd'
+        ]
+      })
+    });
+    assert.equal(response.status, 200);
+    const { saved, failed } = await response.json();
+    assert.deepEqual(saved, [
+      { url: 'https://img.example/cat.png', path: '/assets/Clip-01.png' }
+    ]);
+    assert.deepEqual(
+      failed.map((entry) => entry.url),
+      ['https://img.example/page', 'file:///etc/passwd']
+    );
+    assert.equal(
+      (await fs.readFile(path.join(root, 'assets', 'Clip-01.png'))).length,
+      4
+    );
+  } finally {
+    server.close();
+  }
+});

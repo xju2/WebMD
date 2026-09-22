@@ -29,6 +29,7 @@ import {
   transcriptForModel
 } from './transcripts.js';
 import { fetchXPost, isXPostUrl } from './x.js';
+import { fetchRemoteImage } from './remote-images.js';
 import {
   fetchArxivNews,
   isNewsDay,
@@ -88,6 +89,7 @@ export async function createApp({
   citationFetch = fetch,
   indicoFetch = fetch,
   xFetch = fetch,
+  imageFetch = fetch,
   newsFetch = fetch,
   // Where day-scoped fetches and model answers outlive a restart. Outside the
   // workspaces so autocommit never picks them up; unset keeps them in memory.
@@ -273,10 +275,46 @@ export async function createApp({
     })
   );
 
+  // A Markdown file uploads as a new note beside the others; anything else is
+  // media for the asset folder.
   app.post(
     '/api/workspace/files',
     asyncHandler(async (req, res) => {
-      res.json(await workspaces.get(req.body.root).saveMediaFile(req.body));
+      const workspace = workspaces.get(req.body.root);
+      res.json(
+        /\.(md|markdown)$/i.test(req.body.name || '')
+          ? await workspace.uploadNote(req.body)
+          : await workspace.saveMediaFile(req.body)
+      );
+    })
+  );
+
+  // Downloads the web images a note embeds into its asset folder, one at a
+  // time, and says which were saved where. A failure keeps its link, so one
+  // dead host does not cost the rest.
+  app.post(
+    '/api/workspace/remote-images',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body.root);
+      const urls = Array.isArray(req.body.urls) ? req.body.urls : [];
+      const saved = [];
+      const failed = [];
+      for (const url of new Set(
+        urls.filter((url) => typeof url === 'string')
+      )) {
+        try {
+          const image = await fetchRemoteImage(url, { fetchImpl: imageFetch });
+          const file = await workspace.saveMediaFile({
+            ...image,
+            folder: req.body.folder,
+            notePath: req.body.notePath
+          });
+          saved.push({ url, path: file.path });
+        } catch (error) {
+          failed.push({ url, error: error.message });
+        }
+      }
+      res.json({ saved, failed });
     })
   );
 

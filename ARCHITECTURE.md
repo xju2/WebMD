@@ -86,8 +86,8 @@ content carries the contrast.
   surface they sit on; only disabled controls fall below.
 * **Focus.** Every interactive element shows the same 2px teal
   `:focus-visible` outline; rail tooltips also appear on keyboard focus.
-* **View-aware toolbar.** Document actions (daily-note stepping, Upload,
-  Delete, Reference, Edit/Preview, Diff) appear only in document views. The
+* **View-aware toolbar.** Document actions (daily-note stepping, Download
+  images, Delete, Reference, Edit/Preview, Diff) appear only in document views. The
   workspace views launched from the rail (Tasks, arXiv News) own
   their own toolbars and keep only navigation and the overflow menu above.
   Meetings is one of them too. It stays mounted once visited, so its list and
@@ -116,8 +116,9 @@ mounted.
   Handles are `role="separator"` window splitters: drag, arrow keys (Shift
   for larger steps), Home/End, and double-click to reset.
 * **Quiet toolbar.** The document toolbar keeps only the Day stepper and
-  the Edit/Preview toggle; Upload, Delete (in red), and Reference live in the
-  ... menu at every width.
+  the Edit/Preview toggle; Download images, Delete (in red), and Reference
+  live in the ... menu at every width. Upload belongs to the files, so it is
+  in the Files panel's ... menu.
 * **Honest status.** The sidebar footer (`src/save-status.js`) says saved
   only for an open note with nothing pending; offline, saving, and read-only
   states say so. It is the one save status: the bottom bar shows it only

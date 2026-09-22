@@ -98,6 +98,7 @@
   import {
     pastedImageSources,
     uploadFilesForPastedImageSources,
+    remoteImageLinks,
     uploadPayloadForFile
   } from './uploads.js';
   import {
@@ -161,6 +162,7 @@
   const DEFAULT_IMAGE_ASSET_FOLDER = '/assets';
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
+  const MARKDOWN_UPLOAD = /\.(md|markdown)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
 
   function renderMath(source, displayMode = false) {
@@ -2803,8 +2805,12 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             root,
-            folder: imageAssetFolder,
-            notePath: path,
+            // A Markdown file becomes a note beside the open one; media is
+            // named after the note only when it is being embedded in it.
+            folder: MARKDOWN_UPLOAD.test(upload.name)
+              ? path.slice(0, path.lastIndexOf('/')) || '/'
+              : imageAssetFolder,
+            notePath: range ? path : '',
             name: upload.name,
             mimeType: upload.mimeType,
             data: upload.data
@@ -2859,14 +2865,69 @@
     });
   }
 
+  // Upload lives with the files, not the note, so it only saves: nothing is
+  // inserted into whatever note happens to be open.
   async function chooseUploadFiles(event) {
-    const files = [...(event.currentTarget.files || [])].filter(isUploadFile);
-    event.currentTarget.value = '';
-    if (!files.length) return;
-    await uploadFiles(
-      files,
-      selectedIsMarkdown ? editorView.state.selection.main : null
+    const files = [...(event.currentTarget.files || [])].filter(
+      (file) => isUploadFile(file) || MARKDOWN_UPLOAD.test(file.name)
     );
+    event.currentTarget.value = '';
+    if (files.length) await uploadFiles(files, null);
+  }
+
+  async function downloadNoteImages() {
+    closeViewMenu();
+    const root = selectedRoot;
+    const path = selectedPath;
+    const urls = remoteImageLinks(editorView.state.doc.toString()).map(
+      (link) => link.url
+    );
+    if (!urls.length) {
+      status = '[No web images in this note]';
+      return;
+    }
+
+    status = `[Downloading ${new Set(urls).size} images...]`;
+    error = '';
+    try {
+      const { saved, failed } = await requestJson(
+        '/api/workspace/remote-images',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            root,
+            folder: imageAssetFolder,
+            notePath: path,
+            urls
+          })
+        }
+      );
+      if (root !== selectedRoot) return;
+      await loadTree(root);
+      if (path !== selectedPath) return;
+
+      // Ranges are found again in the note as it is now, since it may have
+      // been edited while the images were downloading.
+      const local = new Map(saved.map((entry) => [entry.url, entry.path]));
+      const changes = remoteImageLinks(editorView.state.doc.toString())
+        .filter((link) => local.has(link.url))
+        .map(({ from, to, url }) => ({
+          from,
+          to,
+          insert: `![[${local.get(url).replace(/^\//, '')}]]`
+        }));
+      if (changes.length) editorView.dispatch({ changes });
+      if (failed.length) {
+        error = `Kept ${failed.length} web ${failed.length === 1 ? 'image' : 'images'} as links: ${failed[0].error}`;
+      }
+      status = '[Saved]';
+    } catch (err) {
+      if (root === selectedRoot) {
+        error = err.message;
+        status = hasUnsavedChanges() ? '[Offline - Retrying]' : '[Saved]';
+      }
+    }
   }
 
   async function deleteSelectedFile() {
@@ -3460,11 +3521,6 @@
   function openMarkdownHelp() {
     closeViewMenu();
     markdownHelpOpen = true;
-  }
-
-  function chooseUpload() {
-    closeViewMenu();
-    uploadInput?.click();
   }
 
   async function chooseDelete() {
@@ -5869,6 +5925,15 @@
               >
                 {@render icon('file')} Show current file
               </button>
+              <button
+                disabled={!workspaceRoots.length}
+                role="menuitem"
+                title="Images and PDFs go to the asset folder; Markdown files become notes beside the current one"
+                type="button"
+                on:click={() => runFilesMenu(() => uploadInput?.click())}
+              >
+                {@render icon('plus')} Upload
+              </button>
               <hr class="view-menu-divider" />
               <button
                 role="menuitem"
@@ -6073,7 +6138,7 @@
           bind:this={uploadInput}
           class="hidden"
           type="file"
-          accept="image/*,application/pdf,.pdf"
+          accept="image/*,application/pdf,.pdf,.md,.markdown"
           multiple
           on:change={chooseUploadFiles}
         />
@@ -6203,12 +6268,13 @@
               {#if documentControls}
                 <hr class="view-menu-divider" />
                 <button
-                  disabled={!workspaceRoots.length}
+                  disabled={!selectedIsMarkdown}
                   role="menuitem"
+                  title="Save the web images this note shows into the asset folder, so they read offline"
                   type="button"
-                  on:click={chooseUpload}
+                  on:click={downloadNoteImages}
                 >
-                  Upload
+                  Download images
                 </button>
                 <button
                   class="view-menu-danger"

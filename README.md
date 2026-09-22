@@ -613,6 +613,18 @@ score, with a note saying so. **arXiv** switches back to arXiv's own order.
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
 weekends; Friday's is in the day menu.
 
+## Uploads and web images
+
+**Upload** in the Files panel's ... menu saves files into the workspace
+without touching the open note. Images and PDFs go to `imageAssetFolder`. A
+Markdown file, such as a page saved by a browser clipper, becomes a note
+beside the open one under its own name; a name already taken gets ` 2`.
+
+**Download images** in a note's ... menu saves every web image the note shows
+(`![alt](https://…)`) into `imageAssetFolder` and points the note at the
+local copy, so a clipped page reads offline. An image that cannot be fetched
+keeps its link, and the note says how many were kept.
+
 ## X posts
 
 The X button in the left bar lists every X (Twitter) post your notes link to,

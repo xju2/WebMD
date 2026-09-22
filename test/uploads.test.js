@@ -40,7 +40,9 @@ test('converts pasted image sources into upload files', async () => {
       return {
         querySelectorAll() {
           return [
-            { getAttribute: () => '/api/workspace/media?path=/assets/clip.png' },
+            {
+              getAttribute: () => '/api/workspace/media?path=/assets/clip.png'
+            },
             { getAttribute: () => 'data:image/png;base64,cG5n' },
             { getAttribute: () => 'https://example.com/clip.png' }
           ];
@@ -72,4 +74,14 @@ test('converts pasted image sources into upload files', async () => {
   } finally {
     globalThis.DOMParser = originalDomParser;
   }
+});
+
+test('remoteImageLinks finds web images, titled or not, and skips local ones', async () => {
+  const { remoteImageLinks } = await import('../src/uploads.js');
+  const text =
+    '![a](https://x.io/a.png) ![[assets/b.png]] ![c](assets/c.png)\n![d](http://y.io/d.jpg "Title")';
+  assert.deepEqual(remoteImageLinks(text), [
+    { from: 0, to: 24, url: 'https://x.io/a.png' },
+    { from: 62, to: 93, url: 'http://y.io/d.jpg' }
+  ]);
 });
