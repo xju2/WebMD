@@ -113,7 +113,7 @@ export async function upgradeArxivCitationKeys(
   workspace,
   { fetchImpl = fetch, limit = 25 } = {}
 ) {
-  const pending = (await workspace.references())
+  const waiting = (await workspace.references())
     .map((entry) => ({
       entry,
       // Entries WebMD filed from arXiv's DOI record. The `arXiv:<id>` key is
@@ -122,8 +122,8 @@ export async function upgradeArxivCitationKeys(
         entry.fields?.webmdfallback ||
         (/^arxiv:/i.test(entry.key) ? entry.arxiv : '')
     }))
-    .filter((pending) => pending.id)
-    .slice(0, limit);
+    .filter((pending) => pending.id);
+  const pending = waiting.slice(0, limit);
   const upgraded = [];
 
   for (const { entry, id } of pending) {

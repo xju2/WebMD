@@ -848,7 +848,11 @@
         ? `Updated ${result.upgraded.length} of ${result.checked}: ${result.upgraded
             .map((change) => `${change.from} to ${change.to}`)
             .join(', ')}.`
-        : `INSPIRE still has none of the ${result.checked} waiting papers.`;
+        : `INSPIRE has none of the ${result.checked} papers asked about${
+            result.waiting > result.checked
+              ? `, ${result.waiting - result.checked} more waiting`
+              : ''
+          }.`;
     } catch (err) {
       newsKeyStatus = '';
       error = `Could not update citation keys: ${err.message}`;

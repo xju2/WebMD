@@ -270,6 +270,18 @@ function surname(name = '') {
   return trimmed.split(/\s+/).at(-1);
 }
 
+/**
+ * A name or title as bare ASCII letters: `H{\"a}gele` is `Hagele`, so an
+ * accent does not swallow the letter under it.
+ */
+function plainLetters(text = '', keep = '') {
+  return cleanBibtex(text)
+    .replace(/\\[`'"^~=.]\s*\{?([A-Za-z])\}?/g, '$1')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(new RegExp(`[^A-Za-z${keep}]`, 'g'), '');
+}
+
 // Title words that say nothing about which paper this is.
 const TITLE_STOP = new Set([
   'and',
@@ -299,10 +311,8 @@ const TITLE_STOP = new Set([
  * bibliography, which a repeat suffixes `a`, `b`, and so on to stay clear of.
  */
 export function citationFallbackKey(entry = {}, taken = new Set()) {
-  const author = firstAuthor(entry.author ?? '')
-    .toLowerCase()
-    .replace(/[^a-z]/g, '');
-  const words = cleanBibtex(entry.title ?? '')
+  const author = plainLetters(firstAuthor(entry.author ?? '')).toLowerCase();
+  const words = plainLetters(cleanBibtex(entry.title ?? ''), ' ')
     .split(/[^A-Za-z]+/)
     .filter((word) => word.length > 2 && !TITLE_STOP.has(word.toLowerCase()))
     .slice(0, 2)
