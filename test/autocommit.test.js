@@ -204,3 +204,50 @@ test('says what the snapshot changed', () => {
   );
   assert.equal(autoCommitMessage([]), 'WebMD autosave');
 });
+
+test('asks the model for a subject once the snapshot is more than a stray edit', async () => {
+  const root = await gitRepo();
+  await fs.writeFile(
+    path.join(root, 'note.md'),
+    'Tokenizer benchmarks\nrun one\nrun two\nrun three\nrun four\nrun five\n'
+  );
+
+  const seen = [];
+  const result = await commitWorkspace(root, {
+    summarize: async (diff) => {
+      seen.push(diff);
+      return '"Write up the tokenizer benchmark runs."';
+    }
+  });
+
+  assert.match(seen[0], /^diff --git/);
+  assert.match(seen[0], /Tokenizer benchmarks/);
+  // The quotes and the full stop the model wrapped it in are dropped.
+  assert.equal(
+    result.message,
+    'Write up the tokenizer benchmark runs\n\n- update note.md\n'
+  );
+});
+
+test('keeps the file names when the snapshot is small or the model fails', async () => {
+  const root = await gitRepo();
+  await fs.writeFile(path.join(root, 'note.md'), 'one more line\n');
+  let asked = false;
+
+  const small = await commitWorkspace(root, {
+    summarize: async () => {
+      asked = true;
+      return 'should not be asked';
+    }
+  });
+  assert.equal(asked, false);
+  assert.equal(small.message, 'Update note\n\n- update note.md\n');
+
+  await fs.writeFile(path.join(root, 'note.md'), 'a\nb\nc\nd\ne\nf\ng\n');
+  const broken = await commitWorkspace(root, {
+    summarize: async () => {
+      throw new Error('no model configured');
+    }
+  });
+  assert.equal(broken.message, 'Update note\n\n- update note.md\n');
+});

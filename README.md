@@ -49,8 +49,20 @@ AUTO_COMMIT_MINUTES=15
 ```
 
 Unset or `0` disables it. Each tick runs `git add -A` and commits everything git
-would track under that root — including changes you deliberately left unstaged —
-as `WebMD autosave <date> <time>`. Nothing is pushed. A clean tree, a directory
+would track under that root — including changes you deliberately left unstaged.
+Nothing is pushed.
+
+The message says what the snapshot changed. A snapshot of more than
+`AUTO_COMMIT_SUMMARY_LINES` changed lines (5 by default) is summarized in one
+line by the same AI the workspace is configured with, over the staged diff:
+
+```conf
+AUTO_COMMIT_SUMMARY_LINES=5
+```
+
+Smaller snapshots, and any summary that fails — no model configured, no
+network — fall back to naming the notes that changed (`Update fresh, note`).
+Either way the files are listed in the body. A clean tree, a directory
 that is not a repo, and a repo mid-merge or mid-rebase are all skipped. Commits
 run with `--no-verify` and signing off, so no hook or passphrase prompt can
 block an unattended snapshot; if git has no `user.email` configured anywhere,
@@ -680,7 +692,7 @@ Once a meeting has started, its detail shows **Recording and transcript**:
   as `recording:` in the meeting note's frontmatter. A Zoom recording link
   found in the Indico description is offered with **Save to note**.
 - **Transcript**: **Add file** takes the transcript Zoom gives with a cloud
-  recording (the recording page's *Audio transcript*, a `.vtt`), or SubRip
+  recording (the recording page's _Audio transcript_, a `.vtt`), or SubRip
   (`.srt`), Teams-style voice-tagged WebVTT, or Zoom's saved captions
   (`.txt`). It becomes a note of its own beside the meeting note,
   `Title (YYYY-MM-DD) transcript.md`, with `type: transcript`, the same
