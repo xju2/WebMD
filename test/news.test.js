@@ -15,7 +15,7 @@ import {
 } from '../server/news.js';
 import {
   filterPapers,
-  bibArxivIds,
+  bibArxivKeys,
   linkedArxivIds,
   newsCategoryCounts,
   newsClipChange,
@@ -250,12 +250,18 @@ test('finds the arXiv papers a note already links to', () => {
 });
 
 test('finds the arXiv papers the bibliography already holds', () => {
-  const ids = bibArxivIds([
+  const keys = bibArxivKeys([
     { key: 'a', arxiv: '2609.09159v2' },
     { key: 'b', arxiv: '', url: 'https://arxiv.org/abs/hep-ph/0601001' },
     { key: 'c', arxiv: '', url: 'https://doi.org/10.1000/x' }
   ]);
-  assert.deepEqual([...ids], ['2609.09159', 'hep-ph/0601001']);
+  assert.deepEqual(
+    [...keys],
+    [
+      ['2609.09159', 'a'],
+      ['hep-ph/0601001', 'b']
+    ]
+  );
 });
 
 test('filters by words and categories, never showing replacements', () => {
@@ -267,6 +273,11 @@ test('filters by words and categories, never showing replacements', () => {
   assert.equal(filterPapers(papers, { query: 'murnane TRACKING' }).length, 1);
   assert.equal(filterPapers(papers, { query: 'nothing' }).length, 0);
   assert.equal(filterPapers(papers, { categories: ['cs.LG'] }).length, 1);
+  assert.equal(filterPapers(papers, { clipped: new Set() }).length, 0);
+  assert.equal(
+    filterPapers(papers, { clipped: new Set(['2609.09159']) }).length,
+    1
+  );
   assert.deepEqual(
     [...newsCategoryCounts(papers, ['hep-ex', 'cs.LG'])],
     [

@@ -64,36 +64,40 @@ export function linkedArxivIds(content = '') {
 }
 
 /**
- * The arXiv ids the bibliography already holds, so a paper filed on any earlier
- * day still shows as clipped. `eprint` names the preprint; an entry that lacks
- * one may still carry an arXiv link.
+ * The arXiv ids the bibliography already holds, each with its cite key, so a
+ * paper filed on any earlier day still shows as clipped and says how to cite
+ * it. `eprint` names the preprint; an entry that lacks one may still carry an
+ * arXiv link.
  */
-export function bibArxivIds(entries = []) {
-  const ids = new Set();
+export function bibArxivKeys(entries = []) {
+  const keys = new Map();
   for (const entry of entries) {
     const eprint = String(entry?.arxiv ?? '')
       .trim()
       .replace(/^arxiv:\s*/i, '')
       .replace(/v\d+$/i, '');
-    if (eprint) ids.add(eprint.toLowerCase());
-    for (const id of linkedArxivIds(String(entry?.url ?? ''))) ids.add(id);
+    if (eprint) keys.set(eprint.toLowerCase(), entry.key);
+    for (const id of linkedArxivIds(String(entry?.url ?? '')))
+      keys.set(id, entry.key);
   }
-  return ids;
+  return keys;
 }
 
 /**
  * Narrows the day's listing. Every word of `query` must appear in the title,
  * authors, or abstract; `categories` keeps papers listed under any of them;
- * replacements (new versions of older papers) never show.
+ * `clipped`, a set of lowercase arXiv ids, keeps only those; replacements (new
+ * versions of older papers) never show.
  */
 export function filterPapers(
   papers = [],
-  { query = '', categories = [] } = {}
+  { query = '', categories = [], clipped = null } = {}
 ) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   const wanted = new Set(categories);
   return papers.filter((paper) => {
     if (isReplacement(paper)) return false;
+    if (clipped && !clipped.has(paper.id.toLowerCase())) return false;
     if (
       wanted.size &&
       !paper.categories.some((category) => wanted.has(category))

@@ -2713,6 +2713,29 @@ input[type='radio'] {
   opacity: 0.85;
 }
 
+.news-categories .news-clipped-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.news-cite {
+  padding: 1px 8px;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.news-cite:hover {
+  background: var(--surface-hover);
+}
+
 .news-pane > .tasks-note {
   width: calc(100% - 2 * var(--news-gutter));
   margin: 14px auto 0;

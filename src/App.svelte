@@ -69,7 +69,7 @@
   import { renderMarkdown } from './markdown.js';
   import {
     filterPapers,
-    bibArxivIds,
+    bibArxivKeys,
     linkedArxivIds,
     newsCategoryCounts,
     newsDayLabel,
@@ -308,6 +308,8 @@
   let newsExpanded = new Set();
   let newsNoteClipped = new Set();
   let newsClipping = new Set();
+  // Not kept with the filter: tomorrow's listing should not open empty.
+  let newsOnlyClipped = false;
   // arXiv id -> 1 or -1, as `.webmd/news-votes.json` holds them.
   let newsVotes = {};
   let newsRanking = null;
@@ -530,7 +532,8 @@
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
   // A paper counts as clipped once it is in the bibliography, so yesterday's
   // listing still shows the papers it was read from.
-  $: newsClipped = new Set([...newsNoteClipped, ...bibArxivIds(bibliography)]);
+  $: newsCiteKeys = bibArxivKeys(bibliography);
+  $: newsClipped = new Set([...newsNoteClipped, ...newsCiteKeys.keys()]);
 
   $: bibliographyByKey = new Map(
     bibliography.map((entry) => [entry.key, entry])
@@ -654,7 +657,15 @@
     hasNote: Boolean(selectedPath && selectedIsMarkdown),
     unsaved: unsavedWork
   });
-  $: visiblePapers = filterPapers(newsPapers, newsFilter);
+  $: newsListFilter = {
+    ...newsFilter,
+    clipped: newsOnlyClipped ? newsClipped : null
+  };
+  $: visiblePapers = filterPapers(newsPapers, newsListFilter);
+  $: newsClippedCount = filterPapers(newsPapers, {
+    ...newsFilter,
+    clipped: newsClipped
+  }).length;
   $: xWords = xQuery.toLowerCase().split(/\s+/).filter(Boolean);
   $: visibleXPosts = xPosts.filter((post) => {
     const text = `${post.label} ${post.handle} ${post.path}`.toLowerCase();
@@ -669,7 +680,7 @@
   $: olderNewsDay =
     newsDayIndex >= 0 ? (newsDayOptions[newsDayIndex + 1] ?? '') : '';
   $: newerNewsDay = newsDayIndex > 0 ? newsDayOptions[newsDayIndex - 1] : '';
-  $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsFilter);
+  $: newsCounts = newsCategoryCounts(newsPapers, newsCategories, newsListFilter);
   $: rankIndex = new Map(
     (newsRanking?.order ?? []).map((id, index) => [id, index])
   );
@@ -810,6 +821,18 @@
       // Fall back to the HTTP status text below.
     }
     return response.statusText || `HTTP ${response.status}`;
+  }
+
+  async function copyCiteKey(key) {
+    try {
+      await navigator.clipboard.writeText(`[@${key}]`);
+      copiedCode = key;
+      clearTimeout(copiedCodeTimer);
+      copiedCodeTimer = setTimeout(() => (copiedCode = null), 1400);
+      error = '';
+    } catch {
+      error = 'Could not copy the citation to the clipboard.';
+    }
   }
 
   async function copyCodeBlock(block) {
@@ -5281,6 +5304,7 @@
 {#snippet newsCard(paper)}
   {@const pick = pickById.get(paper.id)}
   {@const clipped = newsClipped.has(paper.id.toLowerCase())}
+  {@const citeKey = newsCiteKeys.get(paper.id.toLowerCase())}
   <li
     class="news-paper"
     class:picked={pick}
@@ -5327,6 +5351,16 @@
     <p class="news-meta">
       <span class="news-authors">{shortAuthorList(paper.authors)}</span>
       <span class="news-id">arXiv:{paper.id}</span>
+      {#if citeKey}
+        <button
+          class="news-cite"
+          title={`Copy [@${citeKey}] to cite this paper in a note`}
+          type="button"
+          on:click={() => copyCiteKey(citeKey)}
+        >
+          {copiedCode === citeKey ? 'Copied' : `@${citeKey}`}
+        </button>
+      {/if}
       {#each paper.categories as category}
         <span
           class="news-category"
@@ -6976,6 +7010,16 @@
                     {category} <span>{newsCounts.get(category) ?? 0}</span>
                   </button>
                 {/each}
+                <button
+                  type="button"
+                  class="news-clipped-toggle"
+                  class:active={newsOnlyClipped}
+                  aria-pressed={newsOnlyClipped}
+                  title="Show only the papers you clipped from this day"
+                  on:click={() => (newsOnlyClipped = !newsOnlyClipped)}
+                >
+                  {@render icon('clip')} Clipped <span>{newsClippedCount}</span>
+                </button>
               </div>
             </header>
             {#if newsStatus || newsWarning}
@@ -7029,7 +7073,9 @@
                 {#if !newsStatus && !pickedPapers.length}
                   <li class="preview-empty">
                     {newsPapers.length
-                      ? 'No paper matches this filter.'
+                      ? newsOnlyClipped && !newsClippedCount
+                        ? 'You have not clipped a paper from this day.'
+                        : 'No paper matches this filter.'
                       : `arXiv has no announcements today. It publishes none on weekends.${newsDays.length ? ' Earlier days are in the day menu above.' : ''}`}
                   </li>
                 {/if}
