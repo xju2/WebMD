@@ -19,17 +19,44 @@ const IN_PROGRESS = [
   'rebase-apply'
 ];
 
-export function autoCommitMessage(now = new Date()) {
-  const stamp = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0')
-  ].join('-');
-  const time = [
-    String(now.getHours()).padStart(2, '0'),
-    String(now.getMinutes()).padStart(2, '0')
-  ].join(':');
-  return `WebMD autosave ${stamp} ${time}`;
+/**
+ * What the snapshot did, read off the same `git status` that found it: the
+ * notes by name, and the full list underneath. Git already stamps the time, so
+ * the message says what changed instead of when.
+ */
+export function autoCommitMessage(changes = []) {
+  if (!changes.length) return 'WebMD autosave';
+
+  const verbs = new Set(changes.map((change) => change.verb));
+  const verb = verbs.size === 1 ? [...verbs][0] : 'Update';
+  const names = changes.map((change) =>
+    path.basename(change.path, path.extname(change.path))
+  );
+  const listed = names.slice(0, 3).join(', ');
+  const rest = names.length - 3;
+  const subject = `${verb} ${listed}${rest > 0 ? ` and ${rest} more` : ''}`;
+  const body = changes
+    .map((change) => `- ${change.verb.toLowerCase()} ${change.path}`)
+    .join('\n');
+  return `${subject}\n\n${body}\n`;
+}
+
+// `XY path`, where X is the staged state and Y the working tree's. A rename
+// reads `R  old -> new`, and only the new name is worth naming.
+const STATUS_VERB = { A: 'Add', '?': 'Add', D: 'Delete', R: 'Rename' };
+
+export function parseStatus(porcelain = '') {
+  return porcelain
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) => {
+      const state = line.slice(0, 2).trim()[0] ?? '';
+      const named = line.slice(3).trim();
+      const quoted = /^"(.*)"$/.exec(named);
+      const file = (quoted ? quoted[1] : named).split(' -> ').at(-1);
+      return { verb: STATUS_VERB[state] ?? 'Update', path: file };
+    })
+    .sort((left, right) => left.path.localeCompare(right.path));
 }
 
 /**
@@ -44,9 +71,10 @@ export async function commitWorkspace(root, { now = new Date() } = {}) {
   if (await isMidOperation(gitDir)) {
     return { committed: false, reason: 'in-progress' };
   }
-  if (!(await hasChanges(root))) return { committed: false, reason: 'clean' };
+  const changes = parseStatus(await readStatus(root));
+  if (!changes.length) return { committed: false, reason: 'clean' };
 
-  const message = autoCommitMessage(now);
+  const message = autoCommitMessage(changes);
   await git(root, ['add', '-A']);
   // --no-verify: a pre-commit hook that reformats or rejects would turn an
   // unattended snapshot into a surprise.
@@ -121,13 +149,13 @@ async function isMidOperation(gitDir) {
   return false;
 }
 
-async function hasChanges(root) {
+async function readStatus(root) {
   const { stdout } = await git(root, [
     'status',
     '--porcelain',
     '--untracked-files=all'
   ]);
-  return Boolean(stdout.trim());
+  return stdout;
 }
 
 /** Only supplies an identity when the repo and user config leave one missing. */

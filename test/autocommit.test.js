@@ -7,6 +7,7 @@ import test from 'node:test';
 import { promisify } from 'node:util';
 import {
   autoCommitMessage,
+  parseStatus,
   commitWorkspace,
   startAutoCommit
 } from '../server/autocommit.js';
@@ -49,14 +50,15 @@ test('commits edited, new, and deleted notes', async () => {
   await fs.writeFile(path.join(root, 'note.md'), 'edited notes\n');
   await fs.writeFile(path.join(root, 'fresh.md'), 'brand new\n');
 
-  const result = await commitWorkspace(root, {
-    now: new Date(2026, 7, 14, 9, 5)
-  });
+  const result = await commitWorkspace(root);
 
   assert.equal(result.committed, true);
-  assert.equal(result.message, 'WebMD autosave 2026-08-14 09:05');
+  assert.equal(
+    result.message,
+    'Update fresh, note\n\n- add fresh.md\n- update note.md\n'
+  );
   const history = await log(root);
-  assert.match(history, /WebMD autosave 2026-08-14 09:05/);
+  assert.match(history, /^Update fresh, note$/m);
   assert.match(history, /^note\.md$/m);
   assert.match(history, /^fresh\.md$/m);
 });
@@ -161,8 +163,8 @@ test('sweeps every root on one tick and skips overlapping runs', async () => {
     results.map((entry) => entry.committed),
     [true, true]
   );
-  assert.match(await log(first), /WebMD autosave/);
-  assert.match(await log(second), /WebMD autosave/);
+  assert.match(await log(first), /^Update note$/m);
+  assert.match(await log(second), /^Update note$/m);
 });
 
 test('stays idle when disabled', async () => {
@@ -173,12 +175,32 @@ test('stays idle when disabled', async () => {
   assert.deepEqual(await autoCommit.runOnce(), []);
   autoCommit.stop();
 
-  assert.doesNotMatch(await log(root), /WebMD autosave/);
+  assert.doesNotMatch(await log(root), /^Update note$/m);
 });
 
-test('stamps the message with the local date and time', () => {
+test('says what the snapshot changed', () => {
   assert.equal(
-    autoCommitMessage(new Date(2026, 0, 2, 3, 4)),
-    'WebMD autosave 2026-01-02 03:04'
+    autoCommitMessage(parseStatus('?? daily/2026-09-22.md\n')),
+    'Add 2026-09-22\n\n- add daily/2026-09-22.md\n'
   );
+  // One verb for a mixed snapshot, and only the first few notes are named.
+  assert.equal(
+    autoCommitMessage(
+      parseStatus(
+        ' M references.bib\n D old.md\n M a.md\n M b.md\n?? "quoted note.md"\nR  from.md -> to.md\n'
+      )
+    ),
+    [
+      'Update a, b, old and 3 more',
+      '',
+      '- update a.md',
+      '- update b.md',
+      '- delete old.md',
+      '- add quoted note.md',
+      '- update references.bib',
+      '- rename to.md',
+      ''
+    ].join('\n')
+  );
+  assert.equal(autoCommitMessage([]), 'WebMD autosave');
 });
