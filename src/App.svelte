@@ -2348,7 +2348,10 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           root,
-          source: paper.url || `https://arxiv.org/abs/${paper.id}`
+          source: paper.url || `https://arxiv.org/abs/${paper.id}`,
+          // INSPIRE indexes only some of these, and an entry is marked as
+          // waiting for it only when the paper could turn up there.
+          categories: paper.categories
         })
       });
       if (root === selectedRoot)

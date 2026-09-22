@@ -18,7 +18,24 @@ function lookupUrls({ kind, id }) {
   ];
 }
 
-export async function fetchCitationBibtex(source, { fetchImpl = fetch } = {}) {
+/**
+ * The arXiv categories INSPIRE indexes: high-energy physics and the fields it
+ * borders. A paper listed only under, say, cs.LG will never appear there, so
+ * its entry is never marked as waiting for INSPIRE.
+ */
+const INSPIRE_CATEGORY =
+  /^(hep-|nucl-|gr-qc|astro-ph|math-ph|physics\.(acc-ph|ins-det|data-an|hep-ph))/i;
+
+export function inspireIndexes(categories) {
+  // Nothing said about the paper, as for a pasted link: assume it may be there.
+  if (!categories?.length) return true;
+  return categories.some((category) => INSPIRE_CATEGORY.test(category));
+}
+
+export async function fetchCitationBibtex(
+  source,
+  { fetchImpl = fetch, categories } = {}
+) {
   const reference = citationSource(source);
   if (!reference) {
     throw new WorkspaceError(
@@ -45,7 +62,9 @@ export async function fetchCitationBibtex(source, { fetchImpl = fetch } = {}) {
       failure = response?.status || 'no response';
       continue;
     }
-    const bibtex = tidyArxivEntry((await response.text()).trim(), reference);
+    const bibtex = tidyArxivEntry((await response.text()).trim(), reference, {
+      categories
+    });
     const entry = parseBibtex(bibtex)[0];
     if (!entry) {
       failure = 'an unreadable BibTeX entry';
@@ -69,7 +88,7 @@ export async function fetchCitationBibtex(source, { fetchImpl = fetch } = {}) {
  * marked `webmdfallback` so the Update keys sweep knows to ask INSPIRE about
  * this paper again — INSPIRE's own entry carries no such field.
  */
-function tidyArxivEntry(bibtex, { kind, id }) {
+function tidyArxivEntry(bibtex, { kind, id }, { categories } = {}) {
   if (kind !== 'arxiv' || !/@\w+\s*\{\s*https?:\/\//i.test(bibtex)) {
     return bibtex;
   }
@@ -78,7 +97,9 @@ function tidyArxivEntry(bibtex, { kind, id }) {
     .replace(/(@\w+\s*\{\s*)[^,]+/i, `$1${key}`)
     .replace(
       /\n?\}\s*$/,
-      `,\n  eprint = {${id}},\n  archivePrefix = {arXiv},\n  webmdfallback = {${id}}\n}`
+      `,\n  eprint = {${id}},\n  archivePrefix = {arXiv}${
+        inspireIndexes(categories) ? `,\n  webmdfallback = {${id}}` : ''
+      }\n}`
     );
 }
 

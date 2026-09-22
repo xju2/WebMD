@@ -146,7 +146,8 @@ export async function createApp({
     '/api/workspace/citations',
     asyncHandler(async (req, res) => {
       const citation = await fetchCitationBibtex(req.body?.source, {
-        fetchImpl: citationFetch
+        fetchImpl: citationFetch,
+        categories: req.body?.categories
       });
       res.json(
         await workspaces.get(req.body?.root).addReference(citation.bibtex)

@@ -250,3 +250,29 @@ test('keys a paper no catalogue has keyed the way Zotero would', () => {
   );
   assert.equal(citationFallbackKey({}), 'reference');
 });
+
+test('marks a paper as waiting for INSPIRE only when INSPIRE indexes its field', async () => {
+  const datacite = () =>
+    new Response(`@misc{https://doi.org/10.48550/arxiv.2401.01234,
+  author = {Li, Jinqing},
+  title = {Mixture cure models},
+  year = {2024}
+}`);
+  const lookup = (categories) =>
+    fetchCitationBibtex('https://arxiv.org/abs/2401.01234', {
+      categories,
+      fetchImpl: async (url) =>
+        url.includes('inspirehep')
+          ? new Response('', { status: 404 })
+          : datacite()
+    });
+
+  assert.match((await lookup(['hep-ex', 'cs.LG'])).bibtex, /webmdfallback/);
+  // Machine learning alone: INSPIRE will never hold this paper.
+  assert.doesNotMatch(
+    (await lookup(['cs.LG', 'stat.ML'])).bibtex,
+    /webmdfallback/
+  );
+  // A pasted link says nothing about the paper, so it stays worth asking about.
+  assert.match((await lookup()).bibtex, /webmdfallback/);
+});
