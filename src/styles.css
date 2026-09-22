@@ -2806,8 +2806,15 @@ input[type='radio'] {
 .news-paper-head {
   display: flex;
   align-items: flex-start;
+  gap: 16px;
+}
+
+.news-paper-foot {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin-top: 10px;
 }
 
 .news-title-heading {
@@ -3016,7 +3023,6 @@ input[type='radio'] {
 }
 
 .news-more {
-  margin-top: 4px;
   padding: 2px 0;
   border: 0;
   background: none;
@@ -4848,6 +4854,12 @@ input[type='radio'] {
   .search-field,
   .news-filter {
     width: 150px;
+  }
+
+  /* Refresh keeps its icon only here; Update keys and Instructions already
+     live in the ... menu, so nothing else needs to shrink. */
+  .news-refresh-label {
+    display: none;
   }
 
   /* Both panels float here (see src/layout.js); the AI panel takes the full

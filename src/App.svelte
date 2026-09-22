@@ -5355,37 +5355,6 @@
           >{@render inline(newsSegments(paper.title, { links: false }))}</a
         >
       </h4>
-      <div class="news-actions">
-        {#each [[1, 'voteUp', 'More papers like this'], [-1, 'voteDown', 'Fewer papers like this']] as [value, name, label]}
-          <button
-            aria-label={label}
-            aria-pressed={newsVotes[paper.id] === value}
-            class="news-vote"
-            title={`${label}. Used from the next ranking, or press Re-rank.`}
-            type="button"
-            on:click={() => votePaper(paper, value)}
-          >
-            {@render icon(name)}
-          </button>
-        {/each}
-        <button
-          class="news-clip"
-          class:clipped
-          disabled={clipped || newsClipping.has(paper.id)}
-          title={clipped
-            ? 'Already in today’s note'
-            : 'Add to the Reading section of today’s note'}
-          type="button"
-          on:click={() => clipPaper(paper)}
-        >
-          {@render icon(clipped ? 'check' : 'clip')}
-          {clipped
-            ? 'Clipped'
-            : newsClipping.has(paper.id)
-              ? 'Clipping...'
-              : 'Clip'}
-        </button>
-      </div>
     </div>
     <p class="news-meta">
       <span class="news-authors">{shortAuthorList(paper.authors)}</span>
@@ -5429,14 +5398,47 @@
     <div class="news-abstract" class:expanded={newsExpanded.has(paper.id)}>
       {@render inline(newsSegments(paper.abstract))}
     </div>
-    <button
-      aria-expanded={newsExpanded.has(paper.id)}
-      class="news-more"
-      type="button"
-      on:click={() => toggleNewsAbstract(paper.id)}
-    >
-      {newsExpanded.has(paper.id) ? 'Less' : 'More'}
-    </button>
+    <div class="news-paper-foot">
+      <button
+        aria-expanded={newsExpanded.has(paper.id)}
+        class="news-more"
+        type="button"
+        on:click={() => toggleNewsAbstract(paper.id)}
+      >
+        {newsExpanded.has(paper.id) ? 'Less' : 'More'}
+      </button>
+      <div class="news-actions">
+        {#each [[1, 'voteUp', 'More papers like this'], [-1, 'voteDown', 'Fewer papers like this']] as [value, name, label]}
+          <button
+            aria-label={label}
+            aria-pressed={newsVotes[paper.id] === value}
+            class="news-vote"
+            title={`${label}. Used from the next ranking, or press Re-rank.`}
+            type="button"
+            on:click={() => votePaper(paper, value)}
+          >
+            {@render icon(name)}
+          </button>
+        {/each}
+        <button
+          class="news-clip"
+          class:clipped
+          disabled={clipped || newsClipping.has(paper.id)}
+          title={clipped
+            ? 'Already in today’s note'
+            : 'Add to the Reading section of today’s note'}
+          type="button"
+          on:click={() => clipPaper(paper)}
+        >
+          {@render icon(clipped ? 'check' : 'clip')}
+          {clipped
+            ? 'Clipped'
+            : newsClipping.has(paper.id)
+              ? 'Clipping...'
+              : 'Clip'}
+        </button>
+      </div>
+    </div>
   </li>
 {/snippet}
 
@@ -6338,6 +6340,33 @@
                   Refresh tasks
                 </button>
               {/if}
+              {#if viewMode === 'news'}
+                <hr class="view-menu-divider" />
+                {#if newsFallbackKeys}
+                  <button
+                    role="menuitem"
+                    title="Papers clipped before INSPIRE indexed them are cited as @arXiv:id. This asks INSPIRE again and rewrites the citations in your notes."
+                    type="button"
+                    on:click={() => {
+                      closeViewMenu();
+                      upgradeCiteKeys();
+                    }}
+                  >
+                    Update keys ({newsFallbackKeys})
+                  </button>
+                {/if}
+                <button
+                  role="menuitem"
+                  title="Edit what the AI ranks papers against"
+                  type="button"
+                  on:click={() => {
+                    closeViewMenu();
+                    openNewsInstructions();
+                  }}
+                >
+                  Instructions
+                </button>
+              {/if}
               {#if documentControls}
                 <hr class="view-menu-divider" />
                 <button
@@ -7017,30 +7046,15 @@
                       setNewsFilter({ query: event.currentTarget.value })}
                   />
                 </div>
-                {#if newsFallbackKeys}
-                  <button
-                    type="button"
-                    title="Papers clipped before INSPIRE indexed them are cited as @arXiv:id. This asks INSPIRE again and rewrites the citations in your notes."
-                    on:click={upgradeCiteKeys}
-                  >
-                    Update keys ({newsFallbackKeys})
-                  </button>
-                {/if}
                 <button
-                  type="button"
-                  title="Edit what the AI ranks papers against"
-                  on:click={openNewsInstructions}
-                >
-                  Instructions
-                </button>
-                <button
+                  aria-label="Refresh"
                   class="primary"
                   type="button"
                   title="Fetch the listing from arXiv again"
                   on:click={refreshNews}
                 >
                   {@render icon('refresh')}
-                  Refresh
+                  <span class="news-refresh-label">Refresh</span>
                 </button>
               </div>
               <div
