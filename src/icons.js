@@ -3,11 +3,14 @@
 // path `d` strings; App.svelte's `icon` snippet renders them.
 export const ICONS = {
   home: ['M3.5 11 12 4l8.5 7', 'M5.5 9.5V20h13V9.5', 'M10 20v-5.5h4V20'],
+  // A calendar with today's date marked, not a document — so it can't be
+  // mistaken for the arXiv (open book) or file (dog-eared page) icons.
   today: [
-    'M6.5 3.5h7l4 4v13h-11z',
-    'M13.5 3.5v4h4',
-    'M9.5 12.5h5',
-    'M9.5 16h3.5'
+    'M6 6h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
+    'M4 10h16',
+    'M8 4v4',
+    'M16 4v4',
+    'M10.7 14.5a1.3 1.3 0 1 0 2.6 0 1.3 1.3 0 1 0-2.6 0'
   ],
   folder: [
     'M3.5 7a1.5 1.5 0 0 1 1.5-1.5h4.3l2 2H19a1.5 1.5 0 0 1 1.5 1.5v8.5A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z'
@@ -18,12 +21,11 @@ export const ICONS = {
     'M12.5 7.5H20',
     'M12.5 16.5H20'
   ],
+  // An open book for arXiv papers — kept the 'news' key since that's what
+  // App.svelte renders, only the artwork changed.
   news: [
-    'M5 5.5h11v13.5H6.5A1.5 1.5 0 0 1 5 17.5z',
-    'M16 9h3v8.5a1.5 1.5 0 0 1-3 0',
-    'M8 9h5',
-    'M8 12.5h5',
-    'M8 16h3'
+    'M4 6.2c2.3-1.4 5.4-1.4 8 0v12.6c-2.6-1.4-5.7-1.4-8 0z',
+    'M20 6.2c-2.3-1.4-5.4-1.4-8 0v12.6c2.6-1.4 5.7-1.4 8 0z'
   ],
   // The X mark: one thick stroke crossed by a thin one.
   x: ['M5 4.5h3.5l10.5 15h-3.5z', 'M18.5 4.5 13.2 10.5', 'M5.5 19.5l5.3-6'],
