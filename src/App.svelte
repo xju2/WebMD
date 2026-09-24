@@ -2374,8 +2374,8 @@
 
   function toggleNewsCategory(category) {
     const categories = newsFilter.categories.includes(category)
-      ? newsFilter.categories.filter((item) => item !== category)
-      : [...newsFilter.categories, category];
+      ? []
+      : [category];
     setNewsFilter({ categories });
   }
 
