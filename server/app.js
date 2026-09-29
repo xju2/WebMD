@@ -845,6 +845,10 @@ export async function createApp({
         fetchImpl: aiFetch
       });
       picks = parseRankedPicks(reply, candidates);
+      // An empty or cut-off reply is a failure, not a verdict: saved as one,
+      // it would hide the day's picks for good.
+      if (!picks.length)
+        throw new Error('The model named none of the papers it was shown.');
     } catch (error) {
       return {
         ...base,
