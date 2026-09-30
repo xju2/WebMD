@@ -839,7 +839,9 @@ function normalizeMaterials(folders, origin) {
       const url = file ? sameOriginUrl(item.download_url, origin) : webLink(item?.link_url);
       if (!url) return null;
       const title = decodeHtml(item.title || item.filename || '') || 'Attachment';
-      return { id: String(item.id ?? ''), title, url, file };
+      // A file replaced under the same name keeps its url; this tells them apart.
+      const version = file ? String(item.checksum || item.modified_dt || '') : '';
+      return { id: String(item.id ?? ''), title, url, file, ...(version ? { version } : {}) };
     })
     .filter(Boolean);
 }
@@ -853,12 +855,13 @@ const ATTACHMENT_PATH = /^\/event\/(\d+)\/(?:.*\/)?attachments\/\d+\/(\d+)\/([^/
 /**
  * The local copy of an Indico attachment, fetched once with the token and
  * kept under `cacheDir/indico-files/<host>/<event>/`, outside every workspace
- * so autocommit never sees it. Returns `{ file, name }`: the absolute path and
- * the attachment's own file name.
+ * so autocommit never sees it. `version` (the checksum the agenda gave) names
+ * the copy, so a speaker's new upload under the same name is fetched afresh.
+ * Returns `{ file, name }`: the absolute path and the attachment's own name.
  */
 export async function saveAttachment(
   value,
-  { sites = new Map(), fetchImpl = fetch, cacheDir } = {}
+  { sites = new Map(), fetchImpl = fetch, cacheDir, version = '' } = {}
 ) {
   const { origin, url } = checkIndicoAddress(value, sites);
   const match = ATTACHMENT_PATH.exec(url.pathname);
@@ -876,12 +879,13 @@ export async function saveAttachment(
     name = encoded;
   }
   const safe = name.replace(/[^\w.-]+/g, '_').slice(-120);
+  const tag = String(version).replace(/[^\w-]+/g, '').slice(0, 64);
   const file = path.join(
     cacheDir,
     'indico-files',
     url.hostname,
     eventId,
-    `${attachmentId}-${safe}`
+    `${attachmentId}-${tag ? `${tag}-` : ''}${safe}`
   );
   try {
     await fs.access(file);

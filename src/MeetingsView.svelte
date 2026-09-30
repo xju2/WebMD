@@ -268,7 +268,7 @@
   // device is sent to a sign-on page; a link opens where it points.
   function materialHref(material) {
     return material.file
-      ? `/api/meetings/attachment?url=${encodeURIComponent(material.url)}`
+      ? `/api/meetings/attachment?url=${encodeURIComponent(material.url)}${material.version ? `&v=${encodeURIComponent(material.version)}` : ''}`
       : material.url;
   }
 

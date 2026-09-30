@@ -478,7 +478,8 @@ export async function createApp({
       const { file, name } = await saveAttachment(req.query.url, {
         sites,
         fetchImpl: indicoFetch,
-        cacheDir
+        cacheDir,
+        version: typeof req.query.v === 'string' ? req.query.v : ''
       });
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'private, max-age=86400');

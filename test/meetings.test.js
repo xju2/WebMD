@@ -91,6 +91,7 @@ const WEEKLY = rawEvent(
                 id: 71,
                 type: 'file',
                 title: 'Slides',
+                checksum: 'aaa111',
                 download_url: `${CERN}/event/101/contributions/9002/attachments/7/71/talk%20v2.pdf`
               },
               { id: 72, type: 'link', title: 'Code', link_url: 'https://github.com/example/code' },
@@ -813,13 +814,15 @@ test('lists slides and links, and serves Indico files once fetched with the toke
   const event = await call('GET', `/api/meetings/event?root=0&origin=${encodeURIComponent(CERN)}&id=101`);
   const slides = `${CERN}/event/101/contributions/9002/attachments/7/71/talk%20v2.pdf`;
   assert.deepEqual(event.body.agenda[1].materials, [
-    { id: '71', title: 'Slides', url: slides, file: true },
+    { id: '71', title: 'Slides', url: slides, file: true, version: 'aaa111' },
     { id: '72', title: 'Code', url: 'https://github.com/example/code', file: false }
   ]);
   assert.equal(event.body.materials[0].title, 'Minutes');
 
-  const get = (target) => fetch(`${url}/api/meetings/attachment?url=${encodeURIComponent(target)}`);
-  const first = await get(slides);
+  const get = (target, v = '') =>
+    fetch(`${url}/api/meetings/attachment?url=${encodeURIComponent(target)}${v ? `&v=${v}` : ''}`);
+  const attachmentCalls = () => indico.calls.filter((item) => item.url.includes('/attachments/')).length;
+  const first = await get(slides, 'aaa111');
   assert.equal(first.status, 200);
   assert.equal(first.headers.get('content-type'), 'application/pdf');
   assert.match(first.headers.get('content-disposition'), /^inline; filename="talk v2.pdf"/);
@@ -828,9 +831,12 @@ test('lists slides and links, and serves Indico files once fetched with the toke
   assert.deepEqual(fetched.map((item) => item.auth), [`Bearer ${TOKEN}`]);
 
   // The second read is the saved copy, kept outside every workspace.
-  assert.equal((await get(slides)).status, 200);
-  assert.equal(indico.calls.filter((item) => item.url.includes('/attachments/')).length, 1);
-  await fs.access(path.join(cacheDir, 'indico-files/indico.cern.ch/101/71-talk_v2.pdf'));
+  assert.equal((await get(slides, 'aaa111')).status, 200);
+  assert.equal(attachmentCalls(), 1);
+  await fs.access(path.join(cacheDir, 'indico-files/indico.cern.ch/101/71-aaa111-talk_v2.pdf'));
+  // A new upload under the same name has a new checksum, so it is fetched again.
+  assert.equal((await get(slides, 'bbb222')).status, 200);
+  assert.equal(attachmentCalls(), 2);
   assert.deepEqual(await fs.readdir(roots[0]), []);
 
   // Anything a browser would run as a page is a download, never a page here.
