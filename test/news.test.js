@@ -11,6 +11,7 @@ import {
   newsHistory,
   parseArxivRss,
   readNewsDay,
+  withoutRepeats,
   resetNewsCache
 } from '../server/news.js';
 import {
@@ -214,6 +215,34 @@ test('keeps the history in memory without a cache directory', async () => {
   assert.deepEqual(await newsHistory(['hep-ex'], { now }), ['2026-09-10']);
   const kept = await readNewsDay(['hep-ex'], '2026-09-10');
   assert.equal(kept.papers.length, 2);
+});
+
+test('drops papers an earlier day already announced', async () => {
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  const categories = ['hep-ex'];
+  let clock = Date.parse('2026-09-10T12:00:00Z');
+  const now = () => clock;
+  const fetchImpl = async () => new Response(RSS, { status: 200 });
+  const thursday = await fetchArxivNews(categories, {
+    fetchImpl,
+    now,
+    cacheDir
+  });
+  assert.equal(
+    await withoutRepeats(categories, thursday, { cacheDir }),
+    thursday
+  );
+
+  const [repeat] = thursday.papers;
+  const friday = {
+    published: 'Fri, 11 Sep 2026 00:00:00 -0400',
+    papers: [{ ...repeat, announceType: 'cross' }, { id: '2609.99999' }]
+  };
+  const shown = await withoutRepeats(categories, friday, { cacheDir });
+  assert.deepEqual(
+    shown.papers.map((paper) => paper.id),
+    ['2609.99999']
+  );
 });
 
 test('clips into an existing Reading section', () => {

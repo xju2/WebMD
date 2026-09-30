@@ -342,11 +342,11 @@ test('serves and ranks the listings of earlier days', async () => {
   );
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const today = new Date();
-  const feedOf = (date, title) =>
-    RSS.replace(/<pubDate>[^<]*/, `<pubDate>${date.toUTCString()}`).replace(
-      PAPERS[0].title,
-      title
-    );
+  // Each day announces its own papers; a repeat would be dropped.
+  const feedOf = (date, title, month = '2609') =>
+    RSS.replace(/<pubDate>[^<]*/, `<pubDate>${date.toUTCString()}`)
+      .replace(PAPERS[0].title, title)
+      .replaceAll('2609.', `${month}.`);
   const isoDay = (date) => date.toISOString().slice(0, 10);
 
   const prompts = [];
@@ -360,7 +360,7 @@ test('serves and ranks the listings of earlier days', async () => {
       aiFetch: async (_url, options) => {
         prompts.push(JSON.parse(options.body).messages[1].content);
         return ollamaReply(
-          '[{"id": "2609.00002", "score": 9, "connection": "HEP tracking", "reason": "GNN tracking."}]'
+          '[{"id": "2609.00002", "score": 9, "connection": "HEP tracking", "reason": "GNN tracking."}, {"id": "2608.00002", "score": 9, "connection": "HEP tracking", "reason": "GNN tracking."}]'
         );
       }
     });
@@ -388,7 +388,7 @@ test('serves and ranks the listings of earlier days', async () => {
     }
   };
 
-  await serve(feedOf(yesterday, 'Yesterday paper'), async ({ get }) => {
+  await serve(feedOf(yesterday, 'Yesterday paper', '2608'), async ({ get }) => {
     const { body } = await get();
     assert.equal(body.day, isoDay(yesterday));
     assert.deepEqual(body.days, [isoDay(yesterday)]);

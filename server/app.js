@@ -39,6 +39,7 @@ import {
   oldestNewsDay,
   readCacheFile,
   readNewsDay,
+  withoutRepeats,
   writeCacheFile
 } from './news.js';
 import {
@@ -652,17 +653,17 @@ export async function createApp({
 
   async function newsListing(day, { refresh = false } = {}) {
     const categories = newsCategories(env);
-    if (!day) {
-      return fetchArxivNews(categories, {
-        fetchImpl: newsFetch,
-        refresh,
-        cacheDir
-      });
-    }
-    if (!isNewsDay(day)) {
+    if (day && !isNewsDay(day)) {
       throw new WorkspaceError(400, 'The day must be written YYYY-MM-DD.');
     }
-    return readNewsDay(categories, day, { cacheDir });
+    const news = day
+      ? await readNewsDay(categories, day, { cacheDir })
+      : await fetchArxivNews(categories, {
+          fetchImpl: newsFetch,
+          refresh,
+          cacheDir
+        });
+    return withoutRepeats(categories, news, { cacheDir });
   }
 
   // One ranking per workspace per listing: a model call reads the whole day's
@@ -848,7 +849,9 @@ export async function createApp({
       // An empty or cut-off reply is a failure, not a verdict: saved as one,
       // it would hide the day's picks for good.
       if (!picks.length)
-        throw new Error('The model named none of the papers it was shown.');
+        throw new Error(
+          `The model named none of the papers it was shown. It replied: ${JSON.stringify(String(reply).replace(/\s+/g, ' ').trim().slice(0, 200))}`
+        );
     } catch (error) {
       return {
         ...base,

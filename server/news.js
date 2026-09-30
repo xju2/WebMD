@@ -206,6 +206,34 @@ export async function readNewsDay(categories, day, { cacheDir } = {}) {
   return news;
 }
 
+// `${key}/${day}` → the ids that day listed. A past day's listing is final.
+const dayIds = new Map();
+
+/**
+ * The listing without papers an earlier kept day already announced: arXiv
+ * lists a paper again, as a cross-list, when it gains another category.
+ */
+export async function withoutRepeats(categories, news, { cacheDir } = {}) {
+  const key = categories.join('+');
+  const day = newsDay(news.published);
+  const seen = new Set();
+  for (const earlier of await newsHistory(categories, { cacheDir })) {
+    if (earlier >= day) continue;
+    let ids = dayIds.get(`${key}/${earlier}`);
+    if (!ids) {
+      const kept = await readNewsDay(categories, earlier, { cacheDir }).catch(
+        () => null
+      );
+      if (!kept) continue;
+      ids = new Set(kept.papers.map((paper) => paper.id));
+      dayIds.set(`${key}/${earlier}`, ids);
+    }
+    for (const id of ids) seen.add(id);
+  }
+  const papers = news.papers.filter((paper) => !seen.has(paper.id));
+  return papers.length === news.papers.length ? news : { ...news, papers };
+}
+
 /**
  * Checks the feed every `intervalMs`, so a day you never open News for is
  * still kept. Most ticks are cache hits; a stale listing costs arXiv a 304.
@@ -338,6 +366,7 @@ function tag(xml, name) {
 
 /** Test seam: the module-level cache outlives a single test. */
 export function resetNewsCache() {
+  dayIds.clear();
   cache.clear();
   inFlight.clear();
   memoryHistory.clear();
