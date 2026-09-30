@@ -6614,6 +6614,7 @@
                 <code>{shortcutKey}+K</code> quick open
                 <code>{shortcutKey}+Shift+D</code> today’s note
                 <code>{shortcutKey}+Shift+T</code> tasks
+                <code>/</code> filter tasks (on the Tasks board)
                 <code>{shortcutKey}+Shift+E</code> edit
                 <code>{shortcutKey}+Shift+P</code> preview
                 <code>{shortcutKey}+Shift+\</code> reference note
