@@ -1,15 +1,19 @@
 <script>
   // The Conference destination: one Indico event planned hour by hour. The
-  // model scores every talk once; each day's plan is built here from the
-  // scores, and choosing another talk swaps it in without asking again.
+  // model scores each day's best local matches once; each day's plan is built
+  // here from the scores, and choosing another talk swaps it in without
+  // asking again. A poster session is one stop with its best posters listed.
   import { onDestroy, onMount } from 'svelte';
   import { ICONS } from './icons.js';
   import {
+    POSTERS_SHOWN,
     agendaDays,
     backupFor,
     choose,
+    dayUnits,
     planDay,
-    talkSpan
+    talkSpan,
+    unitScores
   } from './conference-plan.js';
   import { newsDayLabel, newsRankSummary } from './news.js';
 
@@ -52,12 +56,17 @@
       value.reason || ''
     ])
   );
-  $: days = meeting ? agendaDays(meeting.agenda) : [];
+  $: localIds = new Set(
+    Object.entries(data?.ranking?.scores ?? {})
+      .filter(([, value]) => value.local)
+      .map(([id]) => id)
+  );
+  $: days = meeting ? splitDays(meeting.agenda, scoreById) : [];
   $: day = days.find((item) => item.date === dayDate) || days[0] || null;
   $: plan = day ? plans[day.date] || [] : [];
-  $: rows = day ? planRows(plan, day.talks, scoreById) : [];
+  $: rows = day ? planRows(plan, day.units, day.scores) : [];
   $: today = meeting ? zoneDate(now, meeting.timezone) : '';
-  $: grid = day ? gridLayout(day.talks) : null;
+  $: grid = day ? gridLayout(day.units) : null;
   $: planned = new Set(plan.map((item) => item.id));
 
   onMount(() => {
@@ -121,9 +130,9 @@
           value.score
         ])
       );
-      const split = agendaDays(body.meeting.agenda);
+      const split = splitDays(body.meeting.agenda, scores);
       plans = Object.fromEntries(
-        split.map((item) => [item.date, planDay(item.talks, scores)])
+        split.map((item) => [item.date, planDay(item.units, item.scores)])
       );
       const localToday = zoneDate(Date.now(), body.meeting.timezone);
       if (!split.some((item) => item.date === dayDate))
@@ -139,6 +148,14 @@
     } finally {
       busy = false;
     }
+  }
+
+  /** Each day with its planning units (poster sessions folded) and their scores. */
+  function splitDays(agenda, scores) {
+    return agendaDays(agenda).map((item) => {
+      const units = dayUnits(item.talks, scores);
+      return { ...item, units, scores: unitScores(units, scores) };
+    });
   }
 
   async function forget(url) {
@@ -286,9 +303,14 @@
 {/snippet}
 
 {#snippet score(item)}
-  {#if scoreById.has(item.id)}
-    <span class="conference-score {tier(scoreById.get(item.id))}"
-      >{scoreById.get(item.id)}</span
+  {@const value = day?.scores.get(item.id) ?? scoreById.get(item.id)}
+  {#if value}
+    <span
+      class="conference-score {tier(value)}"
+      class:local={localIds.has(item.id)}
+      title={localIds.has(item.id)
+        ? 'Not read by the model: scored by keyword match with your notes'
+        : 'Scored by the model'}>{value}</span
     >
   {/if}
 {/snippet}
@@ -346,14 +368,15 @@
     <div class="conference-empty">
       {#if busy}
         <p class="tasks-note" aria-live="polite">
-          Reading the agenda and scoring every talk… a big conference takes a
-          minute.
+          Reading the agenda and scoring each day’s best matches… a big
+          conference takes a minute.
         </p>
       {:else}
         <p class="preview-empty">
-          Paste a conference’s Indico event link. Every talk is scored against
-          your arXiv News instructions and notes, and each day becomes one plan
-          you can follow hour by hour.
+          Paste a conference’s Indico event link. Each day’s talks are matched
+          against your arXiv News instructions and notes, the model judges the
+          best of them, and each day becomes one plan you can follow hour by
+          hour.
         </p>
         {#if conferences.length}
           <ul class="conference-recent" aria-label="Planned conferences">
@@ -446,6 +469,9 @@
     </div>
     <p class="tasks-note conference-meta">
       Times in {meeting.timezone}. {newsRankSummary(data.ranking, 'talks')}
+      {#if data.ranking.total > data.ranking.reviewed}
+        · {(data.ranking.total - data.ranking.reviewed).toLocaleString('en-US')}
+        more matched to your notes locally{/if}
       {#if noteMessage}<span role="status">· {noteMessage}</span>{/if}
     </p>
     {#if noteError}
@@ -453,6 +479,11 @@
         {noteError}
       </p>
     {/if}
+    {#each data.ranking.warnings ?? [] as warning}
+      <p class="meetings-notice hint conference-notice" role="status">
+        {warning}
+      </p>
+    {/each}
 
     {#if day && mode === 'plan'}
       <ol
@@ -479,12 +510,42 @@
                     <span>{item.title}</span>
                   {/if}
                 </div>
-                <span class="conference-where">
-                  {#if item.room}<strong>{item.room}</strong>{/if}
-                  {[item.speakers.join(', '), item.session]
-                    .filter(Boolean)
-                    .join(' · ')}
-                </span>
+                {#if item.posters}
+                  {@const shown = item.posters.slice(0, POSTERS_SHOWN)}
+                  <span class="conference-where">
+                    {#if item.room}<strong>{item.room}</strong>{/if}
+                    {item.posters.length.toLocaleString('en-US')} posters · the best
+                    {shown.length} to visit
+                  </span>
+                  <ol class="conference-posters">
+                    {#each shown as poster (poster.id)}
+                      <li>
+                        {@render score(poster)}
+                        <span>
+                          {#if poster.url}
+                            <a
+                              href={poster.url}
+                              rel="noopener noreferrer"
+                              target="_blank">{poster.title}</a
+                            >
+                          {:else}
+                            {poster.title}
+                          {/if}
+                          {#if reasonById.get(poster.id)}
+                            <small>{reasonById.get(poster.id)}</small>
+                          {/if}
+                        </span>
+                      </li>
+                    {/each}
+                  </ol>
+                {:else}
+                  <span class="conference-where">
+                    {#if item.room}<strong>{item.room}</strong>{/if}
+                    {[item.speakers.join(', '), item.session]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                {/if}
                 {#if reasonById.get(item.id)}
                   <span class="conference-reason"
                     >{reasonById.get(item.id)}</span
@@ -544,7 +605,7 @@
           {#each grid.cells as cell (cell.item.id + cell.item.start.at)}
             <button
               type="button"
-              class="conference-cell {tier(scoreById.get(cell.item.id) || 0)}"
+              class="conference-cell {tier(day.scores.get(cell.item.id) || 0)}"
               class:chosen={planned.has(cell.item.id)}
               aria-pressed={planned.has(cell.item.id)}
               style="grid-column: {cell.column}; grid-row: {cell.from} / {cell.to};"
@@ -555,10 +616,11 @@
               on:click={() => pick(cell.item)}
             >
               <span class="conference-cell-time"
-                >{cell.item.start.time}{#if scoreById.has(cell.item.id)}
-                  · {scoreById.get(cell.item.id)}{/if}</span
+                >{cell.item.start.time}{#if day.scores.get(cell.item.id)}
+                  · {day.scores.get(cell.item.id)}{/if}</span
               >
-              {cell.item.title}
+              {cell.item.title}{#if cell.item.posters}
+                · {cell.item.posters.length} posters{/if}
             </button>
           {/each}
         </div>

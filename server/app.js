@@ -64,9 +64,11 @@ import {
   parseTalkScores,
   planMarkdown,
   planNoteMarkdown,
+  localScores,
   readConferences,
   rememberConference,
   replacePlan,
+  shortlistDay,
   uniqueTalks,
   writeConferences
 } from './conference.js';
@@ -88,6 +90,7 @@ import {
   parseProjectLogEntries,
   rankProjectCandidates
 } from './project-log.js';
+import { agendaDays } from '../src/conference-plan.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
 import { readWorkspaceSettings } from './settings.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
@@ -482,12 +485,6 @@ export async function createApp({
     );
   }
 
-  function conferenceListing(instructions, meeting) {
-    return sha1(
-      JSON.stringify([instructions, meeting.agenda.map((item) => item.id)])
-    );
-  }
-
   async function conferenceInstructions(workspace) {
     return (
       (await readNewsInstructions(workspace)) ||
@@ -548,13 +545,30 @@ export async function createApp({
       const refresh = Boolean(req.body?.refresh);
       const meeting = await conferenceMeeting(req.body?.url, refresh);
       const instructions = await conferenceInstructions(workspace);
-      const listing = conferenceListing(instructions, meeting);
+      const talks = uniqueTalks(meeting.agenda);
+      if (!talks.length) {
+        throw new WorkspaceError(
+          400,
+          `${meeting.title} has no timetable on Indico yet.`
+        );
+      }
       const file = conferenceScoresFile(workspace, meeting);
-      const saved = file && !refresh ? await readCacheFile(file) : null;
+      const saved = (file && (await readCacheFile(file))?.days) || {};
 
-      let ranking = saved?.listing === listing ? saved.ranking : null;
-      if (!ranking) {
-        const profile = buildInterestProfile({
+      // One call per day, each reading at most the day's best N local
+      // matches; a day whose agenda and instructions are unchanged is reused.
+      const days = agendaDays(talks).map((day) => ({
+        ...day,
+        listing: sha1(
+          JSON.stringify([instructions, day.talks.map((item) => item.id)])
+        )
+      }));
+      const missing = days.filter(
+        (day) => refresh || saved[day.date]?.listing !== day.listing
+      );
+      let profile;
+      if (missing.length) {
+        profile = buildInterestProfile({
           files: await workspace.markdownFiles(),
           references: await workspace.references(),
           interests: instructions,
@@ -566,30 +580,77 @@ export async function createApp({
             'Nothing to rank against yet. Write your ranking instructions in arXiv News, or clip a few papers.'
           );
         }
-        const talks = uniqueTalks(meeting.agenda);
-        if (!talks.length) {
-          throw new WorkspaceError(
-            400,
-            `${meeting.title} has no timetable on Indico yet.`
-          );
-        }
-        let usage;
-        const reply = await runAiCompletion({
-          messages: buildTalkScoreMessages(profile, talks),
-          env: aiEnv,
-          fetchImpl: aiFetch,
-          onUsage: (value) => (usage = value)
-        });
-        const scores = parseTalkScores(reply, talks);
-        if (!Object.keys(scores).length) {
-          throw new WorkspaceError(
-            502,
-            `The model scored none of the talks it was shown. It replied: ${JSON.stringify(String(reply).replace(/\s+/g, ' ').trim().slice(0, 200))}`
-          );
-        }
-        ranking = { method: 'ai', scores, reviewed: talks.length, usage };
-        if (file) await writeCacheFile(file, { listing, ranking });
       }
+      const limit = newsCandidateLimit(env);
+      const fresh = await Promise.all(
+        missing.map(async (day) => {
+          const { candidates, local, lexical } = shortlistDay(
+            day.talks,
+            profile,
+            limit
+          );
+          let usage;
+          try {
+            const reply = await runAiCompletion({
+              messages: buildTalkScoreMessages(profile, candidates),
+              env: aiEnv,
+              fetchImpl: aiFetch,
+              onUsage: (value) => (usage = value)
+            });
+            const scores = parseTalkScores(reply, candidates);
+            if (!Object.keys(scores).length)
+              throw new Error(
+                `The model scored none of the talks it was shown. It replied: ${JSON.stringify(String(reply).replace(/\s+/g, ' ').trim().slice(0, 200))}`
+              );
+            return {
+              date: day.date,
+              listing: day.listing,
+              method: 'ai',
+              scores: { ...local, ...scores },
+              reviewed: candidates.length,
+              usage
+            };
+          } catch (error) {
+            // A failed Re-rank keeps the day's earlier scores.
+            const earlier = saved[day.date];
+            if (earlier?.listing === day.listing)
+              return {
+                date: day.date,
+                ...earlier,
+                warning: `Re-ranking ${day.date} failed, so it keeps its earlier scores: ${error.message}`
+              };
+            // Not saved: the next Plan asks again.
+            return {
+              date: day.date,
+              method: 'local',
+              scores: localScores(day.talks, [], lexical),
+              reviewed: 0,
+              warning: `${day.date} is ordered by keyword match only: ${error.message}`
+            };
+          }
+        })
+      );
+      const kept = new Map(fresh.map((day) => [day.date, day]));
+      const results = days.map(
+        (day) => kept.get(day.date) || { date: day.date, ...saved[day.date] }
+      );
+      const scored = fresh.filter((day) => day.method === 'ai');
+      if (file && scored.length) {
+        const next = { ...saved };
+        for (const day of scored) {
+          const { date, ...entry } = day;
+          next[date] = entry;
+        }
+        await writeCacheFile(file, { days: next });
+      }
+      const ranking = {
+        method: results.some((day) => day.method === 'ai') ? 'ai' : 'local',
+        scores: Object.assign({}, ...results.map((day) => day.scores)),
+        reviewed: results.reduce((sum, day) => sum + (day.reviewed || 0), 0),
+        total: talks.length,
+        usage: addUsage(results.map((day) => day.usage).filter(Boolean)),
+        warnings: results.map((day) => day.warning).filter(Boolean)
+      };
 
       const url = meeting.key;
       await updateConferences(workspace, (list) =>
@@ -608,6 +669,21 @@ export async function createApp({
       });
     })
   );
+
+  /** Several calls' usage as one: counts and cost add up where all are known. */
+  function addUsage(list) {
+    if (!list.length) return undefined;
+    const sum = (key) =>
+      list.every((usage) => Number.isFinite(usage[key]))
+        ? list.reduce((total, usage) => total + usage[key], 0)
+        : null;
+    return {
+      model: list[0].model,
+      inputTokens: sum('inputTokens'),
+      outputTokens: sum('outputTokens'),
+      cost: sum('cost')
+    };
+  }
 
   function conferencePlanNotes(files) {
     const notes = new Map();
@@ -629,7 +705,11 @@ export async function createApp({
         req.body?.days && typeof req.body.days === 'object' ? req.body.days : {};
       const file = conferenceScoresFile(workspace, meeting);
       const saved = file ? await readCacheFile(file) : null;
-      const plan = planMarkdown(meeting, days, saved?.ranking?.scores ?? {});
+      const scores = Object.assign(
+        {},
+        ...Object.values(saved?.days ?? {}).map((day) => day.scores)
+      );
+      const plan = planMarkdown(meeting, days, scores);
 
       workspace.forgetFiles();
       const existing = conferencePlanNotes(await workspace.markdownFiles()).get(

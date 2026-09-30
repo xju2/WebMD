@@ -11,7 +11,8 @@ import {
   buildTalkScoreMessages,
   conferenceEvent,
   parseTalkScores,
-  replacePlan
+  replacePlan,
+  shortlistDay
 } from '../server/conference.js';
 import { resetMeetingsCache } from '../server/meetings.js';
 import { buildInterestProfile } from '../server/news-rank.js';
@@ -19,7 +20,9 @@ import {
   agendaDays,
   backupFor,
   choose,
-  planDay
+  dayUnits,
+  planDay,
+  unitScores
 } from '../src/conference-plan.js';
 
 const CERN = 'https://indico.cern.ch';
@@ -148,6 +151,71 @@ test('rewrites only the plan section of a note', () => {
   assert.equal(replacePlan('# Mine\n', 'plan'), '# Mine\n\nplan\n');
 });
 
+test('folds a poster session into one stop, best posters first', () => {
+  const posters = Array.from({ length: 12 }, (_, index) => ({
+    ...talk(`p${index}`, '16:00', 90, 'Hall'),
+    session: 'Evening session'
+  }));
+  const talks = [talk('t1', '16:00', 30, 'A'), ...posters];
+  const scores = scoresOf({ t1: 6, p3: 9, p7: 4 });
+  const units = dayUnits(talks, scores);
+  assert.equal(units.length, 2, 'a crowd of 12 in one session and room');
+  const block = units.find((unit) => unit.posters);
+  assert.equal(block.posters.length, 12);
+  assert.deepEqual(
+    block.posters.slice(0, 2).map((item) => item.id),
+    ['p3', 'p7']
+  );
+  assert.equal(unitScores(units, scores).get(block.id), 9);
+  assert.deepEqual(
+    planDay(units, unitScores(units, scores)).map((item) => item.id),
+    [block.id],
+    'the session is worth its best poster'
+  );
+
+  // Ten parallel talks in ten rooms are tracks, not posters.
+  const tracks = Array.from({ length: 10 }, (_, index) =>
+    talk(`r${index}`, '09:00', 20, `Room ${index}`)
+  );
+  assert.equal(dayUnits(tracks).length, 10);
+  const labelled = [{ ...talk('x', '09:00', 60, 'Hall'), type: 'Poster' }];
+  assert.ok(dayUnits(labelled)[0].posters, 'Indico says Poster');
+});
+
+test('shortlists a day by local match, with a few talks from every slot', () => {
+  const profile = buildInterestProfile({
+    interests: 'calorimeter calibration'
+  });
+  // Twenty morning talks all match; the one afternoon slot matches nothing.
+  const morning = Array.from({ length: 20 }, (_, index) => ({
+    ...talk(`m${index}`, '09:00', 20, `Room ${index}`),
+    title: `Calorimeter calibration ${index}`
+  }));
+  const afternoon = Array.from({ length: 5 }, (_, index) => ({
+    ...talk(`a${index}`, '14:00', 20, `Room ${index}`),
+    title: `Unrelated topic ${index}`
+  }));
+  const { candidates, local } = shortlistDay(
+    [...morning, ...afternoon],
+    profile,
+    8
+  );
+  assert.equal(candidates.length, 8);
+  assert.equal(
+    candidates.filter((item) => item.id.startsWith('a')).length,
+    3,
+    'the afternoon slot still gets three talks read'
+  );
+  assert.equal(Object.keys(local).length, 17, 'the rest are scored locally');
+  assert.ok(
+    Object.values(local).every(
+      (value) => value.local && value.score >= 1 && value.score <= 3
+    )
+  );
+  assert.equal(local.a4.score, 1, 'no match is the lowest local score');
+  assert.ok(local.m19.score > 1, 'a local match scores above no match');
+});
+
 /* ------------------------------------------------------------------ API */
 
 const when = (date, time) => ({
@@ -191,25 +259,27 @@ const CONFERENCE = {
   }))
 };
 
-async function startApp({ reply }) {
+async function startApp({ reply, conference = CONFERENCE, env = {} }) {
   const root = await fs.mkdtemp(path.join(tmpdir(), 'webmd-conference-'));
   const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
   const prompts = [];
   const app = await createApp({
     workspaceRoots: [root],
     cacheDir,
-    env: { ARXIV_NEWS_INTERESTS: 'Charged particle tracking' },
+    env: { ARXIV_NEWS_INTERESTS: 'Charged particle tracking', ...env },
     indicoFetch: async (target) => {
       const url = new URL(target);
       const results =
-        url.pathname === '/export/event/77.json' ? [CONFERENCE] : [];
+        url.pathname === '/export/event/77.json' ? [conference] : [];
       return new Response(JSON.stringify({ count: results.length, results }));
     },
     aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
     aiFetch: async (_url, options) => {
-      prompts.push(JSON.parse(options.body).messages[1].content);
+      const prompt = JSON.parse(options.body).messages[1].content;
+      prompts.push(prompt);
+      const text = typeof reply === 'function' ? reply(prompt) : reply;
       return new Response(
-        `${JSON.stringify({ message: { content: reply } })}\n${JSON.stringify({ done: true })}\n`
+        `${JSON.stringify({ message: { content: text } })}\n${JSON.stringify({ done: true })}\n`
       );
     }
   });
@@ -330,4 +400,99 @@ test('a link that is not an Indico event is refused before any fetch', async (t)
   });
   assert.equal(refused.status, 400);
   assert.equal(prompts.length, 0);
+});
+
+test('scores each day in its own call, reading at most N talks a day', async (t) => {
+  resetMeetingsCache();
+  const contributions = ['2026-10-05', '2026-10-06'].flatMap((date, day) =>
+    Array.from({ length: 6 }, (_, index) => ({
+      db_id: 600 + day * 10 + index,
+      title: index % 2 ? `Tracking study ${index}` : `Other study ${index}`,
+      startDate: when(date, `${String(9 + index).padStart(2, '0')}:00`),
+      endDate: when(date, `${String(9 + index).padStart(2, '0')}:30`),
+      speakers: [],
+      session: null,
+      roomFullname: 'Room A',
+      url: `${CERN}/event/77/contributions/${600 + day * 10 + index}/`
+    }))
+  );
+  const failing = new Set();
+  const { server, call, prompts } = await startApp({
+    conference: {
+      ...CONFERENCE,
+      endDate: when('2026-10-06', '18:00'),
+      contributions
+    },
+    env: { ARXIV_NEWS_MAX_CANDIDATES: '4' },
+    reply: (prompt) => {
+      const ids = [...prompt.matchAll(/^\d+\. id: (\S+)/gm)].map(
+        (match) => match[1]
+      );
+      if (ids.some((id) => failing.has(id))) return 'no scores today';
+      return JSON.stringify(
+        ids.map((id) => ({ id, score: 8, reason: 'Read.' }))
+      );
+    }
+  });
+  t.after(() => server.close());
+  const plan = (body = {}) =>
+    call('POST', '/api/conference/plan', {
+      root: '0',
+      url: `${CERN}/event/77/`,
+      ...body
+    });
+
+  const first = await plan();
+  assert.equal(prompts.length, 2, 'one call per day');
+  for (const prompt of prompts)
+    assert.equal(prompt.match(/^\d+\. id:/gm).length, 4, 'N talks a day');
+  assert.equal(first.body.ranking.reviewed, 8);
+  assert.equal(first.body.ranking.total, 12);
+  const values = Object.values(first.body.ranking.scores);
+  assert.equal(values.length, 12, 'every talk has a score');
+  assert.equal(values.filter((value) => value.local).length, 4);
+
+  await plan();
+  assert.equal(prompts.length, 2, 'both days are reused');
+
+  // A failed Re-rank keeps the day's earlier scores.
+  for (const id of ['610', '611', '612', '613', '614', '615']) failing.add(id);
+  const kept = await plan({ refresh: true });
+  assert.equal(kept.status, 200);
+  assert.match(
+    kept.body.ranking.warnings[0],
+    /Re-ranking 2026-10-06 failed, so it keeps its earlier scores/
+  );
+  assert.equal(kept.body.ranking.scores['611'].score, 8);
+  failing.clear();
+});
+
+test('a day the model fails on is ordered locally and asked again next time', async (t) => {
+  resetMeetingsCache();
+  let fail = true;
+  const { server, call, prompts } = await startApp({
+    reply: () =>
+      fail
+        ? 'no scores today'
+        : '[{"id": "501", "score": 9}, {"id": "502", "score": 3}, {"id": "503", "score": 7}]'
+  });
+  t.after(() => server.close());
+  const plan = () =>
+    call('POST', '/api/conference/plan', {
+      root: '0',
+      url: `${CERN}/event/77/`
+    });
+
+  const local = await plan();
+  assert.equal(local.status, 200);
+  assert.equal(local.body.ranking.method, 'local');
+  assert.match(
+    local.body.ranking.warnings[0],
+    /2026-10-05 is ordered by keyword match only/
+  );
+  assert.equal(local.body.ranking.scores['501'].local, true);
+  fail = false;
+  const scored = await plan();
+  assert.equal(prompts.length, 2, 'the failed day is asked again');
+  assert.equal(scored.body.ranking.scores['501'].score, 9);
 });

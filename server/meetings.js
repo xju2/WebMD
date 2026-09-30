@@ -808,6 +808,8 @@ function normalizeAgenda(contributions, origin, timezone) {
           .map(personName)
           .filter(Boolean),
         session: typeof item.session === 'string' ? decodeHtml(item.session) : '',
+        // "Talk", "Poster", …: the conference planner lists posters, not picks one.
+        type: typeof item.type === 'string' ? decodeHtml(item.type) : '',
         room: placeText(item.roomFullname) || placeText(item.room),
         // The abstract, for ranking talks; the agenda list does not show it.
         description: htmlToText(item.description).slice(0, AGENDA_DESCRIPTION_CHARS),

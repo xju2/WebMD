@@ -305,9 +305,15 @@ Tasks:
       check.
 - [x] Conference planner (`Conference` rail destination,
       `src/ConferenceView.svelte`, `server/conference.js`,
-      `src/conference-plan.js`): paste an Indico event link and the model
-      scores every talk against the arXiv News profile, once per agenda and
-      instructions. Each day's plan is the set of non-overlapping talks with
+      `src/conference-plan.js`): paste an Indico event link. Each day is
+      scored in its own call: talks are matched locally against the arXiv
+      News profile, and the model reads at most `ARXIV_NEWS_MAX_CANDIDATES`
+      (120) of them, including the best 3 of every time slot and 10 of every
+      poster session; the rest keep a local score of 1-3. Days are cached
+      separately, and a failed day falls back to local order or its earlier
+      scores. Poster sessions (Indico type or session "Poster", or 8+ talks
+      at once in one session and room) are one stop listing the best 10
+      posters. Each day's plan is the set of non-overlapping talks with
       the highest total score, staying in the same room on ties, with the best
       parallel talk as a backup. Plan and All tracks (rooms by time) layouts;
       picking any talk swaps it in. Save plan to note rewrites only the marked

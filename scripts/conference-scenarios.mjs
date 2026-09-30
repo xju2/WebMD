@@ -16,7 +16,7 @@ import {
 } from './browser-harness.mjs';
 
 const EVENT = 'https://indico.cern.ch/event/9010/timetable/';
-const main = await startFixture(3211, {});
+const main = await startFixture(3211, { ARXIV_NEWS_MAX_CANDIDATES: '40' });
 const { child: chrome, page, profile } = await launchChrome();
 
 const state = () =>
@@ -113,7 +113,33 @@ try {
       /Europe\/Zurich/.test(s.meta),
     s.meta
   );
+  const posters = await page.eval(`
+    const rows = [...document.querySelectorAll('.conference-talk')].filter((el) => el.querySelector('.conference-posters'));
+    return rows.map((el) => ({
+      text: el.querySelector('.conference-where').textContent.replace(/\\s+/g, ' ').trim(),
+      listed: el.querySelectorAll('.conference-posters li').length
+    }));`);
+  check(
+    'a poster session is one stop with its best posters listed',
+    posters.length === 1 &&
+      posters[0].listed === 10 &&
+      /60 posters/.test(posters[0].text),
+    JSON.stringify(posters)
+  );
+  const local = await page.eval(
+    `return document.querySelectorAll('.conference-score.local').length;`
+  );
+  check(
+    'talks the model did not read are marked as keyword matches',
+    local > 0 && /more matched to your notes locally/.test(s.meta),
+    `${local} local scores · ${s.meta}`
+  );
   await page.shot('conference-plan');
+  await page.eval(
+    `document.querySelector('.conference-posters').closest('li.conference-talk').scrollIntoView({ block: 'center' });`
+  );
+  await sleep(150);
+  await page.shot('conference-posters');
 
   // Swapping in the backup makes it the plan and the old talk its backup.
   const first = s.talks.find((talk) => talk.backup);
@@ -171,8 +197,10 @@ try {
     : '';
   check(
     'the note has a section per day and the backups',
-    (note.match(/^## /gm) || []).length === 2 && /- Or: /.test(note),
-    planFile || 'no plan note'
+    (note.match(/^## /gm) || []).length === 2 &&
+      /- Or: /.test(note) &&
+      /60 posters; the best 10 to visit/.test(note),
+    note.slice(0, 1500) || 'no plan note'
   );
 
   await page.viewport(390, 844);

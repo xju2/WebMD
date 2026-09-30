@@ -462,7 +462,21 @@ indicoEvents[9010] = {
             url: `https://indico.cern.ch/event/9010/contributions/${id}/`
           };
         })
-    )
+    ),
+    // The first day ends in a poster session: one stop, many posters.
+    ...(day
+      ? []
+      : Array.from({ length: 60 }, (_, index) => ({
+          db_id: 72500 + index,
+          title: `${TOPICS[index % TOPICS.length]} poster ${index + 1}`,
+          type: 'Poster',
+          startDate: zurich(0, '16:40'),
+          endDate: zurich(0, '18:00'),
+          roomFullname: 'Poster hall',
+          speakers: [person('Poster', String(index + 1))],
+          session: 'Poster session',
+          url: `https://indico.cern.ch/event/9010/contributions/${72500 + index}/`
+        })))
   ])
 };
 
@@ -568,6 +582,10 @@ const env = {
   OLLAMA_BASE_URL: 'http://127.0.0.1:1',
   AI_MODEL: 'fixture-stub',
   ARXIV_NEWS_CATEGORIES: 'hep-ex,hep-ph,cs.LG,physics.data-an',
+  // The conference scenarios read fewer talks per day, so some are local.
+  ...(process.env.ARXIV_NEWS_MAX_CANDIDATES
+    ? { ARXIV_NEWS_MAX_CANDIDATES: process.env.ARXIV_NEWS_MAX_CANDIDATES }
+    : {}),
   ...(meetingsMode === 'notoken' ? {} : { INDICO_CERN_TOKEN: FIXTURE_TOKEN })
 };
 const app = await createApp({

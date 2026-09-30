@@ -1,16 +1,30 @@
 import fs from 'node:fs/promises';
-import { agendaDays, backupFor, talkSpan } from '../src/conference-plan.js';
+import {
+  POSTERS_SHOWN,
+  agendaDays,
+  backupFor,
+  dayUnits,
+  talkSpan,
+  unitScores
+} from '../src/conference-plan.js';
 import { escapeInline, parseMeetingSource } from './meetings.js';
-import { clip, collapse, parseRankedPicks, profileText } from './news-rank.js';
+import {
+  clip,
+  collapse,
+  orderByScore,
+  parseRankedPicks,
+  profileText,
+  scorePapers
+} from './news-rank.js';
 import { WorkspaceError } from './workspace.js';
 
 /** The conferences planned in this workspace, newest first. */
 export const CONFERENCES_PATH = '/.webmd/conferences.json';
 const MAX_CONFERENCES = 20;
-// What every talk's abstract shares, so a 1,500-talk agenda stays one call
-// (about 30k tokens of abstracts) while a small one reads 360 characters each.
-const DESCRIPTION_BUDGET = 120000;
 const DESCRIPTION_CHARS = 360;
+// The model reads each day's best local matches, but never leaves a time slot
+// without a few of its talks, or a poster session without enough to list.
+const PER_SLOT = 3;
 const REASON_CHARS = 140;
 
 export const PLAN_START = '<!-- webmd:conference-plan -->';
@@ -68,7 +82,7 @@ export function rememberConference(conferences, entry) {
 
 const SYSTEM_PROMPT = `You score every talk of a conference for one researcher, so a planner can build them an hour-by-hour schedule across the parallel tracks.
 
-You get their profile and a numbered list of every talk. The profile has up to five parts:
+You get their profile and a numbered list of talks from one day of the conference, already narrowed to those that best match the profile, with a few from every time slot. The profile has up to five parts:
 - Instructions: what they wrote about their research and how they want work judged, in their own words. This is the authority on what counts as relevant; when the other parts suggest something else, it wins. Follow it, except that the reply format below is fixed.
 - Papers they read: titles they cited or saved. This shows their taste within those areas.
 - Recent notes: what they are working on this week. Use it to break ties towards their current work.
@@ -95,11 +109,71 @@ export function uniqueTalks(agenda = []) {
   });
 }
 
-export function buildTalkScoreMessages(profile, talks) {
-  const chars = Math.min(
-    DESCRIPTION_CHARS,
-    Math.floor(DESCRIPTION_BUDGET / Math.max(talks.length, 1))
+/**
+ * The day's talks the model reads, at most `limit`: the best local matches,
+ * the way arXiv News narrows a listing, but first the best `PER_SLOT` of every
+ * time slot and the best `POSTERS_SHOWN` of every poster session, so each has
+ * something judged. Also returns the local scores for the rest.
+ */
+export function shortlistDay(talks, profile, limit) {
+  const lexical = scorePapers(
+    talks.map((item) => ({
+      id: item.id,
+      title: item.title,
+      abstract: [item.session, item.speakers.join(', '), item.description]
+        .filter(Boolean)
+        .join('. ')
+    })),
+    profile
   );
+  const ordered = orderByScore(talks, lexical);
+  const group = new Map();
+  for (const unit of dayUnits(talks)) {
+    if (unit.posters)
+      for (const item of unit.posters) group.set(item.id, unit.id);
+    else group.set(unit.id, `slot:${unit.start.at}`);
+  }
+  const taken = new Map();
+  const first = [];
+  const rest = [];
+  for (const item of ordered) {
+    const key = group.get(item.id);
+    const quota = key.startsWith('posters:') ? POSTERS_SHOWN : PER_SLOT;
+    if ((taken.get(key) || 0) < quota) {
+      taken.set(key, (taken.get(key) || 0) + 1);
+      first.push(item);
+    } else rest.push(item);
+  }
+  const candidates = [...first, ...rest].slice(0, limit);
+  return {
+    candidates,
+    local: localScores(talks, candidates, lexical),
+    lexical
+  };
+}
+
+/**
+ * Scores for the talks the model does not read, from 1 to 3 by how well they
+ * matched locally, so a slot the model saw nothing good in still has a pick,
+ * and anything the model scored 4 or more wins over them.
+ */
+export function localScores(talks, candidates, lexical) {
+  const read = new Set(candidates.map((item) => item.id));
+  const unread = talks.filter((item) => !read.has(item.id));
+  const best = Math.max(0, ...unread.map((item) => lexical.get(item.id) || 0));
+  const scores = {};
+  for (const item of unread) {
+    const match = lexical.get(item.id) || 0;
+    scores[item.id] = {
+      score: match > 0 ? 1 + Math.ceil((2 * match) / best) : 1,
+      local: true
+    };
+  }
+  return scores;
+}
+
+export function buildTalkScoreMessages(profile, talks) {
+  const chars = DESCRIPTION_CHARS;
   const list = talks
     .map((item, index) => {
       const lines = [
@@ -109,7 +183,7 @@ export function buildTalkScoreMessages(profile, talks) {
       if (item.session) lines.push(`   session: ${collapse(item.session)}`);
       if (item.speakers.length)
         lines.push(`   speakers: ${item.speakers.join(', ')}`);
-      if (item.description && chars >= 40)
+      if (item.description)
         lines.push(`   abstract: ${clip(collapse(item.description), chars)}`);
       return lines.join('\n');
     })
@@ -141,33 +215,51 @@ export function parseTalkScores(reply, talks) {
  * things to do in the Tasks view.
  */
 export function planMarkdown(meeting, days, scores = {}) {
-  const byId = new Map(meeting.agenda.map((item) => [item.id, item]));
   const scoreMap = new Map(
     Object.entries(scores).map(([id, value]) => [id, value.score])
   );
   const lines = [PLAN_START];
   for (const { date, talks } of agendaDays(meeting.agenda)) {
+    const units = dayUnits(talks, scoreMap);
+    const byId = new Map(units.map((item) => [item.id, item]));
     const chosen = (days[date] || []).map((id) => byId.get(id)).filter(Boolean);
     if (!chosen.length) continue;
+    const planScores = unitScores(units, scoreMap);
     lines.push('', `## ${dayHeading(date)}`, '');
     for (const item of chosen) {
+      if (item.posters) {
+        const shown = item.posters.slice(0, POSTERS_SHOWN);
+        lines.push(
+          `- ${spanText(item)} ${escapeInline(item.title)}${item.room ? ` — ${escapeInline(item.room)}` : ''} (${item.posters.length} posters; the best ${shown.length} to visit)`
+        );
+        for (const poster of shown)
+          lines.push(
+            `  - ${talkLink(poster)}${scoreText(scores[poster.id])}${scores[poster.id]?.reason ? ` — ${escapeInline(scores[poster.id].reason)}` : ''}`
+          );
+        continue;
+      }
       const score = scores[item.id];
       const where = [item.room, item.speakers.join(', ')]
         .filter(Boolean)
         .join(' · ');
       lines.push(
-        `- ${spanText(item)} ${talkLink(item)}${where ? ` — ${escapeInline(where)}` : ''}${score ? ` (${score.score}/10)` : ''}`
+        `- ${spanText(item)} ${talkLink(item)}${where ? ` — ${escapeInline(where)}` : ''}${scoreText(score)}`
       );
       if (score?.reason) lines.push(`  - ${escapeInline(score.reason)}`);
-      const backup = backupFor(item, talks, chosen, scoreMap);
+      const backup = backupFor(item, units, chosen, planScores);
       if (backup)
         lines.push(
-          `  - Or: ${talkLink(backup)}${backup.room ? ` — ${escapeInline(backup.room)}` : ''} (${scores[backup.id].score}/10)`
+          `  - Or: ${talkLink(backup)}${backup.room ? ` — ${escapeInline(backup.room)}` : ''}${backup.posters ? '' : scoreText(scores[backup.id])}`
         );
     }
   }
   lines.push('', PLAN_END);
   return lines.join('\n');
+}
+
+function scoreText(score) {
+  if (!score) return '';
+  return ` (${score.score}/10${score.local ? ', keyword match' : ''})`;
 }
 
 /** The note with its plan section replaced, or the plan added at the end. */
@@ -210,7 +302,7 @@ function spanText(item) {
 
 function talkLink(item) {
   const title = escapeInline(item.title);
-  return item.url ? `[${title}](${item.url})` : title;
+  return item.url && !item.posters ? `[${title}](${item.url})` : title;
 }
 
 function dayHeading(date) {

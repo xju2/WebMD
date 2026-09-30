@@ -88,6 +88,71 @@ export function backupFor(talk, talks = [], plan = [], scores = new Map()) {
   return backup;
 }
 
+// A crowd this big at one time, in one session and room, is a poster session
+// even when Indico does not call it one.
+const POSTER_CROWD = 8;
+export const POSTERS_SHOWN = 10;
+
+/**
+ * The day as the planner sees it: talks as they are, and each poster session
+ * as one item that lasts as long as its posters, with `posters` best first.
+ * You go to a poster session and visit several; you cannot attend 1,000
+ * posters one at a time, or pick just one.
+ */
+export function dayUnits(talks = [], scores = new Map()) {
+  const crowds = new Map();
+  const crowdKey = (item) =>
+    `${item.session}|${item.room}|${item.start.at}|${talkSpan(item).end}`;
+  for (const item of talks)
+    crowds.set(crowdKey(item), (crowds.get(crowdKey(item)) || 0) + 1);
+
+  const units = [];
+  const blocks = new Map();
+  for (const item of talks) {
+    const poster =
+      /poster/i.test(item.type || '') ||
+      /poster/i.test(item.session || '') ||
+      crowds.get(crowdKey(item)) >= POSTER_CROWD;
+    if (!poster) {
+      units.push(item);
+      continue;
+    }
+    const id = `posters:${item.session || item.type || 'Posters'}|${item.start.at}`;
+    if (!blocks.has(id)) {
+      const block = { ...item, id, url: '', speakers: [], posters: [] };
+      block.title = item.session || 'Poster session';
+      blocks.set(id, block);
+      units.push(block);
+    }
+    const block = blocks.get(id);
+    block.posters.push(item);
+    if (talkSpan(item).end > talkSpan(block).end) {
+      block.end = item.end;
+      block.duration = item.duration;
+    }
+    if (block.room !== item.room) block.room = '';
+  }
+  for (const block of blocks.values()) {
+    block.posters.sort(
+      (left, right) => (scores.get(right.id) || 0) - (scores.get(left.id) || 0)
+    );
+  }
+  return units;
+}
+
+/** Scores for the planner: a poster session is worth its best poster. */
+export function unitScores(units = [], scores = new Map()) {
+  const out = new Map(scores);
+  for (const unit of units) {
+    if (unit.posters)
+      out.set(
+        unit.id,
+        Math.max(0, ...unit.posters.map((item) => scores.get(item.id) || 0))
+      );
+  }
+  return out;
+}
+
 /** The plan with `talk` in it, and whatever it clashes with taken out. */
 export function choose(plan = [], talk) {
   return [
