@@ -25,7 +25,13 @@ export async function* streamAiChat({
   }
 
   const config = aiConfig(env);
-  const messages = chatMessages({ prompt, system, selectedText, path, documentText });
+  const messages = chatMessages({
+    prompt,
+    system,
+    selectedText,
+    path,
+    documentText
+  });
   yield* streamAiProvider(config, messages, fetchImpl);
 }
 
@@ -79,24 +85,62 @@ export async function* streamAiEdit({
 export async function runAiCompletion({
   messages,
   env = process.env,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  onUsage
 }) {
   if (!Array.isArray(messages) || !messages.length) {
     throw new WorkspaceError(400, 'Messages are required.');
   }
 
   const config = aiConfig(env);
+  const usage = { model: config.model };
   let reply = '';
-  for await (const chunk of streamAiProvider(config, messages, fetchImpl)) {
+  for await (const chunk of streamAiProvider(
+    config,
+    messages,
+    fetchImpl,
+    (tokens) => Object.assign(usage, tokens)
+  )) {
     reply += chunk;
   }
+  usage.cost = aiCost(config.model, usage, env);
+  onUsage?.(usage);
   return stripSingleFencedBlock(reply);
+}
+
+// Anthropic list prices, dollars per million input and output tokens. A
+// gateway may bill differently: AI_PRICE_PER_MTOK="3,15" sets your own.
+const PRICES_PER_MTOK = {
+  'claude-fable-5-1': [10, 50],
+  'claude-fable-5': [10, 50],
+  'claude-opus-5-5': [4, 20],
+  'claude-opus-5': [5, 25],
+  'claude-opus-4-8': [5, 25],
+  'claude-opus-4-7': [5, 25],
+  'claude-opus-4-6': [5, 25],
+  'claude-sonnet-5-5': [2, 10],
+  'claude-sonnet-5': [2, 10],
+  'claude-sonnet-4-6': [3, 15],
+  'claude-haiku-4-5': [1, 5]
+};
+
+/** The call's cost in dollars, or null when the price or the counts are unknown. */
+export function aiCost(model, { inputTokens, outputTokens } = {}, env = {}) {
+  const configured = String(env.AI_PRICE_PER_MTOK ?? '')
+    .split(',')
+    .map(Number);
+  const price =
+    configured.length === 2 && configured.every(Number.isFinite)
+      ? configured
+      : PRICES_PER_MTOK[String(model).replace(/^.*anthropic\./, '')];
+  if (!price || !Number.isFinite(inputTokens) || !Number.isFinite(outputTokens))
+    return null;
+  return (inputTokens * price[0] + outputTokens * price[1]) / 1e6;
 }
 
 function aiConfig(env) {
   const provider = (
-    env.AI_PROVIDER ||
-    (env.OPENAI_API_KEY ? 'openai' : 'ollama')
+    env.AI_PROVIDER || (env.OPENAI_API_KEY ? 'openai' : 'ollama')
   ).toLowerCase();
 
   return {
@@ -135,7 +179,13 @@ function chatMessages({ prompt, system, selectedText, path, documentText }) {
   ];
 }
 
-function editMessages({ instruction, system, selectedText, path, documentText }) {
+function editMessages({
+  instruction,
+  system,
+  selectedText,
+  path,
+  documentText
+}) {
   const documentContext = documentText?.trim()
     ? `Current document ${path || ''}:\n${trimContext(documentText)}`
     : path
@@ -160,7 +210,7 @@ function trimContext(text) {
     : text;
 }
 
-async function* streamOpenAI(config, messages, fetchImpl) {
+async function* streamOpenAI(config, messages, fetchImpl, onTokens) {
   if (!config.openaiApiKey) {
     throw new WorkspaceError(
       400,
@@ -191,15 +241,21 @@ async function* streamOpenAI(config, messages, fetchImpl) {
     if (event.type === 'response.output_text.delta' && event.delta) {
       yield event.delta;
     }
+    const usage = event.type === 'response.completed' && event.response?.usage;
+    if (usage)
+      onTokens?.({
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens
+      });
   }
 }
 
-function streamAiProvider(config, messages, fetchImpl) {
+function streamAiProvider(config, messages, fetchImpl, onTokens) {
   if (config.provider === 'openai') {
-    return streamOpenAI(config, messages, fetchImpl);
+    return streamOpenAI(config, messages, fetchImpl, onTokens);
   }
   if (config.provider === 'ollama') {
-    return streamOllama(config, messages, fetchImpl);
+    return streamOllama(config, messages, fetchImpl, onTokens);
   }
   throw new WorkspaceError(
     400,
@@ -213,7 +269,7 @@ function stripSingleFencedBlock(text) {
   return match ? match[1] : text;
 }
 
-async function* streamOllama(config, messages, fetchImpl) {
+async function* streamOllama(config, messages, fetchImpl, onTokens) {
   const response = await requestProvider(
     fetchImpl,
     `${config.ollamaBaseUrl}/api/chat`,
@@ -236,6 +292,11 @@ async function* streamOllama(config, messages, fetchImpl) {
   for await (const event of parseJsonLines(response.body)) {
     const text = event.message?.content;
     if (text) yield text;
+    if (event.done && event.prompt_eval_count != null)
+      onTokens?.({
+        inputTokens: event.prompt_eval_count,
+        outputTokens: event.eval_count
+      });
   }
 }
 

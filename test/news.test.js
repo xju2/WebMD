@@ -19,6 +19,7 @@ import {
   bibArxivKeys,
   linkedArxivIds,
   newsCategoryCounts,
+  newsRankSummary,
   newsClipChange,
   newsDayLabel,
   newsSegments,
@@ -332,4 +333,26 @@ test('renders math and links in arXiv text, and nothing else', () => {
 test('shortens long author lists', () => {
   assert.equal(shortAuthorList(['A', 'B']), 'A, B');
   assert.equal(shortAuthorList(['A', 'B', 'C', 'D']), 'A, B, C et al.');
+});
+
+test('sums up who ranked the papers and what it cost', () => {
+  const usage = {
+    model: 'claude-opus-4-8',
+    inputTokens: 112345,
+    outputTokens: 3210,
+    cost: 0.642
+  };
+  assert.equal(
+    newsRankSummary({ method: 'ai', reviewed: 200, usage }),
+    'claude-opus-4-8 reviewed 200 papers · 112,345 in / 3,210 out tokens · about $0.64'
+  );
+  assert.equal(
+    newsRankSummary({
+      method: 'ai',
+      reviewed: 3,
+      usage: { model: 'llama', cost: null }
+    }),
+    'llama reviewed 3 papers'
+  );
+  assert.equal(newsRankSummary({ method: 'similarity' }), '');
 });

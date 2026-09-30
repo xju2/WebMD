@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { aiCost } from '../server/ai.js';
 import { createApp } from '../server/app.js';
 import { DEFAULT_NEWS_CATEGORIES, resetNewsCache } from '../server/news.js';
 import {
@@ -163,7 +164,7 @@ function ollamaReply(text) {
       start(controller) {
         controller.enqueue(
           new TextEncoder().encode(
-            `${JSON.stringify({ message: { content: text } })}\n`
+            `${JSON.stringify({ message: { content: text } })}\n${JSON.stringify({ done: true, prompt_eval_count: 1200, eval_count: 80 })}\n`
           )
         );
         controller.close();
@@ -206,6 +207,13 @@ test('ranks the listing with the AI once per listing and instructions', async ()
   try {
     const ranking = await rank();
     assert.equal(ranking.method, 'ai');
+    assert.deepEqual(ranking.usage, {
+      model: 'llama-test',
+      inputTokens: 1200,
+      outputTokens: 80,
+      cost: null
+    });
+    assert.ok(ranking.reviewed > 0);
     assert.deepEqual(ranking.picks, [
       {
         id: '2609.00003',
@@ -571,4 +579,28 @@ test('votes are stored in the workspace and reach the ranking', async () => {
   } finally {
     server.close();
   }
+});
+
+test('prices a call from its token counts', () => {
+  assert.equal(
+    aiCost('claude-opus-4-8', { inputTokens: 1e6, outputTokens: 1e5 }),
+    7.5
+  );
+  assert.equal(
+    aiCost('us.anthropic.claude-sonnet-4-6', {
+      inputTokens: 1e6,
+      outputTokens: 0
+    }),
+    3
+  );
+  assert.equal(
+    aiCost(
+      'llama',
+      { inputTokens: 1e6, outputTokens: 1e6 },
+      { AI_PRICE_PER_MTOK: '1,2' }
+    ),
+    3
+  );
+  assert.equal(aiCost('llama', { inputTokens: 1, outputTokens: 1 }), null);
+  assert.equal(aiCost('claude-opus-4-8', {}), null);
 });

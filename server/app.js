@@ -839,11 +839,13 @@ export async function createApp({
       return { ...base, order: lexical, method: 'similarity' };
 
     let picks;
+    let usage;
     try {
       const reply = await runAiCompletion({
         messages: buildRankMessages(profile, candidates),
         env: aiEnv,
-        fetchImpl: aiFetch
+        fetchImpl: aiFetch,
+        onUsage: (value) => (usage = value)
       });
       picks = parseRankedPicks(reply, candidates);
       // An empty or cut-off reply is a failure, not a verdict: saved as one,
@@ -869,7 +871,9 @@ export async function createApp({
         ...picks.map((pick) => pick.id),
         ...lexical.filter((id) => !picked.has(id))
       ],
-      method: 'ai'
+      method: 'ai',
+      reviewed: candidates.length,
+      usage
     };
   }
 

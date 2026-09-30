@@ -126,6 +126,24 @@ export function newsCategoryCounts(papers = [], categories = [], options = {}) {
   );
 }
 
+/**
+ * "claude-opus-4-8 reviewed 200 papers · 112,345 in / 3,210 out tokens ·
+ * about $0.64", for a ranking the model made; what is unknown is left out.
+ */
+export function newsRankSummary(ranking) {
+  if (ranking?.method !== 'ai' || !ranking.usage?.model) return '';
+  const { model, inputTokens, outputTokens, cost } = ranking.usage;
+  const count = (value) => Number(value).toLocaleString('en-US');
+  return [
+    `${model} reviewed ${count(ranking.reviewed)} papers`,
+    inputTokens != null &&
+      `${count(inputTokens)} in / ${count(outputTokens)} out tokens`,
+    cost != null && `about $${cost.toFixed(2)}`
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 /** "Fri 11 Sep" for a kept listing's `YYYY-MM-DD`, whatever the time zone. */
 export function newsDayLabel(day = '', locale) {
   const date = new Date(`${day}T12:00:00Z`);

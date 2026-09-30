@@ -77,7 +77,8 @@
     NEWS_INSTRUCTIONS_TEMPLATE,
     newsClipChange,
     newsSegments,
-    shortAuthorList
+    shortAuthorList,
+    newsRankSummary
   } from './news.js';
   import { sliceNoteSection, splitEmbedTarget } from './note-embed.js';
   import { renderMermaid } from './mermaid.js';
@@ -711,6 +712,11 @@
   // The five strongest of today's picks, whichever of them the filter shows.
   $: topPickIds = new Set([...pickById.keys()].slice(0, 5));
   $: topPapers = pickedPapers.filter((paper) => topPickIds.has(paper.id));
+  // A failed ranking keeps the Top picks heading, so Re-rank can try again.
+  $: newsRankFailed =
+    !!newsRanking &&
+    !['ai', 'none'].includes(newsRanking.method) &&
+    newsFilter.sort !== 'arxiv';
   $: morePicks = pickedPapers.filter((paper) => !topPickIds.has(paper.id));
   $: otherPapers = pickById.size
     ? rankedPapers.filter((paper) => !pickById.has(paper.id))
@@ -7096,8 +7102,12 @@
               <p class="tasks-note news-rank-note">
                 {newsRankStatus || newsRanking.warning}
               </p>
+            {:else if newsRankSummary(newsRanking)}
+              <p class="tasks-note news-rank-note">
+                {newsRankSummary(newsRanking)}
+              </p>
             {/if}
-            {#if pickedPapers.length}
+            {#if pickedPapers.length || newsRankFailed}
               <h3 class="news-section">
                 Top picks <span>{topPapers.length}</span>
                 <i aria-hidden="true" class="news-section-rule"></i>
