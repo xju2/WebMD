@@ -721,6 +721,8 @@ test('skips a malformed source with a warning and keeps it on the next write', a
       ]
     })
   );
+  // The fixture's meetings are on fixed days, so the listing reads the clock there.
+  t.mock.timers.enable({ apis: ['Date'], now: NOW });
   const { server, call } = await startApp({ roots: [root] });
   t.after(() => server.close());
 
