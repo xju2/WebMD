@@ -26,6 +26,7 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { ICONS } from './icons.js';
   import MeetingsView from './MeetingsView.svelte';
+  import ConferenceView from './ConferenceView.svelte';
   import {
     LAYOUT_KEY,
     RAIL_WIDTH,
@@ -150,11 +151,17 @@
   const EDITED_FILES_LIMIT = 5;
   const VIEW_MODE_KEY = 'webmd:view-mode';
   const WORKSPACE_VIEW_MODES = new Set(['edit', 'preview', 'diff', 'graph']);
-  // 'tasks', 'news', 'x', and 'meetings' are workspace-wide views rather
+  // 'tasks', 'news', 'x', 'meetings', and 'conference' are workspace-wide views rather
   // than ways of looking at the open note, so none is remembered as a file's
   // view mode. They are still navigation destinations, so back and forward can
   // return to them.
-  const WORKSPACE_VIEWS = new Set(['tasks', 'news', 'x', 'meetings']);
+  const WORKSPACE_VIEWS = new Set([
+    'tasks',
+    'news',
+    'x',
+    'meetings',
+    'conference'
+  ]);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   // Where a day's work lands in a project note. Fixed rather than configurable:
@@ -612,7 +619,8 @@
     viewMode === 'tasks' ||
     viewMode === 'news' ||
     viewMode === 'x' ||
-    viewMode === 'meetings';
+    viewMode === 'meetings' ||
+    viewMode === 'conference';
   // The rail's workspace views bring their own toolbars, so the file actions
   // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
   $: documentControls = !WORKSPACE_VIEWS.has(viewMode);
@@ -623,6 +631,8 @@
         ? 'X'
         : viewMode === 'meetings'
           ? 'Meetings'
+          : viewMode === 'conference'
+            ? 'Conference'
           : viewMode === 'tasks'
             ? 'Tasks'
             : selectedPath || 'Workspace Home';
@@ -2085,6 +2095,19 @@
     if (remember) rememberViewNavigation('meetings');
     viewMode = 'meetings';
     meetingsVisited = true;
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+  }
+
+  let conferenceVisited = false;
+
+  async function showConference({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('conference');
+    viewMode = 'conference';
+    conferenceVisited = true;
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -4587,6 +4610,8 @@
     else if (target.view === 'x') await showXPosts({ remember: false });
     else if (target.view === 'meetings')
       await showMeetings({ remember: false });
+    else if (target.view === 'conference')
+      await showConference({ remember: false });
     else
       await openFile(target.path, {
         historyMode: 'replace',
@@ -5899,6 +5924,17 @@
       on:click={() => showMeetings()}
     >
       {@render icon('meetings')}
+    </button>
+    <button
+      aria-label="Open conference planner"
+      class:active={viewMode === 'conference'}
+      class="global-action conference-launcher"
+      data-tooltip="Conference planner"
+      disabled={!workspaceRoots.length}
+      type="button"
+      on:click={() => showConference()}
+    >
+      {@render icon('conference')}
     </button>
     <button
       aria-controls="ai-panel"
@@ -7220,6 +7256,14 @@
             onFilesChanged={() => loadTree(selectedRoot)}
             root={selectedRoot}
             timeZone={meetingTimeZone || undefined}
+          />
+        {/if}
+        {#if conferenceVisited}
+          <ConferenceView
+            active={viewMode === 'conference'}
+            onOpenNote={openMeetingNote}
+            onFilesChanged={() => loadTree(selectedRoot)}
+            root={selectedRoot}
           />
         {/if}
         {#if viewMode === 'graph'}

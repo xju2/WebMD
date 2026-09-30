@@ -252,7 +252,20 @@ async function aiFetch(_url, options) {
   const prompt = body.messages.map((message) => message.content).join('\n');
   const ids = [...new Set(prompt.match(/\b2609\.\d{5}\b/g) || [])];
   let text;
-  if (ids.length && /rank|score/i.test(prompt)) {
+  const talkIds = /The conference's talks/.test(prompt)
+    ? [...prompt.matchAll(/^\d+\. id: (\S+)/gm)].map((match) => match[1])
+    : [];
+  if (talkIds.length) {
+    // Scores the talks deterministically, so the plan is the same every run.
+    text = JSON.stringify(
+      talkIds.map((id) => {
+        const score = (Number(id) * 7) % 10 || 1;
+        return score >= 7
+          ? { id, score, reason: `Fixture reason for talk ${id}, from the stub scorer.` }
+          : { id, score };
+      })
+    );
+  } else if (ids.length && /rank|score/i.test(prompt)) {
     text = JSON.stringify(
       ids.slice(0, 2).map((id, index) => ({
         id,
@@ -405,6 +418,52 @@ const indicoEvents = {
     categoryId: 200,
     contributions: []
   }
+};
+
+// A two-day conference with four parallel tracks, for the Conference view.
+const ROOMS = ['Room A', 'Room B', 'Room C', 'Main Auditorium'];
+const TOPICS = ['GNN tracking', 'Calorimetry', 'Trigger systems', 'Anomaly detection', 'Simulation', 'Alignment'];
+indicoEvents[9010] = {
+  id: '9010',
+  title: 'Connecting the Dots 2026',
+  type: 'conference',
+  category: 'Conferences',
+  startDate: zurich(0, '09:00'),
+  endDate: zurich(1, '17:30'),
+  timezone: 'Europe/Zurich',
+  location: 'Fixture Institute',
+  hasAnyProtection: false,
+  categoryId: 300,
+  contributions: [0, 1].flatMap((day) => [
+    {
+      db_id: 72000 + day * 100,
+      title: day ? 'Plenary: the year in tracking' : 'Opening plenary',
+      startDate: zurich(day, '09:00'),
+      endDate: zurich(day, '09:40'),
+      roomFullname: 'Main Auditorium',
+      speakers: [person('Plenary', 'Speaker')],
+      session: 'Plenary'
+    },
+    ...['09:45', '10:10', '10:35', '11:30', '11:55', '14:00', '14:25', '14:50', '15:45', '16:10'].flatMap(
+      (time, slot) =>
+        ROOMS.slice(0, 3 + (slot % 2)).map((room, track) => {
+          const id = 72000 + day * 100 + slot * 4 + track + 1;
+          const [hours, minutes] = time.split(':').map(Number);
+          const end = hours * 60 + minutes + 20 + (track === 3 ? 25 : 0);
+          return {
+            db_id: id,
+            title: `${TOPICS[(slot + track + day) % TOPICS.length]}: fixture study ${id}`,
+            startDate: zurich(day, time),
+            endDate: zurich(day, `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`),
+            roomFullname: room,
+            speakers: [person('Speaker', String(id))],
+            session: TOPICS[(slot + track + day) % TOPICS.length],
+            description: `<p>Fixture abstract for talk ${id}.</p>`,
+            url: `https://indico.cern.ch/event/9010/contributions/${id}/`
+          };
+        })
+    )
+  ])
 };
 
 // Zoom mode adds a Zoom call under way right now and one from last week that

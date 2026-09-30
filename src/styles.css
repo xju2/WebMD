@@ -1634,6 +1634,7 @@ body.resizing-panels .resize-handle::after {
 
 /* Secondary buttons across the workspace views and dialogs: one shape. */
 .tasks-summary button,
+.conference-bar button,
 .task-sections-actions button,
 .task-section-edit button,
 .news-section button,
@@ -1659,6 +1660,7 @@ body.resizing-panels .resize-handle::after {
 }
 
 .tasks-summary button .icon,
+.conference-bar button .icon,
 .news-section button .icon,
 .news-days button .icon {
   width: 16px;
@@ -1666,6 +1668,7 @@ body.resizing-panels .resize-handle::after {
 }
 
 .tasks-summary button:hover:not(:disabled),
+.conference-bar button:hover:not(:disabled),
 .task-sections-actions button:hover:not(:disabled),
 .task-section-edit button:hover:not(:disabled),
 .news-section button:hover:not(:disabled),
@@ -1678,6 +1681,7 @@ body.resizing-panels .resize-handle::after {
 }
 
 .tasks-summary button.primary,
+.conference-bar button.primary,
 .inline-edit-actions button.primary,
 .ask footer button.primary {
   border-color: var(--accent);
@@ -1686,6 +1690,7 @@ body.resizing-panels .resize-handle::after {
 }
 
 .tasks-summary button.primary:hover:not(:disabled),
+.conference-bar button.primary:hover:not(:disabled),
 .inline-edit-actions button.primary:hover:not(:disabled),
 .ask footer button.primary:hover:not(:disabled) {
   border-color: var(--accent-hover);
@@ -1694,6 +1699,7 @@ body.resizing-panels .resize-handle::after {
 
 /* Accept stays disabled until the stream ends, so it has to read as disabled. */
 .tasks-summary button:disabled,
+.conference-bar button:disabled,
 .task-section-edit button:disabled,
 .news-section button:disabled,
 .news-days button:disabled,
@@ -5797,4 +5803,340 @@ input[type='radio'] {
   flex: 1 1 220px;
   max-width: 380px;
   width: auto;
+}
+
+/* Conference planner: one event, a plan per day, and every track side by side. */
+.conference-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.conference-pane[hidden] {
+  display: none;
+}
+
+.conference-toolbar {
+  flex: 0 0 auto;
+}
+
+.conference-toolbar h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.conference-open {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.conference-open input {
+  width: min(22rem, 60vw);
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.conference-notice {
+  margin: 12px 24px 0;
+}
+
+.conference-empty {
+  max-width: 44rem;
+  padding: 24px;
+}
+
+.conference-recent {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.conference-recent li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.conference-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px 24px 0;
+}
+
+.conference-days,
+.conference-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.conference-days button,
+.conference-mode button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-muted);
+}
+
+.conference-days button.active,
+.conference-mode button.active {
+  border-color: var(--accent-soft-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.conference-today {
+  margin-left: 4px;
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.conference-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conference-meta {
+  margin: 8px 24px 0;
+}
+
+.conference-plan {
+  display: grid;
+  max-width: 56rem;
+  margin: 12px 0 32px;
+  padding: 0 24px;
+  list-style: none;
+}
+
+.conference-talk {
+  display: grid;
+  grid-template-columns: 4.2rem minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 0 12px 12px;
+  border-bottom: 1px solid var(--border);
+  box-shadow: inset 3px 0 0 var(--accent-soft-strong);
+}
+
+.conference-talk.now {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.conference-time {
+  display: grid;
+  color: var(--ink-strong);
+  font-size: 1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.conference-time small {
+  color: var(--ink-subtle);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.conference-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.conference-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink-strong);
+  font-weight: 600;
+}
+
+.conference-title a {
+  color: inherit;
+  text-decoration-color: var(--border-control);
+  text-underline-offset: 3px;
+}
+
+.conference-where {
+  color: var(--ink-muted);
+  font-size: 0.86rem;
+}
+
+.conference-where strong {
+  margin-right: 6px;
+  color: var(--ink);
+}
+
+.conference-reason {
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.conference-backup .meetings-link-button {
+  padding: 0;
+  text-align: left;
+}
+
+.conference-backup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 6px;
+  color: var(--ink-subtle);
+  font-size: 0.82rem;
+}
+
+.conference-free {
+  padding: 8px 0 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink-subtle);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+.conference-score {
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.conference-score.high {
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.conference-score.mid {
+  background: var(--accent-soft-strong);
+  color: var(--accent-ink);
+}
+
+.conference-score.low {
+  background: var(--surface-muted);
+  color: var(--ink-subtle);
+}
+
+/* Every track: rooms across, five-minute rows down, the plan filled in. */
+.conference-grid-scroll {
+  margin: 12px 24px 32px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.conference-grid {
+  display: grid;
+  column-gap: 4px;
+  min-width: max-content;
+  padding: 0 6px 6px 0;
+}
+
+.conference-room {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.conference-hour {
+  padding: 2px 6px 0;
+  border-top: 1px solid var(--border);
+  color: var(--ink-subtle);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.conference-cell {
+  display: block;
+  min-width: 0;
+  height: auto;
+  margin: 1px 0;
+  padding: 3px 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-align: left;
+  white-space: normal;
+}
+
+.conference-cell.high {
+  border-color: var(--accent-soft-strong);
+  color: var(--ink);
+}
+
+.conference-cell.chosen {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface);
+}
+
+.conference-cell-time {
+  display: block;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+@media (max-width: 720px) {
+  .conference-bar,
+  .conference-plan,
+  .conference-empty {
+    padding-inline: 16px;
+  }
+
+  .conference-meta,
+  .conference-notice,
+  .conference-grid-scroll {
+    margin-inline: 16px;
+  }
+
+  .conference-open {
+    flex: 1 1 100%;
+  }
+
+  .conference-open input {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .conference-talk {
+    grid-template-columns: 3.4rem minmax(0, 1fr);
+    gap: 10px;
+  }
 }

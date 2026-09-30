@@ -303,6 +303,16 @@ Tasks:
       the new `npm run scenarios:meetings`. The fixture gains a canned Indico
       (`MEETINGS_MODE`). `npm run smoke:indico` is an opt-in, read-only real
       check.
+- [x] Conference planner (`Conference` rail destination,
+      `src/ConferenceView.svelte`, `server/conference.js`,
+      `src/conference-plan.js`): paste an Indico event link and the model
+      scores every talk against the arXiv News profile, once per agenda and
+      instructions. Each day's plan is the set of non-overlapping talks with
+      the highest total score, staying in the same room on ties, with the best
+      parallel talk as a backup. Plan and All tracks (rooms by time) layouts;
+      picking any talk swaps it in. Save plan to note rewrites only the marked
+      plan section. `npm run scenarios:conference`. Indico agendas only, per
+      §3.1.4.
 
 Done when:
 - A valid CERN token lists protected meetings and opens one; no token gives an

@@ -308,6 +308,24 @@ Bad reasons:
 - "An interesting paper on particle physics."`;
 
 export function buildRankMessages(profile, candidates) {
+  const papers = candidates
+    .map(
+      (paper, index) =>
+        `${index + 1}. id: ${paper.id}\n   title: ${collapse(paper.title)}\n   categories: ${paper.categories.join(', ')}\n   abstract: ${clip(collapse(paper.abstract), ABSTRACT_CHARS)}`
+    )
+    .join('\n');
+
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: `Profile\n\n${profileText(profile)}\n\nToday's papers\n\n${papers}`
+    }
+  ];
+}
+
+/** The profile as the model reads it, one titled section per part. */
+export function profileText(profile) {
   const sections = [];
   if (profile.interests) sections.push(`Instructions:\n${profile.interests}`);
   if (profile.reading.length)
@@ -330,28 +348,14 @@ export function buildRankMessages(profile, candidates) {
           .join('\n')}`
       );
   }
-
-  const papers = candidates
-    .map(
-      (paper, index) =>
-        `${index + 1}. id: ${paper.id}\n   title: ${collapse(paper.title)}\n   categories: ${paper.categories.join(', ')}\n   abstract: ${clip(collapse(paper.abstract), ABSTRACT_CHARS)}`
-    )
-    .join('\n');
-
-  return [
-    { role: 'system', content: SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: `Profile\n\n${sections.join('\n\n')}\n\nToday's papers\n\n${papers}`
-    }
-  ];
+  return sections.join('\n\n');
 }
 
 /**
  * The model's picks, kept only where they name a paper it was actually shown,
  * each at most once, in the order it gave them.
  */
-export function parseRankedPicks(reply, candidates) {
+export function parseRankedPicks(reply, candidates, limit = MAX_PICKS) {
   const known = new Set(candidates.map((paper) => paper.id));
   const picks = [];
   for (const item of parseJsonArray(reply) || []) {
@@ -370,7 +374,7 @@ export function parseRankedPicks(reply, candidates) {
       ),
       reason: clip(collapse(String(item.reason ?? '')), MAX_REASON_CHARS)
     });
-    if (picks.length >= MAX_PICKS) break;
+    if (picks.length >= limit) break;
   }
   // Strongest first even when the model's order and its scores disagree.
   return picks
@@ -449,12 +453,12 @@ export function stem(word) {
   return root;
 }
 
-function collapse(value) {
+export function collapse(value) {
   return String(value ?? '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function clip(text, limit) {
+export function clip(text, limit) {
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }

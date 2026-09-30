@@ -13,7 +13,9 @@ import {
   listMeetings,
   meetingFiles,
   meetingKey,
+  meetingNoteNames,
   meetingNotes,
+  noteMeetingKey,
   publicSource,
   readMeetingsConfig,
   updateMeetingSources
@@ -56,6 +58,18 @@ import {
   scorePapers,
   writeNewsVotes
 } from './news-rank.js';
+import {
+  buildTalkScoreMessages,
+  conferenceEvent,
+  parseTalkScores,
+  planMarkdown,
+  planNoteMarkdown,
+  readConferences,
+  rememberConference,
+  replacePlan,
+  uniqueTalks,
+  writeConferences
+} from './conference.js';
 import { listPresets, publicPresets, resolvePreset } from './prompts.js';
 import {
   appendQuoteHistory,
@@ -447,6 +461,202 @@ export async function createApp({
       });
       const found = meetingFiles(await workspace.markdownFiles());
       res.json({ ...meeting, ...meetingExtras(found.get(meeting.key)) });
+    })
+  );
+
+  // Conference: one Indico event planned hour by hour. The model scores every
+  // talk against the arXiv News profile; the browser builds the day plans from
+  // the scores (src/conference-plan.js), so swapping a talk costs nothing.
+  // Scores are kept per workspace and event until the agenda or the
+  // instructions change; only Plan and Re-rank ask the model.
+  const conferenceWrites = new Map();
+
+  function conferenceScoresFile(workspace, meeting) {
+    return (
+      cacheDir &&
+      path.join(
+        cacheDir,
+        'conference-scores',
+        `${sha1(`${workspace.root}|${meeting.key}`)}.json`
+      )
+    );
+  }
+
+  function conferenceListing(instructions, meeting) {
+    return sha1(
+      JSON.stringify([instructions, meeting.agenda.map((item) => item.id)])
+    );
+  }
+
+  async function conferenceInstructions(workspace) {
+    return (
+      (await readNewsInstructions(workspace)) ||
+      String(env.ARXIV_NEWS_INTERESTS ?? '')
+    );
+  }
+
+  async function conferenceMeeting(url, refresh = false) {
+    const { origin, eventId } = conferenceEvent(url, sites);
+    return fetchMeeting(origin, eventId, {
+      sites,
+      fetchImpl: indicoFetch,
+      cacheDir,
+      refresh,
+      allowStale: !refresh
+    });
+  }
+
+  // One write to the list at a time per workspace, so two plans both land.
+  function updateConferences(workspace, change) {
+    const write = (conferenceWrites.get(workspace.root) ?? Promise.resolve())
+      .catch(() => {})
+      .then(async () => {
+        const next = change(await readConferences(workspace));
+        await writeConferences(workspace, next);
+        return next;
+      });
+    conferenceWrites.set(workspace.root, write);
+    return write;
+  }
+
+  app.get(
+    '/api/conferences',
+    asyncHandler(async (req, res) => {
+      res.json({
+        conferences: await readConferences(workspaces.get(req.query.root))
+      });
+    })
+  );
+
+  app.delete(
+    '/api/conferences',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const url = String(req.body?.url ?? '');
+      res.json({
+        conferences: await updateConferences(workspace, (list) =>
+          list.filter((item) => item.url !== url)
+        )
+      });
+    })
+  );
+
+  app.post(
+    '/api/conference/plan',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      const refresh = Boolean(req.body?.refresh);
+      const meeting = await conferenceMeeting(req.body?.url, refresh);
+      const instructions = await conferenceInstructions(workspace);
+      const listing = conferenceListing(instructions, meeting);
+      const file = conferenceScoresFile(workspace, meeting);
+      const saved = file && !refresh ? await readCacheFile(file) : null;
+
+      let ranking = saved?.listing === listing ? saved.ranking : null;
+      if (!ranking) {
+        const profile = buildInterestProfile({
+          files: await workspace.markdownFiles(),
+          references: await workspace.references(),
+          interests: instructions,
+          votes: await readNewsVotes(workspace)
+        });
+        if (profileIsEmpty(profile)) {
+          throw new WorkspaceError(
+            400,
+            'Nothing to rank against yet. Write your ranking instructions in arXiv News, or clip a few papers.'
+          );
+        }
+        const talks = uniqueTalks(meeting.agenda);
+        if (!talks.length) {
+          throw new WorkspaceError(
+            400,
+            `${meeting.title} has no timetable on Indico yet.`
+          );
+        }
+        let usage;
+        const reply = await runAiCompletion({
+          messages: buildTalkScoreMessages(profile, talks),
+          env: aiEnv,
+          fetchImpl: aiFetch,
+          onUsage: (value) => (usage = value)
+        });
+        const scores = parseTalkScores(reply, talks);
+        if (!Object.keys(scores).length) {
+          throw new WorkspaceError(
+            502,
+            `The model scored none of the talks it was shown. It replied: ${JSON.stringify(String(reply).replace(/\s+/g, ' ').trim().slice(0, 200))}`
+          );
+        }
+        ranking = { method: 'ai', scores, reviewed: talks.length, usage };
+        if (file) await writeCacheFile(file, { listing, ranking });
+      }
+
+      const url = meeting.key;
+      await updateConferences(workspace, (list) =>
+        rememberConference(list, {
+          url,
+          title: meeting.title,
+          start: meeting.start.date,
+          end: meeting.end?.date || meeting.start.date
+        })
+      );
+      const found = conferencePlanNotes(await workspace.markdownFiles());
+      res.json({
+        meeting,
+        ranking,
+        planPath: found.get(meeting.key) || ''
+      });
+    })
+  );
+
+  function conferencePlanNotes(files) {
+    const notes = new Map();
+    for (const file of files) {
+      const key = noteMeetingKey(file.metadata?.conference);
+      if (key && !notes.has(key)) notes.set(key, file.path);
+    }
+    return notes;
+  }
+
+  // Writes the plan the browser shows, swaps included, into the event's plan
+  // note: the marked section is replaced, and the rest of the note is yours.
+  app.post(
+    '/api/conference/note',
+    asyncHandler(async (req, res) => {
+      const { workspace, config } = await meetingsState(req.body?.root);
+      const meeting = await conferenceMeeting(req.body?.url);
+      const days =
+        req.body?.days && typeof req.body.days === 'object' ? req.body.days : {};
+      const file = conferenceScoresFile(workspace, meeting);
+      const saved = file ? await readCacheFile(file) : null;
+      const plan = planMarkdown(meeting, days, saved?.ranking?.scores ?? {});
+
+      workspace.forgetFiles();
+      const existing = conferencePlanNotes(await workspace.markdownFiles()).get(
+        meeting.key
+      );
+      if (existing) {
+        await workspace.editFile(existing, (content) =>
+          replacePlan(content, plan)
+        );
+        return res.json({ path: existing, created: false });
+      }
+      const folder = config.noteFolder === '/' ? '' : config.noteFolder;
+      for (const { name, heading } of meetingNoteNames(meeting, ' plan')) {
+        try {
+          await workspace.createFile(
+            `${folder}/${name}`,
+            planNoteMarkdown(meeting, heading, plan)
+          );
+          return res.json({ path: `${folder}/${name}`, created: true });
+        } catch (error) {
+          if (error.status !== 409) throw error;
+        }
+      }
+      throw new WorkspaceError(
+        409,
+        `Could not create a plan note for "${meeting.title}" in ${config.noteFolder}.`
+      );
     })
   );
 

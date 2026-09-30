@@ -47,7 +47,8 @@ const CATEGORY_LIMIT = 200;
 const MAX_SOURCES = 50;
 const MAX_LABEL = 120;
 const MAX_DESCRIPTION = 4000;
-const MAX_AGENDA = 300;
+const MAX_AGENDA = 2000;
+const AGENDA_DESCRIPTION_CHARS = 600;
 // Meetings whose Zoom room is read off their page for the list's Join button:
 // those under way or starting within a day, and never more than a handful.
 const ZOOM_LOOKAHEAD_MS = 24 * 60 * 60 * 1000;
@@ -808,6 +809,8 @@ function normalizeAgenda(contributions, origin, timezone) {
           .filter(Boolean),
         session: typeof item.session === 'string' ? decodeHtml(item.session) : '',
         room: placeText(item.roomFullname) || placeText(item.room),
+        // The abstract, for ranking talks; the agenda list does not show it.
+        description: htmlToText(item.description).slice(0, AGENDA_DESCRIPTION_CHARS),
         ...(url ? { url } : {})
       };
     })

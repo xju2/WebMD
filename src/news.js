@@ -130,12 +130,12 @@ export function newsCategoryCounts(papers = [], categories = [], options = {}) {
  * "claude-opus-4-8 reviewed 200 papers · 112,345 in / 3,210 out tokens ·
  * about $0.64", for a ranking the model made; what is unknown is left out.
  */
-export function newsRankSummary(ranking) {
+export function newsRankSummary(ranking, noun = 'papers') {
   if (ranking?.method !== 'ai' || !ranking.usage?.model) return '';
   const { model, inputTokens, outputTokens, cost } = ranking.usage;
   const count = (value) => Number(value).toLocaleString('en-US');
   return [
-    `${model} reviewed ${count(ranking.reviewed)} papers`,
+    `${model} reviewed ${count(ranking.reviewed)} ${noun}`,
     inputTokens != null &&
       `${count(inputTokens)} in / ${count(outputTokens)} out tokens`,
     cost != null && `about $${cost.toFixed(2)}`

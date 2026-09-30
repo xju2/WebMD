@@ -38,6 +38,15 @@ export const ICONS = {
     'M9 9.5h6',
     'M9 12h3.5'
   ],
+  // A timetable: days across, parallel tracks down.
+  conference: [
+    'M4 5.5h16v14H4z',
+    'M4 9.5h16',
+    'M9.5 9.5v10',
+    'M14.5 9.5v10',
+    'M8 3.5v4',
+    'M16 3.5v4'
+  ],
   external: [
     'M13.5 4.5H19.5V10.5',
     'M19.5 4.5 11 13',
