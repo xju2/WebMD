@@ -661,6 +661,12 @@ Markdown note for it.
   sources appears once.
 - Choose a meeting to see when and where, its agenda (times, titles,
   speakers, and links to each contribution), and **Open in Indico**.
+- Slides and other files attached to the meeting or a talk are listed with
+  it. A file opens through WebMD, which fetches it once with the Indico token
+  and keeps it in `~/.cache/webmd/indico-files/` (`WEBMD_CACHE_DIR`), outside
+  every workspace, so no device meets a sign-on page and nothing is committed.
+  PDFs and images open in the browser; other files download. A link
+  attachment opens where it points.
 - **Create note** writes a note for the meeting and opens it. Pressing it again,
   now labelled **Open note**, opens the same note. **Refresh** asks Indico
   again, skipping the ten-minute cache.

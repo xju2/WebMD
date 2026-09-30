@@ -62,6 +62,18 @@ const WEEKLY = rawEvent(
     location: 'CERN',
     description: '<p>Agenda &amp; minutes</p><p>Zoom link in the <b>timetable</b></p>',
     hasAnyProtection: true,
+    folders: [
+      {
+        attachments: [
+          {
+            id: 81,
+            type: 'file',
+            title: 'Minutes',
+            download_url: `${CERN}/event/101/attachments/8/81/minutes.html`
+          }
+        ]
+      }
+    ],
     contributions: [
       {
         db_id: 9002,
@@ -71,7 +83,22 @@ const WEEKLY = rawEvent(
         duration: 20,
         speakers: [{ first_name: 'Ada', last_name: 'Lovelace' }],
         session: null,
-        url: `${CERN}/event/101/contributions/9002/`
+        url: `${CERN}/event/101/contributions/9002/`,
+        folders: [
+          {
+            attachments: [
+              {
+                id: 71,
+                type: 'file',
+                title: 'Slides',
+                download_url: `${CERN}/event/101/contributions/9002/attachments/7/71/talk%20v2.pdf`
+              },
+              { id: 72, type: 'link', title: 'Code', link_url: 'https://github.com/example/code' },
+              // A file somewhere else is not fetched with the token.
+              { id: 73, type: 'file', title: 'Stray', download_url: 'https://elsewhere.example/x.pdf' }
+            ]
+          }
+        ]
       },
       {
         db_id: 9001,
@@ -147,6 +174,10 @@ function fakeIndico({ protectedAuth = TOKEN, invalidToken = false } = {}) {
       ]);
     }
     if (url.pathname === '/export/event/303.json') return json([PUBLIC_SEMINAR]);
+    if (url.pathname.includes('/attachments/')) {
+      if (!authed) return new Response('', { status: 302, headers: { location: 'https://auth.cern.ch/login' } });
+      return new Response(`file ${url.pathname}`, { status: 200 });
+    }
     if (url.pathname === '/export/categ/99.json') {
       return new Response('boom', { status: 500, statusText: 'Server Error' });
     }
@@ -625,9 +656,9 @@ async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-meetings-'));
 }
 
-async function startApp({ roots, env = { INDICO_CERN_TOKEN: TOKEN }, indico = fakeIndico() } = {}) {
+async function startApp({ roots, env = { INDICO_CERN_TOKEN: TOKEN }, indico = fakeIndico(), cacheDir } = {}) {
   const workspaceRoots = roots || [await tempRoot(), await tempRoot()];
-  const app = await createApp({ workspaceRoots, indicoFetch: indico.fetchImpl, env });
+  const app = await createApp({ workspaceRoots, indicoFetch: indico.fetchImpl, env, cacheDir });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = `http://127.0.0.1:${server.address().port}`;
@@ -642,7 +673,7 @@ async function startApp({ roots, env = { INDICO_CERN_TOKEN: TOKEN }, indico = fa
     assert.ok(!text.includes(TOKEN), `${route} leaked the token`);
     return { status: response.status, body: JSON.parse(text) };
   };
-  return { server, call, roots: workspaceRoots, indico };
+  return { server, call, roots: workspaceRoots, indico, url };
 }
 
 test('adds and removes sources per workspace, reporting only whether a token is set', async (t) => {
@@ -772,6 +803,42 @@ test('shows a protected meeting with its agenda to a valid token', async (t) => 
   );
   assert.equal(event.body.unscheduled, 1);
   assert.equal(event.body.agenda[0].session, 'Tracking');
+});
+
+test('lists slides and links, and serves Indico files once fetched with the token', async (t) => {
+  const cacheDir = await tempRoot();
+  const { server, call, indico, url, roots } = await startApp({ cacheDir });
+  t.after(() => server.close());
+
+  const event = await call('GET', `/api/meetings/event?root=0&origin=${encodeURIComponent(CERN)}&id=101`);
+  const slides = `${CERN}/event/101/contributions/9002/attachments/7/71/talk%20v2.pdf`;
+  assert.deepEqual(event.body.agenda[1].materials, [
+    { id: '71', title: 'Slides', url: slides, file: true },
+    { id: '72', title: 'Code', url: 'https://github.com/example/code', file: false }
+  ]);
+  assert.equal(event.body.materials[0].title, 'Minutes');
+
+  const get = (target) => fetch(`${url}/api/meetings/attachment?url=${encodeURIComponent(target)}`);
+  const first = await get(slides);
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get('content-type'), 'application/pdf');
+  assert.match(first.headers.get('content-disposition'), /^inline; filename="talk v2.pdf"/);
+  assert.equal(await first.text(), 'file /event/101/contributions/9002/attachments/7/71/talk%20v2.pdf');
+  const fetched = indico.calls.filter((item) => item.url.includes('/attachments/'));
+  assert.deepEqual(fetched.map((item) => item.auth), [`Bearer ${TOKEN}`]);
+
+  // The second read is the saved copy, kept outside every workspace.
+  assert.equal((await get(slides)).status, 200);
+  assert.equal(indico.calls.filter((item) => item.url.includes('/attachments/')).length, 1);
+  await fs.access(path.join(cacheDir, 'indico-files/indico.cern.ch/101/71-talk_v2.pdf'));
+  assert.deepEqual(await fs.readdir(roots[0]), []);
+
+  // Anything a browser would run as a page is a download, never a page here.
+  const minutes = await get(`${CERN}/event/101/attachments/8/81/minutes.html`);
+  assert.match(minutes.headers.get('content-disposition'), /^attachment/);
+
+  assert.equal((await get(`${CERN}/event/101/`)).status, 400);
+  assert.equal((await get('https://elsewhere.example/event/1/attachments/1/2/x.pdf')).status, 400);
 });
 
 test('without a token a protected event says which variable to set', async (t) => {

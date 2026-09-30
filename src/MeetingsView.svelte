@@ -264,6 +264,14 @@
     }
   }
 
+  // Files come through the server, which holds the Indico token, so no
+  // device is sent to a sign-on page; a link opens where it points.
+  function materialHref(material) {
+    return material.file
+      ? `/api/meetings/attachment?url=${encodeURIComponent(material.url)}`
+      : material.url;
+  }
+
   function meetingFiles(item) {
     return {
       notePath: item.notePath,
@@ -847,6 +855,15 @@
             </details>
           {/if}
 
+          {#if detail?.materials?.length}
+            <h4 class="meetings-agenda-title">Materials</h4>
+            <p class="meetings-materials">
+              {#each detail.materials as material (material.id + material.url)}
+                <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
+              {/each}
+            </p>
+          {/if}
+
           <h4 class="meetings-agenda-title">Agenda</h4>
           {#if detailLoading}
             <p class="tasks-note" aria-live="polite">Loading agenda…</p>
@@ -875,6 +892,13 @@
                     {#if item.speakers.length || item.session}
                       <span class="meetings-agenda-meta">
                         {item.speakers.join(', ')}{item.speakers.length && item.session ? ' · ' : ''}{item.session}
+                      </span>
+                    {/if}
+                    {#if item.materials?.length}
+                      <span class="meetings-materials">
+                        {#each item.materials as material (material.id + material.url)}
+                          <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
+                        {/each}
                       </span>
                     {/if}
                   </span>

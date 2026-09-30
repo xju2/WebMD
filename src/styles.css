@@ -5612,6 +5612,19 @@ input[type='radio'] {
   font-size: 0.8rem;
 }
 
+.meetings-materials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.meetings-materials a {
+  color: var(--accent-ink);
+  font-weight: 450;
+}
+
 .meetings-pick {
   margin-top: 24px;
 }

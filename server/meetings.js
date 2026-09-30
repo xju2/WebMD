@@ -547,6 +547,7 @@ export async function fetchMeeting(
   });
   return {
     ...publicMeeting({ ...event, zoom: mergeZoom(event.zoom, found) }),
+    materials: normalizeMaterials(raw.folders, checked),
     agenda: normalizeAgenda(raw.contributions, checked, event.timezone),
     unscheduled: Array.isArray(raw.contributions)
       ? raw.contributions.filter((item) => !item?.startDate).length
@@ -811,6 +812,7 @@ function normalizeAgenda(contributions, origin, timezone) {
         // "Talk", "Poster", …: the conference planner lists posters, not picks one.
         type: typeof item.type === 'string' ? decodeHtml(item.type) : '',
         room: placeText(item.roomFullname) || placeText(item.room),
+        materials: normalizeMaterials(item.folders, origin),
         // The abstract, for ranking talks; the agenda list does not show it.
         description: htmlToText(item.description).slice(0, AGENDA_DESCRIPTION_CHARS),
         ...(url ? { url } : {})
@@ -820,6 +822,100 @@ function normalizeAgenda(contributions, origin, timezone) {
     .sort((a, b) => a.startsAt - b.startsAt || a.title.localeCompare(b.title))
     .slice(0, MAX_AGENDA)
     .map(({ startsAt: _s, ...rest }) => rest);
+}
+
+/**
+ * Slides and other material from Indico's attachment folders, as
+ * `{ id, title, url, file }`. A file (`file: true`) is downloaded through
+ * this server with the token, so its url must be on the event's own Indico; a
+ * link is an address somewhere else, opened as it is.
+ */
+function normalizeMaterials(folders, origin) {
+  if (!Array.isArray(folders)) return [];
+  return folders
+    .flatMap((folder) => (Array.isArray(folder?.attachments) ? folder.attachments : []))
+    .map((item) => {
+      const file = item?.type === 'file';
+      const url = file ? sameOriginUrl(item.download_url, origin) : webLink(item?.link_url);
+      if (!url) return null;
+      const title = decodeHtml(item.title || item.filename || '') || 'Attachment';
+      return { id: String(item.id ?? ''), title, url, file };
+    })
+    .filter(Boolean);
+}
+
+// ponytail: whole file held in memory before it is written; stream it if
+// decks near the cap ever matter.
+const MAX_ATTACHMENT_BYTES = 200 * 1024 * 1024;
+const ATTACHMENT_TIMEOUT_MS = 120 * 1000;
+const ATTACHMENT_PATH = /^\/event\/(\d+)\/(?:.*\/)?attachments\/\d+\/(\d+)\/([^/]+)$/;
+
+/**
+ * The local copy of an Indico attachment, fetched once with the token and
+ * kept under `cacheDir/indico-files/<host>/<event>/`, outside every workspace
+ * so autocommit never sees it. Returns `{ file, name }`: the absolute path and
+ * the attachment's own file name.
+ */
+export async function saveAttachment(
+  value,
+  { sites = new Map(), fetchImpl = fetch, cacheDir } = {}
+) {
+  const { origin, url } = checkIndicoAddress(value, sites);
+  const match = ATTACHMENT_PATH.exec(url.pathname);
+  if (!match) {
+    throw new WorkspaceError(400, 'That is not an Indico attachment link.');
+  }
+  if (!cacheDir) {
+    throw new WorkspaceError(503, 'Set WEBMD_CACHE_DIR to keep Indico attachments.');
+  }
+  const [, eventId, attachmentId, encoded] = match;
+  let name;
+  try {
+    name = decodeURIComponent(encoded);
+  } catch {
+    name = encoded;
+  }
+  const safe = name.replace(/[^\w.-]+/g, '_').slice(-120);
+  const file = path.join(
+    cacheDir,
+    'indico-files',
+    url.hostname,
+    eventId,
+    `${attachmentId}-${safe}`
+  );
+  try {
+    await fs.access(file);
+    return { file, name };
+  } catch {
+    // Not saved yet.
+  }
+
+  const response = await indicoFetch(`${origin}${url.pathname}`, {
+    fetchImpl,
+    sites,
+    token: tokenForOrigin(origin, sites),
+    timeoutMs: ATTACHMENT_TIMEOUT_MS
+  });
+  const tooBig = () =>
+    new IndicoError('upstream', `${name} is larger than ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB.`, 413);
+  if (Number(response.headers?.get?.('content-length')) > MAX_ATTACHMENT_BYTES) {
+    throw tooBig();
+  }
+  const body = Buffer.from(await response.arrayBuffer());
+  if (body.length > MAX_ATTACHMENT_BYTES) throw tooBig();
+  // A sign-in page answered with a 200 is not the file that was asked for.
+  if (/^\s*<(!doctype html|html)/i.test(body.subarray(0, 64).toString('latin1')) &&
+      !/\.html?$/i.test(name)) {
+    throw new IndicoError(
+      'config',
+      `${url.hostname} sent a web page instead of ${name}; it may need a login. Check ${indicoTokenName(origin, sites)}.`
+    );
+  }
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${randomUUID()}.tmp`;
+  await fs.writeFile(temp, body, { mode: 0o600 });
+  await fs.rename(temp, file);
+  return { file, name };
 }
 
 /** "First Last", from Indico's split fields or its "Last, First" full name. */

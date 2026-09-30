@@ -18,6 +18,7 @@ import {
   noteMeetingKey,
   publicSource,
   readMeetingsConfig,
+  saveAttachment,
   updateMeetingSources
 } from './meetings.js';
 import {
@@ -464,6 +465,33 @@ export async function createApp({
       });
       const found = meetingFiles(await workspace.markdownFiles());
       res.json({ ...meeting, ...meetingExtras(found.get(meeting.key)) });
+    })
+  );
+
+  // An Indico attachment through this server, so no device meets a sign-on
+  // page: fetched once with the token, then served from the cache. Only types
+  // a browser shows harmlessly open inline; anything else (HTML, SVG) is a
+  // download, never a page on this origin.
+  app.get(
+    '/api/meetings/attachment',
+    asyncHandler(async (req, res) => {
+      const { file, name } = await saveAttachment(req.query.url, {
+        sites,
+        fetchImpl: indicoFetch,
+        cacheDir
+      });
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      if (/\.(pdf|png|jpe?g|gif|webp)$/i.test(name)) {
+        res.attachment(name);
+        res.setHeader(
+          'Content-Disposition',
+          res.getHeader('Content-Disposition').replace(/^attachment/, 'inline')
+        );
+        res.sendFile(file, { dotfiles: 'allow' });
+      } else {
+        res.download(file, name, { dotfiles: 'allow' });
+      }
     })
   );
 
