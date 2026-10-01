@@ -650,6 +650,55 @@ test('links to a renamed note keep their folder when the name collides', async (
   );
 });
 
+test('a note moved to another folder keeps its own links pointing home', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'a'));
+  await fs.mkdir(path.join(root, 'b'));
+  await fs.writeFile(
+    path.join(root, 'a', 'Note.md'),
+    'See [[Plan]], [[Missing]].\n'
+  );
+  await fs.writeFile(path.join(root, 'a', 'Plan.md'), '# Plan A\n');
+  await fs.writeFile(path.join(root, 'b', 'Plan.md'), '# Plan B\n');
+  await fs.writeFile(path.join(root, 'index.md'), 'See [[a/Note]].\n');
+
+  const workspace = await createWorkspace(root);
+  const result = await workspace.renameFile('/a/Note.md', '/b/Note.md');
+
+  assert.deepEqual(result.updatedLinks, ['/index.md', '/b/Note.md']);
+  assert.equal(
+    await fs.readFile(path.join(root, 'b', 'Note.md'), 'utf8'),
+    'See [[a/Plan]], [[Missing]].\n'
+  );
+  assert.equal(
+    await fs.readFile(path.join(root, 'index.md'), 'utf8'),
+    'See [[Note]].\n'
+  );
+});
+
+test('moves an image and repoints the embeds that named it', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, 'assets'));
+  await fs.writeFile(path.join(root, 'chart.png'), 'png');
+  await fs.writeFile(path.join(root, 'index.md'), '![[chart.png]]\n');
+
+  const workspace = await createWorkspace(root);
+  await workspace.renameFile('/chart.png', '/assets/chart.png');
+
+  assert.equal(
+    await fs.readFile(path.join(root, 'assets', 'chart.png'), 'utf8'),
+    'png'
+  );
+  assert.equal(
+    await fs.readFile(path.join(root, 'index.md'), 'utf8'),
+    '![[chart.png]]\n'
+  );
+  await assert.rejects(
+    () => workspace.renameFile('/assets/chart.png', '/chart.md'),
+    (error) => error.status === 400
+  );
+});
+
 test('refuses to rename a note over an existing one', async () => {
   const root = await tempRoot();
   await fs.writeFile(path.join(root, 'one.md'), 'one\n');

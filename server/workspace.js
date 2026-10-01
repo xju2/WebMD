@@ -903,8 +903,16 @@ async function createFile(root, filePath, content) {
 async function renameFile(root, documents, corpus, fromPath, toPath) {
   const from = normalizeWorkspacePath(fromPath);
   const to = normalizeWorkspacePath(toPath);
-  assertMarkdown(from);
-  assertMarkdown(to);
+  const fileKind = fileKindForPath(from);
+  if (!fileKind) {
+    throw new WorkspaceError(
+      400,
+      'Only Markdown, image, and PDF files are supported.'
+    );
+  }
+  if (fileKindForPath(to) !== fileKind) {
+    throw new WorkspaceError(400, 'A file cannot change its kind on rename.');
+  }
   if (from === to) return { success: true, path: from, updatedLinks: [] };
 
   const source = await resolvePath(root, from);
@@ -924,7 +932,7 @@ async function renameFile(root, documents, corpus, fromPath, toPath) {
       await fs.link(source, target);
     } catch (error) {
       if (error.code === 'EEXIST') {
-        throw new WorkspaceError(409, `A note already exists at ${to}.`);
+        throw new WorkspaceError(409, `A file already exists at ${to}.`);
       }
       throw error;
     }
@@ -948,50 +956,71 @@ async function renameFile(root, documents, corpus, fromPath, toPath) {
     documents.delete(rewrite.path);
   }
 
+  // A note moved to another folder resolves its own bare links against its new
+  // siblings, so those are repointed too — as a document edit, which an
+  // editor that has the note open rebases onto.
+  if (fileKind === 'markdown' && path.dirname(from) !== path.dirname(to)) {
+    const paths = corpus.map((file) => file.path);
+    const movedPaths = paths.map((item) => (item === from ? to : item));
+    const { changed } = await editDocument(root, documents, to, (content) =>
+      repointWikiLinks(content, (link) => {
+        const before = resolveWikiLinkPath(link, from, paths);
+        if (!paths.includes(before)) return null;
+        const after = before === from ? to : before;
+        if (resolveWikiLinkPath(link, to, movedPaths) === after) return null;
+        return shortestWikiTarget(after, to, movedPaths);
+      })
+    );
+    if (changed) rewrites.push({ path: to });
+  }
+
   return { success: true, path: to, updatedLinks: rewrites.map((r) => r.path) };
 }
 
 /**
- * Every `[[wiki link]]` that resolves to the renamed note, pointed at its new
- * name. Aliases, heading anchors, and embeds are kept as written. The renamed
- * note itself is skipped: it is the note being edited, and rewriting it under
- * the editor would fight with the open buffer.
+ * Every `[[wiki link]]` that resolves to the renamed file, pointed at its new
+ * name. The renamed note itself is skipped: it is the note being edited, and
+ * rewriting it under the editor would fight with the open buffer.
  */
 function planLinkRewrites(corpus, from, to) {
-  const files = corpus.filter((file) => file.fileKind === 'markdown');
-  const paths = files.map((file) => file.path);
+  const paths = corpus.map((file) => file.path);
   // Link text is chosen against the workspace as it will be, so a bare name is
-  // only used when it still resolves to the note under its new name.
-  const renamedPaths = paths.map((item) => (item === from ? to : item));
+  // only used when it still resolves to the file under its new name.
+  const movedPaths = paths.map((item) => (item === from ? to : item));
   const rewrites = [];
 
-  for (const file of files) {
-    if (file.path === from) continue;
+  for (const file of corpus) {
+    if (file.fileKind !== 'markdown' || file.path === from) continue;
 
-    const nextTarget = shortestWikiTarget(to, file.path, renamedPaths);
-    let changed = false;
-    const content = String(file.content || '').replace(
-      /(!?)\[\[([^\][\n]+)\]\]/g,
-      (match, embed, value) => {
-        const pipeIndex = value.indexOf('|');
-        const alias = pipeIndex === -1 ? '' : value.slice(pipeIndex);
-        const [target, ...anchor] = (
-          pipeIndex === -1 ? value : value.slice(0, pipeIndex)
-        ).split('#');
-        if (!target.trim()) return match;
-        if (resolveWikiLinkPath(target.trim(), file.path, paths) !== from) {
-          return match;
-        }
-
-        changed = true;
-        return `${embed}[[${[nextTarget, ...anchor].join('#')}${alias}]]`;
-      }
+    const before = String(file.content || '');
+    const content = repointWikiLinks(before, (link) =>
+      resolveWikiLinkPath(link, file.path, paths) === from
+        ? shortestWikiTarget(to, file.path, movedPaths)
+        : null
     );
-
-    if (changed) rewrites.push({ path: file.path, content });
+    if (content !== before) rewrites.push({ path: file.path, content });
   }
 
   return rewrites;
+}
+
+/**
+ * `content` with each `[[wiki link]]` target replaced by what `retarget`
+ * returns for it, or left as written when it returns null. Aliases, heading
+ * anchors, and embeds are kept.
+ */
+function repointWikiLinks(content, retarget) {
+  return content.replace(/(!?)\[\[([^\][\n]+)\]\]/g, (match, embed, value) => {
+    const pipeIndex = value.indexOf('|');
+    const alias = pipeIndex === -1 ? '' : value.slice(pipeIndex);
+    const [target, ...anchor] = (
+      pipeIndex === -1 ? value : value.slice(0, pipeIndex)
+    ).split('#');
+    if (!target.trim()) return match;
+    const next = retarget(target.trim());
+    if (next === null) return match;
+    return `${embed}[[${[next, ...anchor].join('#')}${alias}]]`;
+  });
 }
 
 async function deleteFile(root, documents, filePath) {

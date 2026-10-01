@@ -774,6 +774,11 @@ body.resizing-panels .resize-handle::after {
   color: var(--accent);
 }
 
+.tree.drop-root,
+.tree button.drop-target {
+  background: var(--accent-soft);
+}
+
 .tree button:focus-visible {
   outline-offset: -2px;
 }

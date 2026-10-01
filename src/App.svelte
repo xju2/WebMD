@@ -143,6 +143,8 @@
   } from './wiki-complete.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
+  // Its own type, so a tree row dropped on the editor is not taken as text.
+  const TREE_DRAG_TYPE = 'application/x-webmd-path';
   const TASK_SECTIONS_KEY = 'webmd:task-sections';
   const TASK_BOARD_KEY = 'webmd:task-board';
   const TASK_GROUPINGS = ['board', 'sections', 'urgency'];
@@ -378,6 +380,9 @@
   let settingsWarning = '';
   let meetingTimeZone = '';
   let expandedDirs = new Set();
+  // The tree file being dragged, and the folder it would drop into.
+  let draggedPath = '';
+  let dropFolder = '';
   let loadedTreeOnce = false;
   let treeLoaded = false;
   let appShell;
@@ -633,9 +638,9 @@
           ? 'Meetings'
           : viewMode === 'conference'
             ? 'Conference'
-          : viewMode === 'tasks'
-            ? 'Tasks'
-            : selectedPath || 'Workspace Home';
+            : viewMode === 'tasks'
+              ? 'Tasks'
+              : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -4821,6 +4826,68 @@
       dailyNoteFolder = '/';
   }
 
+  /** The folder a tree file sits in, '/' for the workspace root. */
+  function parentFolder(path) {
+    return path.slice(0, path.lastIndexOf('/')) || '/';
+  }
+
+  function handleTreeDragOver(event) {
+    if (!draggedPath || !event.dataTransfer.types.includes(TREE_DRAG_TYPE))
+      return;
+    event.preventDefault();
+    // A row drops into its folder (a file row, into the folder it sits in);
+    // the empty space below the rows, into the workspace root.
+    const folder = event.target.closest('button')?.dataset.folder ?? '/';
+    const moves = folder !== parentFolder(draggedPath);
+    event.dataTransfer.dropEffect = moves ? 'move' : 'none';
+    dropFolder = moves ? folder : '';
+  }
+
+  function handleTreeDrop(event) {
+    const from = event.dataTransfer.getData(TREE_DRAG_TYPE);
+    const folder = dropFolder;
+    draggedPath = '';
+    dropFolder = '';
+    if (!from || !folder) return;
+    event.preventDefault();
+    moveFileToFolder(from, folder);
+  }
+
+  /**
+   * Moves a file into another folder. The server repoints the wiki links that
+   * named it, and the moved note's own links that would now resolve elsewhere.
+   */
+  async function moveFileToFolder(from, folder) {
+    const root = selectedRoot;
+    const to = `${folder === '/' ? '' : folder}/${from.split('/').pop()}`;
+    if (from === selectedPath && hasUnsavedChanges()) await saveNow();
+
+    try {
+      const result = await requestJson('/api/workspace/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, from, to })
+      });
+      // Notes whose links were rewritten are behind their cached copies.
+      for (const path of result.updatedLinks)
+        fileCache.delete(rootPathKey(root, path));
+      adoptRenamedPath(root, from, result.path);
+      await loadTree(root);
+      // An open image or PDF is shown from its old URL. Without the event
+      // stream an open note would miss its own rewritten links, and the next
+      // save would put the old ones back.
+      if (
+        root === selectedRoot &&
+        selectedPath === result.path &&
+        (!selectedIsMarkdown ||
+          (!collaborationEnabled && result.updatedLinks.includes(result.path)))
+      )
+        await openFile(result.path, { historyMode: 'replace' });
+    } catch (err) {
+      if (root === selectedRoot) error = err.message;
+    }
+  }
+
   function toggleFolder(path) {
     const next = new Set(expandedDirs);
     next.has(path) ? next.delete(path) : next.add(path);
@@ -6146,11 +6213,36 @@
           {/each}
         </div>
       {/if}
-      <div bind:this={treeHost} class="tree">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        bind:this={treeHost}
+        class="tree"
+        class:drop-root={dropFolder === '/'}
+        on:dragover={handleTreeDragOver}
+        on:dragleave={(event) => {
+          if (!treeHost.contains(event.relatedTarget)) dropFolder = '';
+        }}
+        on:drop={handleTreeDrop}
+      >
         {#each flatTree as node}
           <button
             class:active={node.path === selectedPath}
             class:folder={node.type === 'directory'}
+            class:drop-target={node.type === 'directory' &&
+              node.path === dropFolder}
+            data-folder={node.type === 'directory'
+              ? node.path
+              : parentFolder(node.path)}
+            draggable={node.type !== 'directory'}
+            on:dragstart={(event) => {
+              draggedPath = node.path;
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData(TREE_DRAG_TYPE, node.path);
+            }}
+            on:dragend={() => {
+              draggedPath = '';
+              dropFolder = '';
+            }}
             aria-expanded={node.type === 'directory'
               ? node.expanded
               : undefined}

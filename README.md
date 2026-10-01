@@ -245,6 +245,12 @@ Two notes are left alone: a daily note, which is addressed by its date rather
 than its heading, and a note whose new name is already taken — that rename is
 reported as an error instead of overwriting the other note.
 
+To move a note, image, or PDF to another folder, drag it in the file sidebar
+onto a folder (or onto a file in that folder); drop it below the rows to move it
+to the workspace root. Links that named it are rewritten the same way, and the
+moved note's own bare links that would now find a different note next to it are
+repointed at the ones they meant.
+
 ## Wiki links
 
 Typing `[[` in the editor offers the notes it could mean — matched on the name
