@@ -6451,9 +6451,9 @@
                 <hr class="view-menu-divider" />
                 {#if taskGrouping !== 'urgency'}
                   <button
-                    aria-pressed={editingSections}
+                    aria-checked={editingSections}
                     class:active={editingSections}
-                    role="menuitem"
+                    role="menuitemcheckbox"
                     type="button"
                     on:click={() => {
                       closeViewMenu();
@@ -6522,10 +6522,10 @@
                   Delete
                 </button>
                 <button
-                  aria-pressed={referenceOpen}
+                  aria-checked={referenceOpen}
                   class:active={referenceOpen}
                   disabled={!markdownFiles.length}
-                  role="menuitem"
+                  role="menuitemcheckbox"
                   type="button"
                   on:click={chooseReferencePane}
                 >
