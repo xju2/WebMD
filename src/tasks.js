@@ -1,4 +1,5 @@
 import { parseFrontmatter } from './frontmatter.js';
+import { stripHtmlComments } from './html-comments.js';
 
 // Task metadata follows the Obsidian Tasks emoji convention, so a note stays
 // readable as plain text and portable to other Markdown tools:
@@ -470,7 +471,9 @@ export function collectTasks(content = '') {
   const headings = new Array(MAX_HEADING_LEVEL + 1).fill('');
   let fence = '';
 
-  body.split('\n').forEach((line, index) => {
+  const visible = stripHtmlComments(body);
+
+  visible.split('\n').forEach((line, index) => {
     const marker = FENCE.exec(line);
     if (marker) {
       if (!fence) fence = marker[1];

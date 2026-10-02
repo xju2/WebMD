@@ -581,3 +581,14 @@ test('ranks priority with geometric glyphs rather than emoji', () => {
   assert.equal(priorityGlyph(''), '');
   assert.equal(priorityGlyph(), '');
 });
+
+test('skips tasks inside HTML comments', () => {
+  const tasks = collectTasks('- [ ] keep\n<!--\n- [ ] hidden\n-->\n- [ ] also');
+  assert.deepEqual(
+    tasks.map((task) => [task.text, task.line]),
+    [
+      ['keep', 0],
+      ['also', 4]
+    ]
+  );
+});

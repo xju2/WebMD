@@ -644,3 +644,32 @@ test('hashes without a space stay paragraph text', () => {
   assert.equal(renderMarkdown('##')[0].type, 'paragraph');
   assert.equal(renderMarkdown('#tag')[0].type, 'paragraph');
 });
+
+test('hides HTML comments but keeps them in code', () => {
+  const blocks = renderMarkdown(`<!-- ![[assets/shot.png]] -->
+
+Kept <!-- hidden --> text, \`<!-- code -->\`.
+
+<!--
+multi
+-->
+After
+
+\`\`\`
+<!-- fenced -->
+\`\`\``);
+  assert.deepEqual(
+    blocks.map((block) => [block.type, block.line]),
+    [
+      ['paragraph', 2],
+      ['paragraph', 7],
+      ['code', 9]
+    ]
+  );
+  assert.deepEqual(blocks[0].children, [
+    { type: 'text', text: 'Kept  text, ' },
+    { type: 'code', text: '<!-- code -->' },
+    { type: 'text', text: '.' }
+  ]);
+  assert.equal(blocks[2].text, '<!-- fenced -->');
+});

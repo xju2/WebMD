@@ -1,5 +1,6 @@
 import { parseUnifiedDiff } from './diff.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { stripHtmlComments } from './html-comments.js';
 import {
   ASSIGNEE_BODY,
   TAG_BODY,
@@ -18,7 +19,7 @@ export function renderMarkdown(
   const { attributes, body, bodyLine, attributeLines } =
     parseFrontmatter(source);
   const base = lineOffset + bodyLine;
-  const lines = body.split('\n');
+  const lines = stripHtmlComments(body).split('\n');
   const blocks = [];
   let index = 0;
 
