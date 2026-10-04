@@ -294,6 +294,47 @@ export function describeAgendaTime(item, meeting, { timeZone } = {}) {
   return itemDay === meetingDay ? time : `${itemDay} ${time}`;
 }
 
+/** `14:00–17:00` for a session block, with its day when that differs. */
+export function describeSessionTime(session, meeting, { timeZone } = {}) {
+  const start = describeAgendaTime(session, meeting, { timeZone });
+  const end = Date.parse(session?.end?.iso ?? '');
+  if (!start || !Number.isFinite(end)) return start;
+  return `${start}–${formatter(TIME_OPTIONS, timeZone).format(end)}`;
+}
+
+/**
+ * The agenda as Indico's timetable lays it out: runs of talks under the
+ * session block they sit in, as `{ session, items }`. A block comes from
+ * `sessions` (the timetable) when the talk names one, else from the talk's
+ * session name; talks in no session get `session: null`. A block with no
+ * talks, like a weekly meeting slotted into the week, keeps its place.
+ */
+export function agendaGroups(agenda = [], sessions = []) {
+  const byId = new Map((sessions || []).map((block) => [block.id, block]));
+  const groups = [];
+  for (const item of agenda || []) {
+    const block = byId.get(item.sessionId);
+    const key = block ? `id:${block.id}` : item.session ? `name:${item.session}` : '';
+    const last = groups.at(-1);
+    if (last && last.key === key) last.items.push(item);
+    else {
+      const session = block || (item.session ? { title: item.session } : null);
+      groups.push({ key, session, items: [item] });
+    }
+  }
+  const placed = new Set(groups.map((group) => group.key));
+  for (const block of sessions || []) {
+    if (placed.has(`id:${block.id}`)) continue;
+    const at = block.start?.at ?? 0;
+    const index = groups.findIndex(
+      (group) => (group.items[0]?.start?.at ?? group.session?.start?.at ?? 0) > at
+    );
+    const empty = { key: `id:${block.id}`, session: block, items: [] };
+    groups.splice(index < 0 ? groups.length : index, 0, empty);
+  }
+  return groups;
+}
+
 /** `11 Sep – 25 Sep` for the toolbar. */
 export function describeRange(from, to, { timeZone } = {}) {
   const start = Date.parse(from ?? '');

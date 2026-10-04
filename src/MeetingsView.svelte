@@ -7,7 +7,9 @@
   import { ICONS } from './icons.js';
   import {
     DEFAULT_MEETING_TIME_ZONE,
+    agendaGroups,
     describeAgendaTime,
+    describeSessionTime,
     describeMeetingTime,
     describeRange,
     filterMeetings,
@@ -878,31 +880,42 @@
                 Try again
               </button>
             </p>
-          {:else if detail?.agenda?.length}
+          {:else if detail?.agenda?.length || detail?.sessions?.length}
             <ol class="meetings-agenda">
-              {#each detail.agenda as item (item.id + item.start.iso)}
-                <li>
-                  <span class="meetings-agenda-time">{describeAgendaTime(item, selected, { timeZone: zone })}</span>
-                  <span class="meetings-agenda-main">
-                    {#if item.url}
-                      <a href={item.url} rel="noopener noreferrer" target="_blank">{item.title}</a>
-                    {:else}
-                      <span>{item.title}</span>
-                    {/if}
-                    {#if item.speakers.length || item.session}
-                      <span class="meetings-agenda-meta">
-                        {item.speakers.join(', ')}{item.speakers.length && item.session ? ' · ' : ''}{item.session}
-                      </span>
-                    {/if}
-                    {#if item.materials?.length}
-                      <span class="meetings-materials">
-                        {#each item.materials as material (material.id + material.url)}
-                          <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
-                        {/each}
-                      </span>
-                    {/if}
-                  </span>
-                </li>
+              {#each agendaGroups(detail.agenda, detail.sessions) as group, index (index)}
+                {#if group.session}
+                  <li class="meetings-agenda-session">
+                    <span class="meetings-agenda-time">{group.session.start ? describeSessionTime(group.session, selected, { timeZone: zone }) : ''}</span>
+                    <span class="meetings-agenda-main">
+                      <strong>{group.session.title}</strong>
+                      {#if group.session.conveners?.length}
+                        <span class="meetings-agenda-meta">{group.session.conveners.join(', ')}</span>
+                      {/if}
+                    </span>
+                  </li>
+                {/if}
+                {#each group.items as item (item.id + item.start.iso)}
+                  <li>
+                    <span class="meetings-agenda-time">{describeAgendaTime(item, selected, { timeZone: zone })}</span>
+                    <span class="meetings-agenda-main">
+                      {#if item.url}
+                        <a href={item.url} rel="noopener noreferrer" target="_blank">{item.title}</a>
+                      {:else}
+                        <span>{item.title}</span>
+                      {/if}
+                      {#if item.speakers.length}
+                        <span class="meetings-agenda-meta">{item.speakers.join(', ')}</span>
+                      {/if}
+                      {#if item.materials?.length}
+                        <span class="meetings-materials">
+                          {#each item.materials as material (material.id + material.url)}
+                            <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
+                          {/each}
+                        </span>
+                      {/if}
+                    </span>
+                  </li>
+                {/each}
               {/each}
             </ol>
             {#if detail.unscheduled}

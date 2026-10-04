@@ -5582,9 +5582,21 @@ input[type='radio'] {
   display: grid;
   grid-template-columns: 5.6rem minmax(0, 1fr);
   gap: 12px;
-  padding: 7px 0;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--border);
   font-size: 0.9rem;
+}
+
+.meetings-agenda li.meetings-agenda-session {
+  margin-top: 10px;
+  border-bottom: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+
+.meetings-agenda-session strong {
+  color: var(--ink-strong);
+  font-weight: 650;
 }
 
 .meetings-agenda-time {

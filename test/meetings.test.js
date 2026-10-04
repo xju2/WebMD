@@ -20,6 +20,7 @@ import {
 } from '../server/meetings.js';
 import { findZoom, mergeZoom, pageZoom, zoomLink } from '../server/zoom.js';
 import { parseFrontmatter } from '../src/frontmatter.js';
+import { agendaGroups } from '../src/meetings.js';
 
 const CERN = 'https://indico.cern.ch';
 const TOKEN = 'indp_TEST_TOKEN_never_leaves_the_server';
@@ -116,6 +117,33 @@ const WEEKLY = rawEvent(
     ]
   }
 );
+// Indico's timetable export for WEEKLY: a session block holding the first
+// talk, a lunch break, and a block with no talks at all.
+const TIMETABLE = {
+  20260911: {
+    s1: {
+      entryType: 'Session',
+      title: 'Tracking',
+      slotTitle: 'Seeding &amp; fitting',
+      sessionSlotId: 55,
+      startDate: when('2026-09-11', '15:00'),
+      endDate: when('2026-09-11', '15:25'),
+      conveners: [{ name: 'Grace Hopper' }],
+      entries: { c1: { entryType: 'Contribution', contributionId: 9001 } }
+    },
+    b1: { entryType: 'Break', title: 'Coffee', startDate: when('2026-09-11', '15:25') },
+    s2: {
+      entryType: 'Session',
+      title: 'Discussion',
+      slotTitle: '',
+      sessionSlotId: 56,
+      startDate: when('2026-09-11', '15:55'),
+      endDate: when('2026-09-11', '16:00'),
+      conveners: [],
+      entries: {}
+    }
+  }
+};
 const WORKSHOP = rawEvent(
   202,
   'Detector workshop',
@@ -175,6 +203,9 @@ function fakeIndico({ protectedAuth = TOKEN, invalidToken = false } = {}) {
       ]);
     }
     if (url.pathname === '/export/event/303.json') return json([PUBLIC_SEMINAR]);
+    if (url.pathname === '/export/timetable/101.json' && authed) {
+      return new Response(JSON.stringify({ results: { 101: TIMETABLE } }));
+    }
     if (url.pathname.includes('/attachments/')) {
       if (!authed) return new Response('', { status: 302, headers: { location: 'https://auth.cern.ch/login' } });
       return new Response(`file ${url.pathname}`, { status: 200 });
@@ -590,6 +621,48 @@ test('keeps listings across a restart and answers a stale one at once', async ()
   } finally {
     await fs.rm(cacheDir, { recursive: true, force: true });
   }
+});
+
+test('puts each talk under its timetable session block, empty blocks included', async () => {
+  const { fetchImpl } = fakeIndico();
+  const sites = indicoSites({ INDICO_CERN_TOKEN: TOKEN });
+  const meeting = await fetchMeeting(CERN, '101', { sites, fetchImpl });
+  assert.deepEqual(
+    meeting.sessions.map((block) => [block.id, block.title, block.start.time, block.end.time, block.conveners]),
+    [
+      ['55', 'Tracking: Seeding & fitting', '15:00', '15:25', ['Grace Hopper']],
+      ['56', 'Discussion', '15:55', '16:00', []]
+    ]
+  );
+  assert.deepEqual(
+    agendaGroups(meeting.agenda, meeting.sessions).map((group) => [
+      group.session?.title ?? null,
+      group.items.map((item) => item.title)
+    ]),
+    [
+      ['Tracking: Seeding & fitting', ['First talk']],
+      [null, ['Second talk']],
+      ['Discussion', []]
+    ]
+  );
+  const note = meetingNoteMarkdown(meeting);
+  assert.match(note, /### 15:00 Tracking: Seeding & fitting\n\n- 15:05 First talk — Grace Hopper\n\n### Other talks\n\n- 15:30/);
+  assert.match(note, /\n\n### 15:55 Discussion\n\n## Notes/);
+
+  // An Indico whose timetable cannot be read still groups by session name.
+  resetMeetingsCache();
+  const plain = await fetchMeeting(CERN, '101', {
+    sites,
+    fetchImpl: (target, options) =>
+      target.includes('/export/timetable/')
+        ? Promise.resolve(new Response('boom', { status: 500 }))
+        : fetchImpl(target, options)
+  });
+  assert.deepEqual(plain.sessions, []);
+  assert.deepEqual(
+    agendaGroups(plain.agenda, plain.sessions).map((group) => group.session?.title ?? null),
+    ['Tracking', null]
+  );
 });
 
 /* ---------------------------------------------------------------- notes */

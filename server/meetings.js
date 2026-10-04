@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { agendaGroups } from '../src/meetings.js';
 import { titleFileName } from '../src/note-title.js';
 import {
   checkIndicoAddress,
@@ -540,15 +541,29 @@ export async function fetchMeeting(
           404
         );
   }
-  const found = await eventPageZoom(checked, eventId, {
-    sites,
-    fetchImpl,
-    ...terms
-  });
+  const [found, timetable] = await Promise.all([
+    eventPageZoom(checked, eventId, { sites, fetchImpl, ...terms }),
+    // The contribution export names a talk's session ("R2R4") but not the
+    // block it sits in ("Simulation"); the timetable has both. Without it the
+    // agenda still stands, grouped by session name alone.
+    exportJson(
+      checked,
+      `/export/timetable/${eventId}.json`,
+      new URLSearchParams(token ? { oa: 'yes' } : {}),
+      { sites, fetchImpl, token, terms }
+    ).catch(() => null)
+  ]);
+  const sessions = normalizeSessions(timetable?.results?.[eventId], event.timezone);
   return {
     ...publicMeeting({ ...event, zoom: mergeZoom(event.zoom, found) }),
     materials: normalizeMaterials(raw.folders, checked),
-    agenda: normalizeAgenda(raw.contributions, checked, event.timezone),
+    agenda: normalizeAgenda(
+      raw.contributions,
+      checked,
+      event.timezone,
+      sessions.byContribution
+    ),
+    sessions: sessions.list,
     unscheduled: Array.isArray(raw.contributions)
       ? raw.contributions.filter((item) => !item?.startDate).length
       : 0,
@@ -790,7 +805,48 @@ export function meetingKey(origin, eventId) {
   return `${origin}/event/${eventId}/`;
 }
 
-function normalizeAgenda(contributions, origin, timezone) {
+/**
+ * The timetable's session blocks, as `list` (`{ id, title, session, start,
+ * end, conveners, room }`, in time order, empty ones included: a block with
+ * no talks is still on the day) and `byContribution`, a block id for each
+ * contribution id. `title` is the block's own theme when it has one beside
+ * the session's name: "R2R4: Simulation".
+ */
+export function normalizeSessions(days, timezone) {
+  const list = [];
+  const byContribution = new Map();
+  if (!days || typeof days !== 'object') return { list, byContribution };
+  for (const entries of Object.values(days)) {
+    for (const entry of Object.values(entries || {})) {
+      if (entry?.entryType !== 'Session') continue;
+      const start = inZone(indicoTime(entry.startDate, timezone), timezone);
+      if (!start) continue;
+      const id = String(entry.sessionSlotId ?? entry.id ?? '');
+      const session = decodeHtml(entry.title || '');
+      const slot = decodeHtml(entry.slotTitle || '');
+      list.push({
+        id,
+        title: [session, slot].filter(Boolean).join(': ') || 'Session',
+        session,
+        start,
+        end: inZone(indicoTime(entry.endDate, timezone), timezone),
+        conveners: (Array.isArray(entry.conveners) ? entry.conveners : [])
+          .map((person) => decodeHtml(person?.name || '') || personName(person))
+          .filter(Boolean),
+        room: placeText(entry.room)
+      });
+      for (const child of Object.values(entry.entries || {})) {
+        if (child?.entryType === 'Contribution' && child.contributionId != null) {
+          byContribution.set(String(child.contributionId), id);
+        }
+      }
+    }
+  }
+  list.sort((a, b) => a.start.at - b.start.at || a.title.localeCompare(b.title));
+  return { list, byContribution };
+}
+
+function normalizeAgenda(contributions, origin, timezone, blocks = new Map()) {
   if (!Array.isArray(contributions)) return [];
   return contributions
     .map((item) => {
@@ -809,6 +865,8 @@ function normalizeAgenda(contributions, origin, timezone) {
           .map(personName)
           .filter(Boolean),
         session: typeof item.session === 'string' ? decodeHtml(item.session) : '',
+        // The timetable block it sits in, when the timetable could be read.
+        sessionId: blocks.get(String(item.db_id ?? '')) || '',
         // "Talk", "Poster", …: the conference planner lists posters, not picks one.
         type: typeof item.type === 'string' ? decodeHtml(item.type) : '',
         room: placeText(item.roomFullname) || placeText(item.room),
@@ -1209,20 +1267,34 @@ export function meetingNoteMarkdown(
     lines.push(`- **Zoom:** <${meeting.zoom.url}>${passcode}`);
   }
 
-  const agenda = meeting.agenda || [];
-  if (agenda.length) {
+  const groups = agendaGroups(meeting.agenda, meeting.sessions);
+  if (groups.length) {
     lines.push('', '## Agenda', '');
-    for (const item of agenda) {
-      const time = item.start.date === meeting.start.date
-        ? item.start.time
-        : `${item.start.date} ${item.start.time}`;
-      const title = item.url
-        ? `[${escapeLinkText(item.title)}](${item.url})`
-        : escapeInline(item.title);
-      const speakers = item.speakers.length
-        ? ` — ${escapeInline(item.speakers.join(', '))}`
-        : '';
-      lines.push(`- ${time} ${title}${speakers}`);
+    const when = (start) =>
+      start.date === meeting.start.date ? start.time : `${start.date} ${start.time}`;
+    let headed = false;
+    for (const group of groups) {
+      // Talks outside any session that follow one get a heading of their
+      // own, or they would read as part of it.
+      const heading = group.session
+        ? `${group.session.start ? `${when(group.session.start)} ` : ''}${escapeInline(group.session.title)}`
+        : headed && 'Other talks';
+      if (heading) {
+        if (lines.at(-1) !== '') lines.push('');
+        lines.push(`### ${heading}`);
+        if (group.items.length) lines.push('');
+        headed = true;
+      }
+      for (const item of group.items) {
+        const time = when(item.start);
+        const title = item.url
+          ? `[${escapeLinkText(item.title)}](${item.url})`
+          : escapeInline(item.title);
+        const speakers = item.speakers.length
+          ? ` — ${escapeInline(item.speakers.join(', '))}`
+          : '';
+        lines.push(`- ${time} ${title}${speakers}`);
+      }
     }
   }
 
