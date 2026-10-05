@@ -230,17 +230,35 @@ export function parseInline(text) {
 
   for (const match of text.matchAll(INLINE_TOKEN)) {
     if (match.index > lastIndex) {
-      segments.push({ type: 'text', text: text.slice(lastIndex, match.index) });
+      segments.push({
+        type: 'text',
+        text: smartDashes(text.slice(lastIndex, match.index))
+      });
     }
     segments.push(parseInlineToken(match[0]));
     lastIndex = match.index + match[0].length;
   }
 
   if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: text.slice(lastIndex) });
+    segments.push({ type: 'text', text: smartDashes(text.slice(lastIndex)) });
   }
 
   return segments;
+}
+
+/**
+ * The TeX and Pandoc convention for prose: `---` is an em dash, `--` an en
+ * dash (`pages 10--20`). Longer runs stay as typed, and so do a command-line
+ * flag (`--force`, after a space) and an arrow (`-->`, `<--`).
+ */
+export function smartDashes(text) {
+  return text
+    .replace(/(?<![-<])---(?![->])/g, '\u2014')
+    .replace(/(?<![-<])--(?![->])/g, (dashes, at, whole) =>
+      (at === 0 || /\s/.test(whole[at - 1])) && /[A-Za-z]/.test(whole[at + 2] || '')
+        ? dashes
+        : '\u2013'
+    );
 }
 
 function parseInlineToken(token) {
@@ -254,7 +272,7 @@ function parseInlineToken(token) {
 
   const link = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
   if (link) {
-    return { type: 'link', text: link[1], href: safeHref(link[2]) };
+    return { type: 'link', text: smartDashes(link[1]), href: safeHref(link[2]) };
   }
 
   const wikiEmbed = token.match(/^!\[\[([^\]\n]+)\]\]$/);
@@ -284,8 +302,8 @@ function parseInlineToken(token) {
   }
 
   if (token.startsWith('**'))
-    return { type: 'strong', text: token.slice(2, -2) };
-  return { type: 'em', text: token.slice(1, -1) };
+    return { type: 'strong', text: smartDashes(token.slice(2, -2)) };
+  return { type: 'em', text: smartDashes(token.slice(1, -1)) };
 }
 
 function parseTable(lines, index, base = 0) {

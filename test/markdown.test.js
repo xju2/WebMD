@@ -274,7 +274,7 @@ test('a blank line inside a blockquote starts a new paragraph', () => {
   assert.equal(block.paragraphs.length, 2);
   assert.equal(
     block.paragraphs[0].children[0].text,
-    '"First quote" -- Someone (1997)'
+    '"First quote" \u2013 Someone (1997)'
   );
   assert.equal(block.paragraphs[0].line, 0);
   assert.equal(block.paragraphs[1].children[0].text, '"Second quote"');
@@ -672,4 +672,17 @@ After
     { type: 'text', text: '.' }
   ]);
   assert.equal(blocks[2].text, '<!-- fenced -->');
+});
+
+test('turns -- and --- in prose into en and em dashes, leaving code, flags and rules alone', () => {
+  const text = (source) => parseInline(source).map((segment) => segment.text).join('|');
+  assert.equal(text('pages 10--20, wait---what'), 'pages 10–20, wait—what');
+  assert.equal(text('**1--2** and [A--B](https://x.example/a--b)'), '1–2| and |A–B');
+  assert.equal(text('`a--b` run --force, x --> y <-- z ----'), 'a--b| run --force, x --> y <-- z ----');
+
+  const blocks = renderMarkdown('---\ntitle: A--B\n---\nOne--two\n\n---\n\n| a--b | c |\n|---|---|\n| d | e |\n');
+  assert.equal(blocks[0].fields[0].values[0][0].text, 'A\u2013B');
+  assert.equal(blocks[1].children[0].text, 'One\u2013two');
+  assert.equal(blocks[2].type, 'rule');
+  assert.equal(blocks[3].headers[0][0].text, 'a\u2013b');
 });
