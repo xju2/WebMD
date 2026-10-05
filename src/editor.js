@@ -175,6 +175,38 @@ function quotePastedLines(text, prefixFirstLine) {
   return prefixFirstLine ? `> ${quoted}` : quoted;
 }
 
+const CALLOUT_MARKER =
+  /^\[!(note|tldr|deadline|info|idea|warning|error|code|prompt)\]\s*(.*)$/i;
+
+/**
+ * The plain text a copied quote or callout should carry out of the editor:
+ * one level of `> ` comes off every line, and a callout's `[!note] Title`
+ * header becomes just its title (or goes, when it has none), so it reads
+ * right in an email or Slack. `beforeSelection` is the line's text ahead of
+ * the selection, which decides whether a selection that starts mid-line is
+ * still inside the quote. Returns null when the text is not all quoted.
+ */
+export function unquotedCopyText(text, { beforeSelection = '' } = {}) {
+  if (typeof text !== 'string' || !text) return null;
+
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const quoted = (line) => /^\s*>/.test(line);
+  const fullLines = [beforeSelection + lines[0], ...lines.slice(1)];
+  if (!fullLines.every((line) => !line.trim() || quoted(line))) return null;
+  if (!lines.some(quoted)) return null;
+
+  const unquoted = lines.map((line) => line.replace(/^\s*> ?/, ''));
+  if (!beforeSelection) {
+    const marker = unquoted[0].match(CALLOUT_MARKER);
+    if (marker) {
+      const title = marker[2].trim();
+      if (title) unquoted[0] = title;
+      else unquoted.shift();
+    }
+  }
+  return unquoted.join('\n');
+}
+
 /** Spaces that look ordinary but are not: NBSP and the typographic widths. */
 const INVISIBLE_SPACES = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g;
 

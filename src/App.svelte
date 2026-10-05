@@ -51,7 +51,8 @@
     quotedBlockPaste,
     shortLinkPaste,
     sourceColumnForWord,
-    tidyPasteText
+    tidyPasteText,
+    unquotedCopyText
   } from './editor.js';
   import {
     citationArxiv,
@@ -805,6 +806,8 @@
         EditorView.domEventHandlers({
           dragover: handleEditorDragOver,
           drop: handleEditorDrop,
+          copy: handleEditorCopy,
+          cut: handleEditorCopy,
           paste: handleEditorPaste
         }),
         EditorView.updateListener.of((update) => {
@@ -2583,8 +2586,55 @@
     updateSelectedText(editorView.state);
   }
 
+  /**
+   * The last quote copied out of the editor, as copied and as written. The
+   * clipboard carries the unquoted text for email and Slack; pasting that same
+   * text back at the start of a line puts the quote prefixes back.
+   */
+  let lastQuoteCopy = null;
+
+  /**
+   * Copying or cutting a quote or callout puts it on the clipboard without its
+   * `> ` prefixes. Anything else falls through to CodeMirror's own handling.
+   */
+  function handleEditorCopy(event, view) {
+    if (!selectedIsMarkdown || !event.clipboardData) return false;
+    const { ranges, main } = view.state.selection;
+    if (ranges.length !== 1 || main.empty) return false;
+
+    const source = view.state.sliceDoc(main.from, main.to);
+    const line = view.state.doc.lineAt(main.from);
+    const plain = unquotedCopyText(source, {
+      beforeSelection: line.text.slice(0, main.from - line.from)
+    });
+    if (plain === null) return false;
+
+    event.preventDefault();
+    event.clipboardData.clearData();
+    event.clipboardData.setData('text/plain', plain);
+    lastQuoteCopy = { plain, source };
+    if (event.type === 'cut' && !view.state.readOnly) {
+      view.dispatch({
+        changes: { from: main.from, to: main.to },
+        scrollIntoView: true,
+        userEvent: 'delete.cut'
+      });
+    }
+    return true;
+  }
+
   function handleEditorPaste(event, view) {
     if (!selectedPath || !selectedIsMarkdown) return false;
+    const pastedText = event.clipboardData?.getData('text/plain') || '';
+    if (
+      lastQuoteCopy &&
+      !textBeforeCursor(view.state) &&
+      pastedText.replace(/\r\n?/g, '\n') === lastQuoteCopy.plain
+    ) {
+      event.preventDefault();
+      insertText(view, lastQuoteCopy.source);
+      return true;
+    }
     const files = dataTransferUploadFiles(event.clipboardData);
     if (!files.length) {
       const sources = pastedImageSources(event.clipboardData);

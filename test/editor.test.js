@@ -12,6 +12,7 @@ import {
   shortLinkPaste,
   sourceColumnForWord,
   tidyPasteText,
+  unquotedCopyText,
   xPostLabel,
   xPostReference
 } from '../src/editor.js';
@@ -542,4 +543,38 @@ test('names a talk after itself, with the meeting when it fits', () => {
     'Welcome'
   );
   assert.equal(indicoLabel({}), '');
+});
+
+test('copies a callout without its quote prefixes', () => {
+  assert.equal(
+    unquotedCopyText(
+      '> [!note] FY27 Milestones\n> - Demonstrate readiness. (0.3 FTE)\n> - Explore registries. (0.1 FTE)'
+    ),
+    'FY27 Milestones\n- Demonstrate readiness. (0.3 FTE)\n- Explore registries. (0.1 FTE)'
+  );
+});
+
+test('drops an untitled callout header and keeps blank quote lines', () => {
+  assert.equal(
+    unquotedCopyText('> [!idea]\n> alpha\n>\n> beta'),
+    'alpha\n\nbeta'
+  );
+});
+
+test('unquotes a selection that starts partway into a quote line', () => {
+  assert.equal(
+    unquotedCopyText('alpha\n> beta', { beforeSelection: '> ' }),
+    'alpha\nbeta'
+  );
+  assert.equal(
+    unquotedCopyText('FY27\n> beta', { beforeSelection: '> [!note] ' }),
+    'FY27\nbeta'
+  );
+});
+
+test('leaves copies that are not wholly quoted alone', () => {
+  assert.equal(unquotedCopyText('plain\n> quoted'), null);
+  assert.equal(unquotedCopyText('> quoted\nplain'), null);
+  assert.equal(unquotedCopyText('just text'), null);
+  assert.equal(unquotedCopyText('word', { beforeSelection: '> some ' }), null);
 });
