@@ -433,6 +433,18 @@ test('serves and ranks the listings of earlier days', async () => {
     await rank();
     assert.equal(prompts.length, 2, 'both rankings are saved on disk');
   });
+  await fs.writeFile(
+    path.join(root, '.webmd', 'news.md'),
+    'Rank by agents for chemistry.\n'
+  );
+  await serve(feedOf(today, 'Today paper'), async ({ rank }) => {
+    assert.equal((await rank({ day: isoDay(yesterday) })).method, 'ai');
+    assert.equal(prompts.length, 2, 'an earlier day keeps its saved ranking');
+    await rank();
+    assert.equal(prompts.length, 3, "today's listing follows the new note");
+    await rank({ day: isoDay(yesterday), refresh: true });
+    assert.equal(prompts.length, 4, 'Re-rank asks again');
+  });
 });
 
 test('the candidate limit reads a positive integer from the environment', () => {

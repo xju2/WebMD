@@ -1037,7 +1037,8 @@ export async function createApp({
             file && !req.body?.refresh ? await readCacheFile(file) : null;
           const hit =
             saved?.rankings?.[listing]?.ranking ??
-            (saved?.listing === listing ? saved.ranking : null);
+            (saved?.listing === listing ? saved.ranking : null) ??
+            (req.body?.day ? lastSavedRanking(saved, news) : null);
           if (hit) return hit;
           const fresh = await rankNews(workspace, news, instructions);
           // Only a model answer costs anything to redo.
@@ -1128,6 +1129,8 @@ export async function createApp({
         for (const [kept, entry] of Object.entries(rankings)) {
           if (!(entry?.day >= oldest)) delete rankings[kept];
         }
+        // Re-set so the file keeps rankings in the order they were saved.
+        delete rankings[listing];
         rankings[listing] = { day, ranking };
         await writeCacheFile(file, { rankings });
       }
@@ -1137,6 +1140,18 @@ export async function createApp({
       write.catch(() => {})
     );
     return write;
+  }
+
+  /**
+   * An earlier day's newest ranking under any instructions: a day you are
+   * catching up on is not worth a model call per edit of the note, and
+   * Re-rank judges it against the current note.
+   */
+  function lastSavedRanking(saved, news) {
+    const prefix = `${news.published}|${news.categories}|`;
+    return Object.entries(saved?.rankings ?? {})
+      .filter(([kept]) => kept.startsWith(prefix))
+      .at(-1)?.[1].ranking;
   }
 
   async function rankNews(workspace, news, instructions) {
