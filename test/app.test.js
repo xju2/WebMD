@@ -1310,3 +1310,35 @@ test('files a paper once, whichever key the catalogue gives it', async () => {
     server.close();
   }
 });
+
+test('opens web links in Chrome only for a browser on this machine', async () => {
+  const root = await tempRoot();
+  const opened = [];
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      env: {},
+      openUrl: async (link) => opened.push(link)
+    })
+  );
+  const post = (body, headers = {}) =>
+    fetch(`${url}/api/open-url`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body)
+    });
+
+  try {
+    assert.equal((await post({ url: 'https://indico.cern.ch/event/1/' })).status, 200);
+    assert.equal((await post({ url: 'file:///etc/passwd' })).status, 400);
+    assert.equal((await post({ url: 'javascript:alert(1)' })).status, 400);
+    assert.equal(
+      (await post({ url: 'https://indico.cern.ch/' }, { 'x-forwarded-for': '100.64.0.2' }))
+        .status,
+      403
+    );
+    assert.deepEqual(opened, ['https://indico.cern.ch/event/1/']);
+  } finally {
+    server.close();
+  }
+});

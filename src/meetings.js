@@ -44,6 +44,28 @@ export function zoneName(timeZone, ms = Date.now()) {
   }
 }
 
+/** The zone this device's clock is set to, or '' when the browser won't say. */
+export function deviceTimeZone() {
+  try {
+    return validTimeZone(new Intl.DateTimeFormat().resolvedOptions().timeZone);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * `{ zone, other }`: the zone the Meetings view reads in, and the one its
+ * toolbar toggle would switch to ('' when the device already runs on the
+ * workspace's zone, so there is nothing to switch). `useDevice` is the
+ * traveller's choice to read times on this device's clock instead.
+ */
+export function meetingZones(workspaceZone, deviceZone, useDevice) {
+  const home = validTimeZone(workspaceZone) || DEFAULT_MEETING_TIME_ZONE;
+  const device = validTimeZone(deviceZone);
+  if (!device || device === home) return { zone: home, other: '' };
+  return useDevice ? { zone: device, other: home } : { zone: home, other: device };
+}
+
 /** The calendar date and weekday `ms` falls on in `timeZone`, or locally. */
 function calendarDate(ms, timeZone) {
   if (!timeZone) {

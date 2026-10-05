@@ -11,6 +11,7 @@ import {
   meetingLocalDay,
   meetingSection,
   meetingsPane,
+  meetingZones,
   sourceNotice,
   sourceNotices,
   zoomMeetingId
@@ -235,4 +236,23 @@ test('sorts and dates meetings by the configured time zone', () => {
   const afterSwitch = Date.UTC(2026, 10, 2, 10);
   assert.equal(meetingSection(meeting('just after midnight', Date.UTC(2026, 10, 2, 8, 5)), afterSwitch, zone), 'today');
   assert.equal(meetingSection(meeting('just before midnight', Date.UTC(2026, 10, 2, 7, 50), Date.UTC(2026, 10, 2, 7, 55)), afterSwitch, zone), 'past');
+});
+
+test('meetingZones offers the device zone only when it differs', () => {
+  assert.deepEqual(meetingZones('America/Los_Angeles', 'America/Los_Angeles', true), {
+    zone: 'America/Los_Angeles',
+    other: ''
+  });
+  assert.deepEqual(meetingZones('America/Los_Angeles', 'Europe/Zurich', false), {
+    zone: 'America/Los_Angeles',
+    other: 'Europe/Zurich'
+  });
+  assert.deepEqual(meetingZones('America/Los_Angeles', 'Europe/Zurich', true), {
+    zone: 'Europe/Zurich',
+    other: 'America/Los_Angeles'
+  });
+  assert.deepEqual(meetingZones('', 'Not/AZone', true), {
+    zone: 'America/Los_Angeles',
+    other: ''
+  });
 });

@@ -32,6 +32,7 @@ import {
   transcriptForModel
 } from './transcripts.js';
 import { fetchXPost, isXPostUrl } from './x.js';
+import { externalUrl, openInChrome, OpenUrlError } from './open-url.js';
 import { fetchRemoteImage } from './remote-images.js';
 import {
   fetchArxivNews,
@@ -113,6 +114,8 @@ export async function createApp({
   // Where day-scoped fetches and model answers outlive a restart. Outside the
   // workspaces so autocommit never picks them up; unset keeps them in memory.
   cacheDir,
+  // Opens a web link in the desktop's Chrome; a stand-in under test.
+  openUrl = openInChrome,
   env = process.env
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
@@ -133,6 +136,19 @@ export async function createApp({
       res.json(
         await readWorkspaceSettings(workspaces.get(req.query.root), env)
       );
+    })
+  );
+
+  // Opens a link in the Chrome window used last, not the profile WebMD's own
+  // window belongs to. Only for a browser on this Mac: a request that came
+  // through a proxy (Tailscale from the phone) is someone else's screen.
+  app.post(
+    '/api/open-url',
+    asyncHandler(async (req, res) => {
+      if (req.get('x-forwarded-for') || req.get('tailscale-user-login'))
+        throw new OpenUrlError(403, 'Links open in Chrome only from this Mac.');
+      await openUrl(externalUrl(req.body?.url));
+      res.json({ ok: true });
     })
   );
 
@@ -1402,7 +1418,10 @@ export async function createApp({
   }
 
   app.use((error, _req, res, _next) => {
-    const status = error instanceof WorkspaceError ? error.status : 500;
+    const status =
+      error instanceof WorkspaceError || error instanceof OpenUrlError
+        ? error.status
+        : 500;
     res.status(status).json({
       error: error.message || 'Internal server error',
       // Indico failures say what kind they are (auth, network, ...).

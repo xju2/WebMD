@@ -18,7 +18,8 @@
     keepSelection,
     meetingBegun,
     meetingLocalDay,
-    validTimeZone,
+    meetingZones,
+    deviceTimeZone,
     zoneName,
     meetingPlace,
     meetingsPane,
@@ -37,6 +38,8 @@
   export let onFilesChanged = async () => {};
 
   const COMPACT_WIDTH = 720;
+  // Per device: a traveller reads times on the clock where they are.
+  const DEVICE_ZONE_KEY = 'webmd.meetings.deviceZone';
 
   let loadedRoot = null;
   let loading = false;
@@ -75,13 +78,15 @@
   let recordingDraft = '';
   let recordingInput;
   let transcriptInput;
+  let useDeviceZone = readDeviceZonePref();
 
   $: compact = paneWidth < COMPACT_WIDTH;
   $: layout = meetingsPane({ compact, detailOpen: detailOpen && !!selectedKey });
   $: meetings = listing?.meetings ?? [];
   $: shown = filterMeetings(meetings, sourceFilter);
   $: sections = groupMeetings(shown, now, { timeZone: zone });
-  $: zone = validTimeZone(timeZone) || DEFAULT_MEETING_TIME_ZONE;
+  $: zones = meetingZones(timeZone, deviceTimeZone(), useDeviceZone);
+  $: zone = zones.zone;
   $: zoneLabel = zoneName(zone, now);
   $: shownCount = sections.reduce((sum, section) => sum + section.meetings.length, 0);
   $: selected = meetings.find((meeting) => meeting.key === selectedKey) || null;
@@ -94,6 +99,24 @@
   $: if (active && root !== loadedRoot) resetFor(root);
   $: if (active && loadedRoot === root && !loading && !listing && !loadError)
     load();
+
+  function readDeviceZonePref() {
+    try {
+      return localStorage.getItem(DEVICE_ZONE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  function toggleDeviceZone() {
+    useDeviceZone = !useDeviceZone;
+    try {
+      if (useDeviceZone) localStorage.setItem(DEVICE_ZONE_KEY, '1');
+      else localStorage.removeItem(DEVICE_ZONE_KEY);
+    } catch {
+      // Private windows may refuse storage; the toggle still works this visit.
+    }
+  }
 
   // The clock moves a Join button into view as a meeting's start comes near.
   let clock;
@@ -473,7 +496,19 @@
     <h2>
       Meetings
       {#if range}<span class="news-date">{range}</span>{/if}
-      <span class="news-date" title={zone}>{zoneLabel}</span>
+      {#if zones.other}
+        <button
+          class="news-date meetings-zone-toggle"
+          type="button"
+          aria-pressed={useDeviceZone}
+          title={`Times in ${zone}. Click for ${zones.other}${useDeviceZone ? ' (workspace zone)' : ' (this device)'}.`}
+          on:click={toggleDeviceZone}
+        >
+          {zoneLabel} <span class="meetings-zone-switch">· use {zoneName(zones.other, now)}</span>
+        </button>
+      {:else}
+        <span class="news-date" title={zone}>{zoneLabel}</span>
+      {/if}
     </h2>
     <div class="tasks-summary">
       {#if sources.length > 1}

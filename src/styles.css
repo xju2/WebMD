@@ -4997,6 +4997,23 @@ input[type='radio'] {
   gap: 10px;
 }
 
+.meetings-zone-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.meetings-zone-switch {
+  color: var(--accent, var(--ink-muted));
+}
+
+.meetings-zone-toggle:hover .meetings-zone-switch,
+.meetings-zone-toggle:focus-visible .meetings-zone-switch {
+  text-decoration: underline;
+}
+
 .meetings-filter {
   max-width: 220px;
   height: var(--control-height);

@@ -142,6 +142,7 @@
     noteCompletions,
     wikiCompletionQuery
   } from './wiki-complete.js';
+  import { interceptWebLinks, openWebLink } from './open-link.js';
 
   const SEARCH_HISTORY_KEY = 'webmd:search-history';
   // Its own type, so a tree row dropped on the editor is not taken as text.
@@ -757,6 +758,7 @@
     createEditor('');
     document.addEventListener('selectionchange', updateBrowserSelectedText);
     window.addEventListener('popstate', openNavigationState);
+    document.addEventListener('click', interceptWebLinks);
     document.addEventListener('visibilitychange', refreshVisibleNews);
     await loadRoots();
   });
@@ -764,6 +766,7 @@
   onDestroy(() => {
     document.removeEventListener('selectionchange', updateBrowserSelectedText);
     window.removeEventListener('popstate', openNavigationState);
+    document.removeEventListener('click', interceptWebLinks);
     document.removeEventListener('visibilitychange', refreshVisibleNews);
     closeDocumentEvents();
     chatAbort?.abort();
@@ -3838,7 +3841,7 @@
   async function openGraphNode(node) {
     if (node.kind === 'citation') {
       if (/^https?:\/\//i.test(node.href || ''))
-        window.open(node.href, '_blank', 'noopener,noreferrer');
+        openWebLink(node.href);
       return;
     }
     await openFile(node.path);
