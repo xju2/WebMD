@@ -18,6 +18,14 @@ const CHAT_OUTPUT_RULES =
 
 export const BUILT_IN_PRESETS = [
   {
+    id: 'academic-polish',
+    label: 'Polish',
+    group: 'Paper',
+    kind: 'edit',
+    system: `You polish English prose. Please focus on correcting English grammar and making the narrative smooth. Restrain from making significant changes. ${OUTPUT_RULES}`,
+    instruction: 'Polish the grammar and flow.'
+  },
+  {
     id: 'academic-tighten',
     label: 'Tighten (academic)',
     group: 'Paper',
