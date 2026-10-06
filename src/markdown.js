@@ -220,7 +220,7 @@ function parseMathBlock(lines, index) {
 // the tag rules live in one place — `\x60` is the backtick a raw template
 // cannot hold.
 const INLINE_TOKEN = new RegExp(
-  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[@[^\s\[\],@;]+\]|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY}|(?<=^|\s)who:${ASSIGNEE_BODY})`,
+  String.raw`(\x60[^\x60]+\x60|(?<!\\)\$[^\s$\n](?:[^$\n]*[^\s$])?(?<!\\)\$|\[@[^\s\[\],@;]+\]|\[[^\]]+\]\([^)]+\)|!?\[\[[^\]\n]+\]\]|\*\*[^*]+\*\*|\*[^*]+\*|https?:\/\/[^\s<]+|(?<=^|\s)#${TAG_BODY}|(?<=^|\s)who:${ASSIGNEE_BODY}|<br\s*\/?>)`,
   'gu'
 );
 
@@ -263,6 +263,10 @@ export function smartDashes(text) {
 
 function parseInlineToken(token) {
   if (token.startsWith('`')) return { type: 'code', text: token.slice(1, -1) };
+
+  // GFM's line break inside a table cell; text keeps it a space wherever a
+  // segment is read as plain text.
+  if (/^<br/i.test(token)) return { type: 'break', text: ' ' };
 
   if (token.startsWith('$')) return { type: 'math', text: token.slice(1, -1) };
 

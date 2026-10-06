@@ -5661,6 +5661,8 @@
       <strong>{segment.text}</strong>
     {:else if segment.type === 'em'}
       <em>{segment.text}</em>
+    {:else if segment.type === 'break'}
+      <br />
     {:else}
       {segment.text}
     {/if}

@@ -287,6 +287,18 @@ test('merges table cells from empty header cells, < and ^', () => {
   assert.equal(table.rows[2][0], null);
 });
 
+test('<br> breaks a line inside a table cell', () => {
+  const [table] = renderMarkdown(`| Model | Size |
+| --- | --- |
+| s0<br>(38 M) | 1 |
+`);
+
+  assert.deepEqual(
+    table.rows[0][0].map((segment) => segment.type),
+    ['text', 'break', 'text']
+  );
+});
+
 test('a blank line inside a blockquote starts a new paragraph', () => {
   const [block] = renderMarkdown(`> "First quote" -- Someone (1997)
 >
