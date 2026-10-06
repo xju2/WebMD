@@ -4191,6 +4191,9 @@ input[type='radio'] {
   padding: 8px 10px;
   border: 1px solid var(--border);
   vertical-align: top;
+  /* The pane's `anywhere` lets a column shrink to one character, splitting
+     names like "Model" mid-word. Wrap at spaces; .table-scroll takes the rest. */
+  overflow-wrap: normal;
 }
 
 .preview-pane th {
