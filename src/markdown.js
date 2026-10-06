@@ -232,7 +232,7 @@ export function parseInline(text) {
     if (match.index > lastIndex) {
       segments.push({
         type: 'text',
-        text: smartDashes(text.slice(lastIndex, match.index))
+        text: plainText(text.slice(lastIndex, match.index))
       });
     }
     segments.push(parseInlineToken(match[0]));
@@ -240,10 +240,15 @@ export function parseInline(text) {
   }
 
   if (lastIndex < text.length) {
-    segments.push({ type: 'text', text: smartDashes(text.slice(lastIndex)) });
+    segments.push({ type: 'text', text: plainText(text.slice(lastIndex)) });
   }
 
   return segments;
+}
+
+// `&nbsp;` keeps words together, e.g. `(38&nbsp;M)` in a narrow table column.
+function plainText(text) {
+  return smartDashes(text).replaceAll('&nbsp;', '\u00a0');
 }
 
 /**

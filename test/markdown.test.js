@@ -290,13 +290,14 @@ test('merges table cells from empty header cells, < and ^', () => {
 test('<br> breaks a line inside a table cell', () => {
   const [table] = renderMarkdown(`| Model | Size |
 | --- | --- |
-| s0<br>(38 M) | 1 |
+| s0<br>(38&nbsp;M) | 1 |
 `);
 
   assert.deepEqual(
     table.rows[0][0].map((segment) => segment.type),
     ['text', 'break', 'text']
   );
+  assert.equal(table.rows[0][0][2].text, '(38\u00a0M)');
 });
 
 test('a blank line inside a blockquote starts a new paragraph', () => {
