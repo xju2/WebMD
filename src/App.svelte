@@ -5774,9 +5774,15 @@
           <thead>
             <tr data-line={block.line}>
               {#each block.headers as header, column}
-                <th class={`align-${block.alignments[column]}`}>
-                  {@render inline(header)}
-                </th>
+                {#if header}
+                  {@const span = block.spans[`0,${column}`]}
+                  <th
+                    class={`align-${block.alignments[column]}`}
+                    colspan={span?.colspan}
+                  >
+                    {@render inline(header)}
+                  </th>
+                {/if}
               {/each}
             </tr>
           </thead>
@@ -5784,9 +5790,16 @@
             {#each block.rows as row, rowIndex}
               <tr data-line={block.rowLines[rowIndex]}>
                 {#each row as cell, column}
-                  <td class={`align-${block.alignments[column]}`}>
-                    {@render inline(cell)}
-                  </td>
+                  {#if cell}
+                    {@const span = block.spans[`${rowIndex + 1},${column}`]}
+                    <td
+                      class={`align-${block.alignments[column]}`}
+                      colspan={span?.colspan}
+                      rowspan={span?.rowspan}
+                    >
+                      {@render inline(cell)}
+                    </td>
+                  {/if}
                 {/each}
               </tr>
             {/each}

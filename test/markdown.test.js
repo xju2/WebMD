@@ -264,6 +264,29 @@ test('renders pipe tables with alignment and inline cells', () => {
   assert.equal(blocks[1].rows[1][2][0].href, '/wiki/q2c');
 });
 
+test('merges table cells from empty header cells, < and ^', () => {
+  const [table] = renderMarkdown(`| Model | Data size |  |  |
+| :---: | :---: | --- | --- |
+| -  | 83/512 | 1 | < |
+| s0 |  | 2 | 3 |
+| ^  | 4 | ^ | 5 |
+`);
+
+  assert.deepEqual(table.headers.map((cell) => cell && cell[0].text), [
+    'Model',
+    'Data size',
+    null,
+    null
+  ]);
+  assert.deepEqual(table.spans['0,1'], { colspan: 3, rowspan: 1 });
+  assert.equal(table.rows[0][3], null);
+  assert.deepEqual(table.spans['1,2'], { colspan: 2, rowspan: 1 });
+  assert.deepEqual(table.rows[1][1], []);
+  assert.deepEqual(table.spans['2,0'], { colspan: 1, rowspan: 2 });
+  assert.deepEqual(table.spans['2,2'], { colspan: 1, rowspan: 2 });
+  assert.equal(table.rows[2][0], null);
+});
+
 test('a blank line inside a blockquote starts a new paragraph', () => {
   const [block] = renderMarkdown(`> "First quote" -- Someone (1997)
 >

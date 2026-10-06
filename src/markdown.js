@@ -318,21 +318,60 @@ function parseTable(lines, index, base = 0) {
   while (index < lines.length && lines[index].trim()) {
     const row = parseTableRow(lines[index]);
     if (!row) break;
-    rows.push(normalizeTableCells(row, headers.length).map(parseInline));
+    rows.push(normalizeTableCells(row, headers.length));
     rowLines.push(base + index);
     index += 1;
   }
+
+  const grid = [headers, ...rows];
+  const spans = mergeTableCells(grid);
+  const cells = grid.map((row) =>
+    row.map((cell) => (cell === null ? null : parseInline(cell)))
+  );
 
   return {
     block: {
       type: 'table',
       alignments,
-      headers: headers.map(parseInline),
-      rows,
+      headers: cells[0],
+      rows: cells.slice(1),
+      spans,
       rowLines
     },
     nextIndex: index
   };
+}
+
+// A cell holding only `<` joins the cell to its left, `^` the cell above, and
+// an empty header cell after the first column joins the header to its left.
+// Merged cells become null in the grid; the cell they join gets its span under
+// spans["row,column"], with the header as row 0. Spans stop at the header so
+// thead and tbody stay separate.
+function mergeTableCells(grid) {
+  const spans = {};
+  const owners = grid.map(() => []);
+  grid.forEach((row, r) => {
+    row.forEach((text, c) => {
+      const left = c > 0 && (text === '<' || (r === 0 && text === ''));
+      const up = r > 1 && text === '^';
+      const owner = left ? owners[r][c - 1] : up ? owners[r - 1][c] : null;
+      if (!owner) {
+        owners[r][c] = { r, c };
+        return;
+      }
+      owners[r][c] = owner;
+      row[c] = null;
+      const span = (spans[`${owner.r},${owner.c}`] ||= {
+        colspan: 1,
+        rowspan: 1
+      });
+      if (left && owner.r === r)
+        span.colspan = Math.max(span.colspan, c - owner.c + 1);
+      if (up && owner.c === c)
+        span.rowspan = Math.max(span.rowspan, r - owner.r + 1);
+    });
+  });
+  return spans;
 }
 
 function isTableStart(header, divider) {
