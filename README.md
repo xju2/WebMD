@@ -18,8 +18,11 @@ npm run dev
 ```
 
 Open the URL Vite prints (usually `http://127.0.0.1:5173`). With no workspace
-configured you land in the sandbox, an example workspace with a
-guided tour. Nothing you do there touches your own files.
+configured you land in the sandbox, a small example workspace. Its
+**Welcome** note starts a tour of writing, links, tasks, citations, daily
+notes, and workspace settings. Edit anything there: it is your own copy, and
+it never touches your notes. Delete that copy to start over; the server
+prints where it is on startup.
 
 **2. Point it at your notes.** Create `~/.webmd.conf` with a folder of Markdown
 files (a git repo is best, so [auto-commit](#webmd-settings) can snapshot it):
@@ -28,7 +31,7 @@ files (a git repo is best, so [auto-commit](#webmd-settings) can snapshot it):
 WORKSPACE_ROOT=/absolute/path/to/notes
 ```
 
-Restart `npm run dev` and your notes appear in the sidebar.
+Restart WebMD and your notes appear in the sidebar.
 
 **3. Reach it from anywhere.** On the machine that holds your notes, build the
 app and run it, then share it on your tailnet:
@@ -51,16 +54,26 @@ and tap **Add**. WebMD then opens full-screen like an app.
 
 ## Workspace settings
 
-How a workspace is laid out belongs to that workspace, so each one can carry a
-`.webmd/settings.json`. Commit it with your notes and every machine gets the
-same layout. There are no controls for these in the UI. Edit the file, then
-switch to the workspace again or reload the page.
+Each workspace keeps its own configuration in a hidden `.webmd/` folder, so
+the settings travel with the notes. Commit it with your notes and every machine
+gets the same setup. There are no controls for these in the UI. Edit the files,
+then switch to the workspace again or reload the page.
+
+- `.webmd/settings.json`: the folders WebMD uses and the Meetings time zone
+  (below).
+- `.webmd/prompts.json`: your own prompts for the AI panel. See
+  [Prompt presets](docs/features.md#prompt-presets).
+- `.webmd/news.md`: a description of your research, used to rank arXiv News.
+  See [Ranking](docs/features.md#ranking).
+
+The sandbox has a `.webmd/` folder of its own to copy from. Its
+`settings.json` looks like this:
 
 ```json
 {
   "imageAssetFolder": "/assets",
-  "dailyNoteFolder": "/raw/dailynotes",
-  "dailyNoteTemplate": "/raw/dailynotes/template.md"
+  "dailyNoteFolder": "/daily",
+  "dailyNoteTemplate": "/daily/template.md"
 }
 ```
 
@@ -68,21 +81,25 @@ Every key is optional:
 
 - `imageAssetFolder`: where pasted and uploaded images and PDFs go. It is
   created on the first upload. If you leave it out, WebMD uses
-  `IMAGE_ASSET_FOLDER` from the environment or `~/.webmd.conf`, and then
-  `/assets`.
+  `IMAGE_ASSET_FOLDER` from `~/.webmd.conf`, and then `/assets`.
 - `dailyNoteFolder`: where today's note, Tasks, and date links look for daily
   notes. If you leave it out, WebMD uses `/raw/dailynotes`, or `/` when the
   workspace has no such folder.
 - `dailyNoteTemplate`: the note a new daily note starts from (see
-  [Daily note template](docs/features.md#daily-note-template)). `""` means no template.
+  [Daily note template](docs/features.md#daily-note-template)). `""` means no
+  template.
+- `meetingTimeZone`: the IANA time zone the Meetings view shows times and days
+  in, such as `"Europe/Zurich"`. Defaults to Pacific time
+  (`"America/Los_Angeles"`).
 
 WebMD skips a value it cannot use, keeps the rest, and names the problem when
 it next creates a daily note.
 
 ## WebMD settings
 
-Settings for WebMD itself, rather than for one workspace, go in
-`~/.webmd.conf`, one `KEY=VALUE` per line. Environment variables of the same
+Settings for WebMD itself, rather than for one workspace, stay on the server
+in `~/.webmd.conf`, one `KEY=VALUE` per line: the list of workspaces, API keys,
+and other secrets. Environment variables of the same
 name take precedence. Restart WebMD after editing it.
 
 ```conf
