@@ -109,9 +109,16 @@ one `KEY=VALUE` per line. An environment variable with the same name wins over
 the file. Restart WebMD after editing it.
 
 ```conf
-WORKSPACE_ROOT=/absolute/path/to/notes
-AUTO_COMMIT_MINUTES=15
-OPENAI_API_KEY=sk-...
+WORKSPACE_ROOT="/absolute/path/to/notes"
+AI_PROVIDER=openai
+OPENAI_API_KEY="sk-****"
+OPENAI_BASE_URL=https://your-openai-compatible-server/v1
+AI_MODEL=claude-opus-4-8
+AUTO_COMMIT_MINUTES=30
+QUOTE_THEMES=stoicism,music,physics,life,programming,finance
+INDICO_CERN_TOKEN=indp_***
+ARXIV_NEWS_MAX_CANDIDATES=300
+AUTO_COMMIT_SUMMARY_LINES=5
 ```
 
 Every key is optional.
