@@ -1,14 +1,16 @@
 # WebMD
 
-A remote-first Markdown workspace: your notes live on one machine, and you
-edit them from any browser — laptop or phone — over your private Tailscale
+A remote-first Markdown workspace. Your notes live on one machine, and you
+edit them from a browser on your laptop or phone over your private Tailscale
 network.
 
 ## Quick start
 
 You need Node.js 20.12 or newer and git.
 
-**1. Try it locally.** Clone, install, and start the dev server:
+### 1. Try it locally
+
+Clone, install, and start the dev server:
 
 ```bash
 git clone https://github.com/xju2/WebMD.git
@@ -24,8 +26,10 @@ notes, and workspace settings. Edit anything there: it is your own copy, and
 it never touches your notes. Delete that copy to start over; the server
 prints where it is on startup.
 
-**2. Point it at your notes.** Create `~/.webmd.conf` with a folder of Markdown
-files (a git repo is best, so [auto-commit](#webmd-settings) can snapshot it):
+### 2. Point it at your notes
+
+Create `~/.webmd.conf` and name a folder of Markdown files. A git repo works
+best, because [auto-commit](#auto-commit) can then snapshot it:
 
 ```conf
 WORKSPACE_ROOT=/absolute/path/to/notes
@@ -33,8 +37,10 @@ WORKSPACE_ROOT=/absolute/path/to/notes
 
 Restart WebMD and your notes appear in the sidebar.
 
-**3. Reach it from anywhere.** On the machine that holds your notes, build the
-app and run it, then share it on your tailnet:
+### 3. Reach it from other devices
+
+On the machine that holds your notes, build the app, run it, and share it on
+your tailnet:
 
 ```bash
 npm run build
@@ -46,11 +52,11 @@ Open the HTTPS URL that `tailscale serve` prints from any device signed into
 the same tailnet. Do not use Tailscale Funnel: it would put WebMD, which has no
 login, on the public internet.
 
-### iPhone
+### 4. Add it to an iPhone
 
 Install Tailscale on the phone and keep it connected. Open the HTTPS URL in
 Safari, then use **Share → Add to Home Screen**, enable **Open as Web App**,
-and tap **Add**. WebMD then opens full-screen like an app.
+and tap **Add**. WebMD then opens full screen, like an app.
 
 ## Workspace settings
 
@@ -97,10 +103,10 @@ it next creates a daily note.
 
 ## WebMD settings
 
-Settings for WebMD itself, rather than for one workspace, stay on the server
-in `~/.webmd.conf`, one `KEY=VALUE` per line: the list of workspaces, API keys,
-and other secrets. Environment variables of the same
-name take precedence. Restart WebMD after editing it.
+`~/.webmd.conf` on the server holds the settings that belong to WebMD rather
+than to one workspace, such as the list of workspaces and your API keys. Write
+one `KEY=VALUE` per line. An environment variable with the same name wins over
+the file. Restart WebMD after editing it.
 
 ```conf
 WORKSPACE_ROOT=/absolute/path/to/notes
@@ -110,7 +116,7 @@ OPENAI_API_KEY=sk-...
 
 Every key is optional.
 
-**Workspaces**
+### Workspaces
 
 - `WORKSPACE_ROOT`: the folder of notes to open. Without it, WebMD opens the
   sandbox.
@@ -121,13 +127,13 @@ Every key is optional.
 - `IMAGE_ASSET_FOLDER`: where pasted images go when the workspace does not set
   `imageAssetFolder`, defaults to `/assets`.
 
-**Server**
+### Server
 
 - `PORT`: defaults to `3000`. WebMD always binds to `127.0.0.1`.
-- `WEBMD_CACHE_DIR`: cached News and Meetings data, defaults to
-  `~/.cache/webmd`. Safe to delete.
+- `WEBMD_CACHE_DIR`: where News and Meetings data is cached, defaults to
+  `~/.cache/webmd`. You can delete it at any time.
 
-**Auto-commit**
+### Auto-commit
 
 - `AUTO_COMMIT_MINUTES`: when a workspace is a git repo, commit everything in
   it on this interval and on shutdown. Nothing is pushed. Unset or `0` turns it
@@ -135,7 +141,7 @@ Every key is optional.
 - `AUTO_COMMIT_SUMMARY_LINES`: snapshots larger than this many changed lines
   (default `5`) get an AI-written commit message.
 
-**AI**
+### AI
 
 - `OPENAI_API_KEY`: turns on the AI features using OpenAI. It never reaches
   the browser.
@@ -145,7 +151,7 @@ Every key is optional.
 - `OPENAI_BASE_URL`, `OLLAMA_BASE_URL`: point at another OpenAI-compatible
   server or Ollama instance.
 
-**Meetings and News**
+### Meetings and News
 
 - `INDICO_<NAME>_TOKEN`: an Indico personal access token, for protected
   meetings. `CERN`, `FNAL`, and `GLOBAL` are known; for any other Indico, also
@@ -162,9 +168,9 @@ Every key is optional.
 
 ## Features
 
-The sandbox tour shows the basics. [docs/features.md](docs/features.md)
-describes everything else: tasks, daily notes, citations, meetings, arXiv
-news, prompt presets, and more.
+The sandbox tour covers the basics. [docs/features.md](docs/features.md) has
+the details on tasks, daily notes, citations, meetings, arXiv news, prompt
+presets, and the rest.
 
 ## Scripts
 
