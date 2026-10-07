@@ -109,6 +109,14 @@ that line. Mentions are resolved rather than string-matched, so `[[triton]]`,
 `[[iaas/triton]]` and `[[/raw/projects/iaas/triton|Triton]]` all count as the
 same link.
 
+## Preview outline
+
+The list button next to Edit/Preview opens an outline of the note's headings on
+the right of the preview; clicking one scrolls the preview to it. It is off
+until you turn it on, then stays on across notes and reloads. The button only
+appears while the window is wide enough to keep a full reading column beside the
+outline, and the outline steps aside when the window narrows.
+
 ## Citations
 
 Keep bibliography entries in `references.bib` at the workspace root and cite

@@ -39,6 +39,7 @@
   import {
     LAYOUT_KEY,
     RAIL_WIDTH,
+    CENTER_MIN,
     WIDTH_LIMITS,
     clampPanelWidth,
     closePanel,
@@ -145,7 +146,11 @@
     splitWikiTarget,
     wikiLinkLabel
   } from './wiki-links.js';
-  import { findHeadingLine } from './note-headings.js';
+  import {
+    findHeadingLine,
+    headingLabel,
+    noteHeadings
+  } from './note-headings.js';
   import {
     headingCompletions,
     noteCompletions,
@@ -176,6 +181,10 @@
     'conference'
   ]);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
+  // The preview's outline: off until asked for, then remembered. It docks
+  // beside the note only while the reading column keeps CENTER_MIN next to it.
+  const PREVIEW_TOC_KEY = 'webmd:preview-toc';
+  const PREVIEW_TOC_WIDTH = 220;
   const DEFAULT_DAILY_NOTE_FOLDER = '/raw/dailynotes';
   // Where a day's work lands in a project note. Fixed rather than configurable:
   // one heading everywhere means a project's log reads as one trail.
@@ -371,6 +380,8 @@
   let agendaError = null;
   let markdownHelpOpen = false;
   let viewMenuOpen = false;
+  let previewTocOpen = readPreviewToc();
+  let editorFrameWidth = 0;
   let diffFiles = [];
   let diffStatus = '';
   // Panel layout. Prefs are the remembered desktop choices; transient state is
@@ -564,6 +575,27 @@
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
     selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+  // Only headings the preview actually rendered, so a `#` line in front matter
+  // or a comment never becomes an entry that scrolls nowhere.
+  $: previewHeadingLines = new Set(
+    renderedBlocks
+      .filter((block) => block.type === 'heading')
+      .map((block) => block.line)
+  );
+  $: previewHeadings = previewHeadingLines.size
+    ? noteHeadings(content)
+        .filter((heading) => previewHeadingLines.has(heading.line))
+        .map((heading) => ({ ...heading, label: headingLabel(heading.text) }))
+    : [];
+  // Indent from the shallowest heading present, so a note of `##` sections
+  // does not open with an empty step.
+  $: previewTocTopLevel = Math.min(
+    ...previewHeadings.map((heading) => heading.level)
+  );
+  $: previewTocFits = editorFrameWidth >= CENTER_MIN + PREVIEW_TOC_WIDTH;
+  $: previewTocAvailable =
+    viewMode === 'preview' && selectedIsMarkdown && previewTocFits;
+  $: previewTocShown = previewTocAvailable && previewTocOpen;
   // A paper counts as clipped once it is in the bibliography, so yesterday's
   // listing still shows the papers it was read from.
   $: newsCiteKeys = bibArxivKeys(bibliography);
@@ -773,9 +805,14 @@
   $: referenceShown = referenceOpen && viewMode !== 'meetings';
   // Only beside the note itself, never beside a workspace view.
   $: agendaShown =
-    referenceOpen && !referencePinned && !!openMeetingEvent && !workspacePaneOpen;
+    referenceOpen &&
+    !referencePinned &&
+    !!openMeetingEvent &&
+    !workspacePaneOpen;
   $: wantedAgendaKey = agendaShown
-    ? [selectedRoot, openMeetingEvent.origin, openMeetingEvent.eventId].join('|')
+    ? [selectedRoot, openMeetingEvent.origin, openMeetingEvent.eventId].join(
+        '|'
+      )
     : '';
   $: if (wantedAgendaKey !== agendaKey) loadAgenda(wantedAgendaKey);
   // Read again with each meeting, so a zone switched in Meetings carries over.
@@ -2619,13 +2656,13 @@
   }
 
   /** Scrolls a source line into view in the preview and marks it briefly. */
-  function revealPreviewLine(line) {
+  function revealPreviewLine(line, { block = 'center' } = {}) {
     const target = [
       ...document.querySelectorAll(`.preview-pane [data-line="${line}"]`)
     ].find((node) => !node.closest('.note-embed-body'));
     if (!target) return;
 
-    target.scrollIntoView({ block: 'center' });
+    target.scrollIntoView({ block });
     target.classList.add('line-flash');
     setTimeout(() => target.classList.remove('line-flash'), 1200);
   }
@@ -3925,8 +3962,7 @@
 
   async function openGraphNode(node) {
     if (node.kind === 'citation') {
-      if (/^https?:\/\//i.test(node.href || ''))
-        openWebLink(node.href);
+      if (/^https?:\/\//i.test(node.href || '')) openWebLink(node.href);
       return;
     }
     await openFile(node.path);
@@ -4318,6 +4354,23 @@
       };
     } catch {
       return { open: false, path: '' };
+    }
+  }
+
+  function readPreviewToc() {
+    try {
+      return localStorage.getItem(PREVIEW_TOC_KEY) === 'open';
+    } catch {
+      return false;
+    }
+  }
+
+  function togglePreviewToc() {
+    previewTocOpen = !previewTocOpen;
+    try {
+      localStorage.setItem(PREVIEW_TOC_KEY, previewTocOpen ? 'open' : 'closed');
+    } catch {
+      // Ignore storage failures; the outline still toggles this session.
     }
   }
 
@@ -6548,6 +6601,19 @@
                 Preview
               </button>
             </div>
+            {#if previewTocAvailable}
+              <button
+                aria-label={previewTocOpen ? 'Hide outline' : 'Show outline'}
+                aria-pressed={previewTocOpen}
+                class="history-button toc-toggle"
+                class:active={previewTocOpen}
+                title={previewTocOpen ? 'Hide outline' : 'Show outline'}
+                type="button"
+                on:click={togglePreviewToc}
+              >
+                {@render icon('outline')}
+              </button>
+            {/if}
           {/if}
         {/if}
         <div class="view-menu">
@@ -6915,7 +6981,12 @@
     {/if}
 
     <div class:split={referenceShown} class="editor-split">
-      <div class:empty={!selectedPath} class="editor-frame">
+      <div
+        bind:clientWidth={editorFrameWidth}
+        class:empty={!selectedPath}
+        class:with-toc={previewTocShown}
+        class="editor-frame"
+      >
         {#if !selectedPath && !workspacePaneOpen}
           <section class="workspace-home" aria-label="Workspace Home">
             <header class="home-intro">
@@ -7773,6 +7844,31 @@
               </section>
             {/if}
           </article>
+          {#if previewTocShown}
+            <nav aria-label="Outline" class="preview-toc">
+              {#if previewHeadings.length}
+                <ol>
+                  {#each previewHeadings as heading (heading.line)}
+                    <li
+                      class:toc-top={heading.level === previewTocTopLevel}
+                      style={`--toc-depth: ${heading.level - previewTocTopLevel}`}
+                    >
+                      <button
+                        title={heading.label}
+                        type="button"
+                        on:click={() =>
+                          revealPreviewLine(heading.line, { block: 'start' })}
+                      >
+                        {heading.label}
+                      </button>
+                    </li>
+                  {/each}
+                </ol>
+              {:else}
+                <p class="preview-toc-empty">No headings</p>
+              {/if}
+            </nav>
+          {/if}
           <section
             aria-label="Git diff"
             class:hidden={viewMode !== 'diff'}
@@ -8006,7 +8102,9 @@
                 <h3>{agendaDetail.title}</h3>
                 <p class="reference-agenda-when">
                   {agendaTime.full}
-                  {#if agendaTime.zoned}<span class="meetings-zone">({agendaTime.zoned})</span>{/if}
+                  {#if agendaTime.zoned}<span class="meetings-zone"
+                      >({agendaTime.zoned})</span
+                    >{/if}
                 </p>
                 <a
                   class="reference-agenda-indico"
@@ -8025,15 +8123,15 @@
               />
             </article>
           {:else}
-          <article class="preview-pane reference-body">
-            {#if referenceStatus}
-              <p class="preview-empty">{referenceStatus}</p>
-            {:else if referenceBlocks.length}
-              {@render markdownBlocks(referenceBlocks, true)}
-            {:else}
-              <p class="preview-empty">Empty file</p>
-            {/if}
-          </article>
+            <article class="preview-pane reference-body">
+              {#if referenceStatus}
+                <p class="preview-empty">{referenceStatus}</p>
+              {:else if referenceBlocks.length}
+                {@render markdownBlocks(referenceBlocks, true)}
+              {:else}
+                <p class="preview-empty">Empty file</p>
+              {/if}
+            </article>
           {/if}
         </aside>
       {/if}

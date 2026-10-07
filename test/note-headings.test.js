@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { findHeadingLine, noteHeadings } from '../src/note-headings.js';
+import {
+  findHeadingLine,
+  headingLabel,
+  noteHeadings
+} from '../src/note-headings.js';
 
 const NOTE = [
   '---',
@@ -43,4 +47,25 @@ test('finds a heading line ignoring case and surrounding space', () => {
 test('reports a missing heading rather than guessing', () => {
   assert.equal(findHeadingLine(NOTE, 'Teardown'), null);
   assert.equal(findHeadingLine(NOTE, ''), null);
+});
+
+test('labels a heading with its Markdown taken off', () => {
+  assert.equal(headingLabel('Plan for **next** week'), 'Plan for next week');
+  assert.equal(
+    headingLabel('See [[Garden planner|the garden]]'),
+    'See the garden'
+  );
+  assert.equal(
+    headingLabel('[[Garden planner]] notes'),
+    'Garden planner notes'
+  );
+  assert.equal(
+    headingLabel('Read [the paper](https://x.org) first'),
+    'Read the paper first'
+  );
+  assert.equal(headingLabel('The `run()` loop ##'), 'The run() loop');
+  assert.equal(
+    headingLabel('An *aside* and snake_case_name'),
+    'An aside and snake_case_name'
+  );
 });

@@ -1787,6 +1787,71 @@ input[type='radio'] {
   overflow: hidden;
 }
 
+/* The outline docks on the right of the preview; the frame gives up that strip
+   so the note recentres in what is left rather than sliding under it. Width
+   matches PREVIEW_TOC_WIDTH in App.svelte. */
+.editor-frame.with-toc {
+  padding-right: 220px;
+}
+
+.preview-toc {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 220px;
+  overflow: auto;
+  padding: 26px 12px 40px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.preview-toc ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.preview-toc button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 4px 8px 4px calc(8px + var(--toc-depth, 0) * 12px);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink-muted);
+  cursor: pointer;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-toc .toc-top button {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.preview-toc button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.preview-toc-empty {
+  margin: 0;
+  padding: 4px 8px;
+  color: var(--ink-muted);
+  font-size: 0.84rem;
+}
+
+.toc-toggle.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
 .reference-pane {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -3380,6 +3445,8 @@ input[type='radio'] {
   margin: 1.3em 0 0.35em;
   color: var(--ink-strong);
   line-height: 1.25;
+  /* An outline jump lands the heading just below the pane's top edge. */
+  scroll-margin-top: 16px;
 }
 
 /* Weight steps down with size, so the small headings read as sections under

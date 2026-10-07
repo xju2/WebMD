@@ -52,3 +52,20 @@ export function findHeadingLine(content = '', heading = '') {
 export function normalizeHeading(text = '') {
   return String(text).trim().toLowerCase();
 }
+
+/**
+ * A heading as the preview's outline lists it: the words a reader sees, with
+ * the Markdown that styles or links them taken off. `[[note|alias]]` reads as
+ * its alias, a link as its text, and an ATX closing run of `#` is dropped.
+ */
+export function headingLabel(text = '') {
+  return String(text)
+    .replace(/\s+#+$/, '')
+    .replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2')
+    .replace(/\[\[([^\]]*)\]\]/g, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/(\*\*|__|~~|==)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])[*_]([^*_]+)[*_](?=$|[^\w*])/g, '$1$2')
+    .trim();
+}
