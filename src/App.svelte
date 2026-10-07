@@ -1712,6 +1712,13 @@
     }
   }
 
+  // Today's note starts a fresh page: a meeting's agenda or an older note
+  // left in the reference pane does not follow it there.
+  async function openTodayNote() {
+    if (referenceOpen) closeReferencePane();
+    await openDailyNote();
+  }
+
   async function openDailyNote(date = new Date()) {
     const path = todayNotePath(date);
     const root = selectedRoot;
@@ -1903,7 +1910,7 @@
       Comma: () => openOlderDailyNote(),
       // D for daily: jumps to today's note from anywhere, without the detour
       // through the dashboard.
-      KeyD: () => workspaceRoots.length && openDailyNote(),
+      KeyD: () => workspaceRoots.length && openTodayNote(),
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
       KeyP: () => selectedPath && setViewMode('preview'),
@@ -6078,7 +6085,7 @@
       data-tooltip={`Today’s note (${shortcutKey}+Shift+D)`}
       disabled={!workspaceRoots.length}
       type="button"
-      on:click={() => openDailyNote()}
+      on:click={openTodayNote}
     >
       {@render icon('today')}
     </button>
@@ -6942,7 +6949,7 @@
                 <button
                   class="home-primary"
                   type="button"
-                  on:click={() => openDailyNote()}
+                  on:click={openTodayNote}
                 >
                   Open today’s note
                 </button>

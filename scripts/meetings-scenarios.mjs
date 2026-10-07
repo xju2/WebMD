@@ -224,6 +224,13 @@ try {
   await page.waitFor(`document.querySelector('.reference-agenda .meetings-agenda')`);
   side = await pane();
   check('Meeting agenda brings it back', side.agenda === 5, JSON.stringify(side));
+  await page.click('.global-bar [aria-label="Open today’s note"]');
+  await sleep(500);
+  side = await pane();
+  check('Today’s note closes the reference pane', !side.visible, JSON.stringify(side));
+  await page.click('.global-bar [aria-label="Open meetings"]');
+  await clickText('.meetings-actions button', 'Open note');
+  await page.waitFor(`document.querySelector('.reference-agenda .meetings-agenda')`);
 
   // 3. Views come and go around the open note without disturbing it.
   await page.click('.global-action[aria-controls="ai-panel"]');
