@@ -18,11 +18,11 @@ npm run dev
 ```
 
 Open the URL Vite prints (usually `http://127.0.0.1:5173`). With no workspace
-configured you land in the [sandbox](#setup), an example workspace with a
+configured you land in the sandbox, an example workspace with a
 guided tour. Nothing you do there touches your own files.
 
 **2. Point it at your notes.** Create `~/.webmd.conf` with a folder of Markdown
-files (a git repo is best, so [Auto-Commit](#auto-commit) can snapshot it):
+files (a git repo is best, so [auto-commit](#webmd-settings) can snapshot it):
 
 ```conf
 WORKSPACE_ROOT=/absolute/path/to/notes
@@ -40,8 +40,8 @@ tailscale serve --bg http://127.0.0.1:3000
 ```
 
 Open the HTTPS URL that `tailscale serve` prints from any device signed into
-the same tailnet. See [Remote access with Tailscale](#remote-access-with-tailscale)
-for the details and the iPhone home-screen app.
+the same tailnet. Do not use Tailscale Funnel: it would put WebMD, which has no
+login, on the public internet.
 
 ### iPhone
 
@@ -74,683 +74,80 @@ Every key is optional:
   notes. If you leave it out, WebMD uses `/raw/dailynotes`, or `/` when the
   workspace has no such folder.
 - `dailyNoteTemplate`: the note a new daily note starts from (see
-  [Daily note template](#daily-note-template)). `""` means no template.
+  [Daily note template](docs/features.md#daily-note-template)). `""` means no template.
 
 WebMD skips a value it cannot use, keeps the rest, and names the problem when
 it next creates a daily note.
 
-## Prompt presets
-
-The AI panel's **Prompts** picker is a group rail with that group's prompts
-beside it — one click runs a prompt. There are two kinds:
-
-- **Rewrite prompts** (`kind: "edit"`) act on the selected text. Select text
-  first, or they stay disabled. The result lands in the diff preview, so nothing
-  changes until you accept it.
-- **Ask prompts** (`kind: "chat"`, marked with a dot) act on the whole note and
-  need no selection. They answer in the chat transcript and never touch the file.
-
-Anything typed in the chat box refines the prompt you click.
-
-Built-in presets:
-
-| Group | Kind    | Presets                                                                                                                 |
-| ----- | ------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Paper | Rewrite | Tighten (academic), Active voice, Methods-section voice, Calibrate claims, Compress to abstract, Plain-language summary |
-| Email | Rewrite | Polite reply, Concise reply, Soften a decline, Follow-up nudge                                                          |
-| Notes | Rewrite | Condense to bullets, Clean up dictation, Extract action items, Expand shorthand                                         |
-| Ask   | Chat    | Summarize this note, Open questions, Skeptical review, Suggest next steps                                               |
-
-Add your own in `$WORKSPACE_ROOT/.webmd/prompts.json`. Reusing a built-in `id`
-replaces that preset, so you can retune one without redefining the rest:
-
-```json
-{
-  "presets": [
-    {
-      "id": "grant-aims",
-      "label": "Specific Aims voice",
-      "group": "Paper",
-      "system": "You rewrite text in the voice of an NIH Specific Aims page. Return only the replacement Markdown, with no explanations or code fences.",
-      "instruction": "Tighten to active voice and cut hedging."
-    },
-    {
-      "id": "ask-reviewer",
-      "label": "Reviewer 2",
-      "group": "Ask",
-      "kind": "chat",
-      "system": "You review a note as a demanding but fair referee. Answer in concise Markdown and do not rewrite the note.",
-      "instruction": "How would a hostile reviewer attack this?"
-    }
-  ]
-}
-```
-
-`id`, `label`, and `system` are required; `group` defaults to `Custom`, `kind`
-defaults to `edit`, and `instruction` is derived from the label when omitted. An
-`edit` preset's `system` prompt should tell the model to return only the
-replacement Markdown — anything else it says ends up in your document. System
-prompts stay on the server and are never sent to the browser. Invalid entries
-are skipped with a warning in the AI panel rather than dropping the whole file.
-
-## Titles name the file
-
-A note's file name follows its title, the way Obsidian's does. Retitle a note —
-the frontmatter `title:` field when it has one, otherwise the first heading —
-and the next save renames the file to match: `# Reading list` in
-`/wiki/Untitled.md` moves the note to `/wiki/Reading list.md`.
-
-Every `[[wiki link]]` in the workspace that pointed at the old name is rewritten
-to the new one, keeping its alias, heading anchor, and `!` embed marker, so
-renaming never leaves a dead link behind. Characters a file name cannot carry
-(`/`, `:`, `?`, and friends) are dropped from the name; the title in the note
-keeps them.
-
-Two notes are left alone: a daily note, which is addressed by its date rather
-than its heading, and a note whose new name is already taken — that rename is
-reported as an error instead of overwriting the other note.
-
-To move a note, image, or PDF to another folder, drag it in the file sidebar
-onto a folder (or onto a file in that folder); drop it below the rows to move it
-to the workspace root. Links that named it are rewritten the same way, and the
-moved note's own bare links that would now find a different note next to it are
-repointed at the ones they meant.
-
-## Wiki links
-
-Typing `[[` in the editor offers the notes it could mean — matched on the name
-and on the folder, so `iaas` finds `/raw/projects/iaas/triton.md` too. Accepting
-one writes the shortest form that still resolves back to that note, so a
-completed link is never ambiguous and never dead.
-
-Typing `#` after the note name switches to that note's headings:
-`[[hybrid-search#Setup]]` opens the note and scrolls to its `## Setup`, in the
-preview or in the editor, whichever pane is open. `![[hybrid-search#Setup]]`
-embeds that one section as a card.
-
-A link to a note that is not in the workspace is drawn wavy and warm in the
-preview, since a dead link is usually a typo worth seeing while reading.
-Clicking one offers to create the note rather than opening an empty page that
-belongs to no file.
-
-The graph view counts the same dead links as the mentions it cannot draw, and
-its footer lists them: every unresolved link in the workspace, with the note it
-is written in. Clicking one opens that note in the editor with the cursor
-already on the line the link sits on. The list is capped at 200 entries and
-says so when there are more; the count above it is always the true total.
-
-The bottom of every note lists its **linked mentions** — the notes that link
-here, with the line each link sits on. Clicking a mention opens that note at
-that line. Mentions are resolved rather than string-matched, so `[[triton]]`,
-`[[iaas/triton]]` and `[[/raw/projects/iaas/triton|Triton]]` all count as the
-same link.
-
-## Citations
-
-Keep bibliography entries in `references.bib` at the workspace root and cite
-them with Pandoc syntax such as `[@Ju:2026abc]`. Typing `@` completes known
-BibTeX keys. Preview shows inline citations, hover metadata, and a generated
-References section; the graph connects notes to the papers they cite.
-
-Pasting an arXiv, DOI, or INSPIRE literature link, a nature.com article, or a
-journal article link with the DOI in its URL imports its BibTeX entry and
-replaces the link with its `[@key]` citation. DOI metadata comes from doi.org;
-arXiv and INSPIRE metadata comes from INSPIRE-HEP.
-
-## File to projects
-
-A daily note is where the day's work lands, but it is not where you look for a
-project later. **File to projects** in the AI panel takes the lines you select in
-the open day and files them into the project notes they advanced.
-
-**Select first.** A day is mostly noise no project wants, and deciding which part
-is worth keeping is your judgement, not the model's. The button stays disabled
-until you select something, and only the selection is filed; the rest of the day
-goes along as context, so a selected line that says "traced it to the batch size"
-can still be written up as a sentence that makes sense on its own.
-
-It ranks every Markdown note in the workspace by how much wording it shares with
-the selection, sends the strongest dozen to the model as a shortlist, and asks
-which projects the selection actually moves and what one line each should gain.
-Notes in your daily-note folder are never targets — filing one day into another
-would only copy a log sideways.
-
-The button is only enabled on a daily note in your daily-note folder, which is
-set per workspace in `.webmd/settings.json`. This one writes into notes you are
-not looking at, so it is deliberately hard to fire by accident.
-
-Nothing is written until you say so, twice:
-
-1. **The list.** Every project note the selection would touch, with a checkbox.
-   Uncheck anything you would rather leave alone.
-2. **One note at a time.** Each kept note is shown on its own, with the exact
-   line it would gain and where that line lands. File it, skip it, or close the
-   panel and stop. Notes you never reach are never touched.
-
-A filed line is a dated backlink and a summary, appended under a `## Log` heading
-in the project note, which is added at the end if the note has none:
-
-```markdown
-## Log
-
-- [[2026-07-08]] — ruled out the detector geometry by rerunning with the old alignment
-- [[2026-07-09]] — requests started dropping once the GPU instance count went past four
-```
-
-Nothing else in the project note changes. Because the link points back at the
-day, the day shows every project it fed among its own linked mentions, with no
-second pass and nothing written into it.
-
-Filing the same day twice cannot double an entry: a project note that already
-links to the day is left out of the list and counted as already filed. Each
-backlink is emitted in the shortest form that resolves back to the day from that
-note, so it can never be a dead link, and the model can only choose from the
-shortlist, so it cannot invent a path.
-
-## Snippets
-
-Typing `/date` and pressing Tab writes `2026-08-21` into the note. Tab anywhere
-else still indents, so an unknown `/word` is left alone.
-
-| Snippet                           | Inserts                               |
-| --------------------------------- | ------------------------------------- |
-| `/date` `/time` `/now`            | `2026-08-21`, `14:30`, or both        |
-| `/lastupdate`                     | `Last update: 2026-08-21`             |
-| `/today` `/tomorrow` `/yesterday` | a link to that day's note             |
-| `/task`                           | `- [ ] `                              |
-| `/log`                            | `- **14:30** `, for a running log     |
-| `/meeting`                        | date heading, Present, Notes, Actions |
-| `/table` `/code` `/details`       | a skeleton, caret in the first field  |
-| `/note` `/idea` `/warning`        | the matching callout                  |
-
-Snippets expand to plain Markdown, once, at the moment you type them: nothing
-is re-evaluated when the note is rendered, so `Last update: 2026-08-21` keeps
-saying the day it was written — in this editor, in Obsidian, and in
-`git show HEAD:note.md`. Add or edit snippets in `src/snippets.js`.
-
-## Tasks
-
-Any `- [ ]` checkbox is a task. Ticking one in the preview writes today's date
-into the note, so a finished task records _when_ it was finished:
-
-```markdown
-- [ ] Write the intro
-- [x] Draft outline ✅ 2026-08-14
-```
-
-Tasks can also carry a due date and a priority, in the Obsidian Tasks emoji
-convention, so notes stay portable and readable as plain text:
-
-| Field    | Syntax                   | Effect                                                   |
-| -------- | ------------------------ | -------------------------------------------------------- |
-| Due      | `📅 2026-08-20`          | Preview badges it red when overdue, amber when due today |
-| Done     | `✅ 2026-08-14`          | Written and removed for you as the box is ticked         |
-| Created  | `➕ 2026-08-01`          | Shown as typed; never written automatically              |
-| Priority | `🔺` `⏫` `🔼` `🔽` `⏬` | Highest to lowest; sorts the Tasks view                  |
-
-A note in preview shows how far along it is (`7/12 done`) above the text.
-Anything unrecognised — including recurring tasks (`🔁`), which WebMD does not
-support — is left in the task's text untouched.
-
-### Typing shorthand
-
-The emoji never have to be typed. On a task line, write `due:` and a date, or
-`:p1:`–`:p5:` for priority, and the editor rewrites it as soon as the caret
-leaves the line — so the file itself stays plain Obsidian syntax:
-
-```markdown
-- [ ] Submit the abstract due:friday :p2:
-```
-
-becomes
-
-```markdown
-- [ ] Submit the abstract ⏫ 📅 2026-08-21
-```
-
-| Shorthand                               | Means                                        |
-| --------------------------------------- | -------------------------------------------- |
-| `due:` `created:` (or `added:`) `done:` | `📅` `➕` `✅`                               |
-| `:p1:` `:p2:` `:p3:` `:p4:` `:p5:`      | `🔺` `⏫` `🔼` `🔽` `⏬`                     |
-| `2026-08-20`                            | That date                                    |
-| `10-01` `10/1`                          | The next time that day comes round           |
-| `today` `tomorrow` `yesterday`          | Also `tod` and `tmr`                         |
-| `monday` … `sunday`                     | The next one to come; `mon` … `sun` work too |
-| `+3d` `+2w`                             | Days or weeks from today                     |
-
-Shorthand replaces a field the line already has, so `due:tomorrow` on a task
-that is already dated just moves it. Anything that does not resolve to a real
-date — `due:someday`, or a typo — is left exactly as typed rather than guessed
-at, and shorthand in ordinary prose or inside a fenced code block is ignored.
-Priority carries its colons so that a task about the p2 bug keeps its own
-words.
-
-### Tasks view
-
-The checklist button in the global bar (or `Cmd/Ctrl+Shift+T`) opens every open
-task in the workspace. Clicking a task's text opens its note in preview,
-scrolled to that task; ticking its box completes it without leaving the list,
-and **Completed** shows finished tasks so one can be reopened. A `[text](url)`
-link in a task shows as just its text and opens in a new tab, without opening
-the note. A `who:me` reads as a highlighted **Me** in the sentence, and
-clicking it — or a `#tag` chip — filters to that person or tag.
-A reading-list entry written as a conventional citation, `Yu et al., "Title" —
-[arXiv:…](…)`, shows the paper's title and an **Open paper** link. Tasks inside fenced code
-blocks are ignored, so an example in a how-to never turns into work.
-
-There are three ways to look at the same list.
-
-**Board** is what the view opens on: four short columns, ranked rather than
-filed, for answering "what now" without reading everything.
-
-| Lane      | Holds                                                      |
-| --------- | ---------------------------------------------------------- |
-| **Now**   | Overdue, due today, or marked `:p1:`                       |
-| **Soon**  | Dated within the month, marked `:p2:`, or written recently |
-| **Later** | Real work, but nothing about it is pressing yet            |
-| **Shelf** | Reading and ideas — an unread paper is not late            |
-
-A task's place comes from three things a note already carries: its **due date**
-(the strongest signal — an overdue task reaches Now on its date alone), its
-**priority** mark, and **how long ago it was written**, taken from its daily
-note's filename or its `➕` created date. Age cuts both ways: something written
-this week is surfaced, and something written two months ago and never dated
-sinks, which is what keeps Now short. It also sets the task's ink, so old
-work fades rather than earning another badge. Each row shows the note it came
-from and, in a daily note, the `##` it sits under.
-
-**Shelf** holds the sections marked as reading rather than work — Ideas,
-Interesting papers and Interesting software, by default. Those skip the ranking
-entirely, because scoring a paper against a deadline it never had would only
-bury the actual backlog. Any section can be shelved or unshelved under **Edit
-sections**; the catch-all never can.
-
-The summary counts open tasks and shelved references separately; a shelved
-item with a due date or priority counts as a task. **Edit sections** and
-**Refresh tasks** are in the toolbar's **⋯** menu.
-
-**Filter** narrows the list before any of the three views slice it, matching a
-task's prose, tags, headings and path alike, so `gnl` finds "GNLarge" halfway
-through a word. `/` puts the cursor in it, and `Escape` clears it.
-
-**Sections** is a dashboard: a task is filed under the first section whose terms
-it matches, and whatever matches nothing lands in **Other tasks**. That keeps a
-reading list, a stack of ideas, and real work in one `- [ ]` habit without them
-crowding each other out. **Urgency** is the third view, grouped **Overdue /
-Today / This week / Later / No date**. Both sort by due date then priority, and
-both group a note's tasks under the note — except in a daily note, where they
-group under the `##` they sit beneath, so a project's work reads as one pile
-across the week rather than one per day.
-
-A term matches four things, so notes can be organised whichever way reads best:
-
-| Source      | Example                           | Matches                                  |
-| ----------- | --------------------------------- | ---------------------------------------- |
-| Inline tag  | `- [ ] Read the GNN paper #paper` | `paper`                                  |
-| Frontmatter | `tags: [paper, reading]`          | every task in the note                   |
-| Heading     | `## Interesting papers`           | the whole heading, and each of its words |
-| arXiv       | `- [ ] arxiv.org/abs/2608.00146`  | `paper`, tagged or not                   |
-
-Singular and plural are the same term, and a leading `#` is optional, so `paper`
-finds `#papers` and `## Papers` alike. A task that mentions arXiv anywhere on
-the line counts as `#paper`, since pasting a link in is how a paper usually
-arrives. **Edit sections** renames a section,
-changes its terms, sets whether it shows open, done, or all tasks, marks it as
-**Shelf**, and reorders or adds sections; the layout, the chosen view, and any
-folded lanes are remembered in the browser. **Completed** loads
-finished tasks as well, and shows them struck through in place.
-
-### Opening today's note
-
-The note button in the global bar (or `Cmd/Ctrl+Shift+D`) opens today's note
-from wherever you are, creating it from the template if the day has none. The
-dashboard's **Open today's note** card does the same thing.
-
-### Daily note template
-
-A new daily note starts from the `dailyNoteTemplate` set in
-[`.webmd/settings.json`](#workspace-settings). The template may use `{{date}}`,
-`{{title}}`, `{{weekday}}`, and `{{quote}}`. If no template is set, WebMD
-looks for a conventionally named one (`dailynote_template.md`,
-`daily-template.md`, or `template.md`) in the daily-note folder, then in the
-workspace root. Setting `"dailyNoteTemplate": ""` keeps just the
-`# YYYY-MM-DD` heading.
-
-### Quote of the day
-
-`{{quote}}` asks the configured model for one attributable quote on the day's
-theme, written into the note as a single line so a `>
-{{quote}}` template stays one blockquote. The line always reads
-`{quote} -- {author} ({date})`, where the date is when the quote was said or
-published, not the day of the note. An unattributed quote becomes `Unknown`
-rather than a differently-shaped line, and a quote whose date the model does not
-know drops the parentheses, so notes from different days line up. Three things
-keep it from repeating itself:
-
-- The theme rotates with the date, so consecutive days cannot land on the same
-  subject, and the same day always asks for the same one. Set your own rotation
-  with `QUOTE_THEMES` in the environment or `~/.webmd.conf`:
-
-  ```conf
-  QUOTE_THEMES=life,programming,finance
-  ```
-
-  Any comma-separated list works — `stoicism,music,physics` rotates over three
-  days, a single theme asks for that one every day. Unset, it rotates over
-  life, programming, and finance.
-
-- Every quote already used is stored in `.webmd/quotes.json` and sent back to
-  the model as an exclusion list, along with the authors of the last twenty.
-- A reply that repeats one anyway is caught and asked again once.
-
-Today's quote is written to that history, so reopening or recreating today's
-note reuses it instead of spending another model call. If no model is reachable
-the placeholder is simply left empty — the note is still created.
-
-The Home dashboard shows the same quote under its heading, and asks for one on
-the first visit of the day whether or not your template uses `{{quote}}`.
-Whichever surface asks first pays for the call and the other reads it back, so
-the dashboard and the note never disagree about today's quote.
-
-### Unfinished tasks
-
-A new daily note is the template and nothing else — yesterday's unfinished tasks
-are not copied into it. An open task stays in the note that raised it, and the
-Tasks view is where you see the whole backlog: it reads every note in the
-workspace, so a task written weeks ago is one row there rather than a line
-duplicated into every day since. Clicking a row opens that note in preview at
-the task's line, where the box can be ticked once and for all.
-
-Notes written before this carry `↩ [[origin]]` links from the old carry-over
-behaviour. Nothing writes them any more, but they are still parsed and shown as
-backlinks, so those notes keep reading the way they did.
-
-## arXiv news
-
-The newspaper button in the left bar opens today's arXiv announcements for the
-categories in `ARXIV_NEWS_CATEGORIES`. They are read from arXiv's public RSS
-feed, so no key is needed. The listing is cached for as long as arXiv says it
-stands (until the next announcement), kept on disk so a restart does not
-refetch it, and checked by ETag once stale, so an unchanged feed costs a 304.
-The AI ranking is saved the same way: one model call per listing, until the
-instructions change or you press **Re-rank**.
-
-### Earlier days
-
-Each day's listing is kept for a month (31 days) under `WEBMD_CACHE_DIR`, so
-papers you missed are still there to catch up on. Once there is more than one
-day, the arrows and day menu next to the **arXiv** heading step through them.
-Filters, clipping, and ranking work on an earlier day as they do on today's,
-and a clipped paper still goes to today's daily note. Each day is ranked once,
-the first time you open it. **Refresh** goes back to the latest listing.
-
-The server checks the feed every hour, so a day is kept even when you never
-open News that day. Days when the server was not running are not kept, because
-arXiv's feed only ever carries the latest announcement. Weekends have no
-listing and are skipped.
-
-- **Filter** keeps papers whose title, authors, or abstract contain every word
-  you type. The category chips narrow the list to the ones you pick. Both are
-  remembered, so tomorrow's listing opens filtered the same way.
-- **Clip** adds the paper to today's daily note, under a `## Reading` heading
-  that is created the first time. The line is the same citation a pasted arXiv
-  link becomes. If today's note does not exist yet, it is created from the
-  daily template. A paper already linked from today's note shows as Clipped.
-
-### Ranking
-
-**For you** orders the listing for you. The configured AI model reads the day's
-papers against three things:
-
-- **Your instructions** in `.webmd/news.md`: your research, and how papers
-  should be judged, in your own words. **Instructions** in the News view opens
-  the note, and starts one the first time. HTML comments in it are not sent.
-  With no note, `ARXIV_NEWS_INTERESTS` is used instead.
-- **What you read**: the titles of arXiv papers cited in your notes, including
-  clipped ones, and the titles in `references.bib`.
-- **What you are working on**: your most recently edited notes.
-
-The model picks up to 20 papers, each with a score from 1 to 10, the research
-area it connects to, and a one-sentence reason. The five strongest are listed
-first as **Top picks**, then **Also relevant**. Everything else follows,
-ordered by how much of your profile's rarer vocabulary each paper uses. That
-same lexical score chooses the 120 papers the model reads (see
-`ARXIV_NEWS_MAX_CANDIDATES`), which keeps a day
-of listings to one call. Replacements — new versions of older papers — are not
-listed at all.
-
-**↑** and **↓** on a paper say more or fewer papers like this. Votes are kept
-in `.webmd/news-votes.json`, with each paper's title and abstract, so they
-outlast the listing. They move the lexical score towards the words of papers
-you upvoted and away from those you downvoted, and the AI sees the titles of
-your most recent votes. A paper you voted down is never a pick. Press the same
-arrow again to take a vote back. Like clipping, a vote does not reshuffle the
-page; it counts from the next day's ranking, or straight away with **Re-rank**.
-
-A listing is ranked once per day, so reloads and other tabs reuse it, and
-clipping a paper does not reshuffle the page. Editing the instructions note
-earns a fresh ranking the next time you open News. **Re-rank** asks again
-straight away. Without a reachable model the order falls back to the lexical
-score, with a note saying so. **arXiv** switches back to arXiv's own order.
-
-arXiv publishes no listing on Saturday or Sunday, so the view is empty on
-weekends; Friday's is in the day menu.
-
-## Uploads and web images
-
-**Upload** in the Files panel's ... menu saves files into the workspace
-without touching the open note. Images and PDFs go to `imageAssetFolder`. A
-Markdown file, such as a page saved by a browser clipper, becomes a note
-beside the open one under its own name; a name already taken gets ` 2`.
-
-**Download images** in a note's ... menu saves every web image the note shows
-(`![alt](https://…)`) into `imageAssetFolder` and points the note at the
-local copy, so a clipped page reads offline. An image that cannot be fetched
-keeps its link, and the note says how many were kept.
-
-## X posts
-
-The X button in the left bar lists every X (Twitter) post your notes link to,
-newest note first. A post shows the label its link carries, which a pasted X
-link fills in with the author and their words, and the note it came from;
-the note opens on click. A post linked from several notes is listed once.
-**Filter** keeps posts whose label, handle, or note contain every word typed.
-
-## Meetings
-
-The lectern button in the left bar opens **Meetings**: the upcoming meetings of
-the Indico categories and events you follow, one meeting's agenda, and a
-Markdown note for it.
-
-- **Add source** takes an Indico category link (`…/category/1234/`) or event
-  link (`…/event/5678/`, or any page of the event). The link is checked and
-  stored in canonical form; **Remove** takes it off again.
-- Categories are read two weeks ahead and one week back. Meetings are grouped
-  into **Ongoing**, **Today**, **Tomorrow**, **This week**, **Next week**,
-  **Later**, and **Past week** (newest first) by your browser's local day. Times show in local time, with the event's own time
-  beside them when its timezone reads differently. A meeting listed by two
-  sources appears once.
-- Choose a meeting to see when and where, its agenda (times, titles,
-  speakers, and links to each contribution), and **Open in Indico**.
-- Slides and other files attached to the meeting or a talk are listed with
-  it. A file opens through WebMD, which fetches it once with the Indico token
-  and keeps it in `~/.cache/webmd/indico-files/` (`WEBMD_CACHE_DIR`), outside
-  every workspace, so no device meets a sign-on page and nothing is committed.
-  PDFs and images open in the browser; other files download. A link
-  attachment opens where it points.
-- **Create note** writes a note for the meeting and opens it. Pressing it again,
-  now labelled **Open note**, opens the same note. **Refresh** asks Indico
-  again, skipping the ten-minute cache.
-- A Zoom meeting shows its meeting ID and passcode, and **Join Zoom**. From a
-  quarter of an hour before it starts until it ends, **Join** also appears
-  beside it in the list. See [Zoom](#zoom-recordings-and-transcripts).
-
-### Zoom, recordings, and transcripts
-
-Indico's Zoom plugin shows its room on the event page but leaves it out of the
-export API, so WebMD reads the page for it: for the meeting you open, and for
-meetings under way or starting within a day (at most 12, cached for ten
-minutes). It also picks up what organizers type into the location, room, or
-description: a `zoom.us` (or `zoomgov.com`) join link, or a written "Meeting
-ID". Only a link's embedded passcode (`pwd`) is kept. No room, no Join button.
-Nothing about Zoom is guessed.
-
-- A public event's page shows its meeting ID and link to anyone. The join link
-  with its passcode built in appears only to signed-in users, so WebMD gets it
-  only with a token that has the `read:everything` scope.
-- A `read:legacy_api` token is turned away from event pages, so WebMD then
-  reads the page anonymously. That works for public events. For protected
-  events it finds no room unless the organizer pasted the link into the
-  description.
-
-Once a meeting has started, its detail shows **Recording and transcript**:
-
-- **Recording**: **Add link** saves a recording share link (any web address)
-  as `recording:` in the meeting note's frontmatter. A Zoom recording link
-  found in the Indico description is offered with **Save to note**.
-- **Transcript**: **Add file** takes the transcript Zoom gives with a cloud
-  recording (the recording page's _Audio transcript_, a `.vtt`), or SubRip
-  (`.srt`), Teams-style voice-tagged WebVTT, or Zoom's saved captions
-  (`.txt`). It becomes a note of its own beside the meeting note,
-  `Title (YYYY-MM-DD) transcript.md`, with `type: transcript`, the same
-  `indico:` link, a wiki link back to the meeting note, and one paragraph per
-  speaker turn (`**00:03:12 Ada Lovelace:** …`). **Replace** rewrites it with
-  a better file.
-- **Summarize into note** asks the AI provider for the meeting's minutes and
-  writes them into the meeting note: a `## Summary` section ahead of
-  `## Notes`, with any decisions, and new action items under
-  `## Action items` in task syntax (`- [ ] … who:ada 📅 2026-09-20`), so they
-  show up in the Tasks view. Items already listed are not added twice. If the
-  note already has a `## Summary`, it is never replaced; delete it to write
-  a new one. Transcripts longer than about 160,000 characters are summarized
-  from their first part, and the note says so.
-
-Any of these creates the meeting note first if it has none. WebMD's own edits
-to a note reach an editor that has it open as an ordinary change, so nothing
-typed there is lost. Recordings themselves stay on Zoom: WebMD needs no Zoom
-account and never signs in to Zoom.
-
-### Sources file
-
-Sources are kept per workspace in `.webmd/meetings.json`, which is safe to
-commit: it never holds a token.
-
-```json
-{
-  "version": 1,
-  "noteFolder": "/meetings",
-  "sources": [
-    {
-      "id": "indico.cern.ch-category-1234",
-      "label": "Weekly meetings",
-      "origin": "https://indico.cern.ch",
-      "url": "https://indico.cern.ch/category/1234/",
-      "enabled": true
-    }
-  ]
-}
-```
-
-`id` and `origin` are derived from `url`. Set `"enabled": false` to pause a
-source, and `noteFolder` to put meeting notes elsewhere. An entry that does not
-check out is skipped with a warning naming it, and the others still load. If
-the file is not valid JSON, Meetings says so and refuses to overwrite it.
-
-### Tokens and scopes
-
-Public meetings need no token. For protected ones, create a personal token in
-Indico under **My profile → Settings → API tokens** and put it in
-`~/.webmd.conf`, then restart WebMD:
+## WebMD settings
+
+Settings for WebMD itself, rather than for one workspace, go in
+`~/.webmd.conf`, one `KEY=VALUE` per line. Environment variables of the same
+name take precedence. Restart WebMD after editing it.
 
 ```conf
-INDICO_CERN_TOKEN=indp_REPLACE_WITH_YOUR_TOKEN
+WORKSPACE_ROOT=/absolute/path/to/notes
+AUTO_COMMIT_MINUTES=15
+OPENAI_API_KEY=sk-...
 ```
 
-- Meetings reads only Indico's documented HTTP export API (`/export/categ/…`
-  and `/export/event/…`), which needs the **`read:legacy_api`** scope ("Classic
-  API (read only)"). That is the least privilege it needs.
-- Naming a pasted protected link reads the event's page first, which needs
-  `read:everything`. With a `read:legacy_api` token it falls back to the export
-  API, which names events and contributions but not sessions.
-- The token goes in an `Authorization: Bearer` header to its own origin only.
-  A redirect to another host, or off HTTPS, is not followed. The browser is
-  told only whether a token is set.
+Every key is optional.
 
-### Meeting notes
+**Workspaces**
 
-A note is created in `noteFolder` as `Title (YYYY-MM-DD).md`, with frontmatter
-naming the event, the time in the event's timezone, the Indico link, the room,
-a snapshot of the agenda, and empty `## Notes` and `## Action items` sections:
+- `WORKSPACE_ROOT`: the folder of notes to open. Without it, WebMD opens the
+  sandbox.
+- `WORKSPACE_ROOTS`: several folders, separated by `:`, to switch between from
+  the sidebar.
+- `WEBMD_SANDBOX_DIR`: where the sandbox copy lives, defaults to
+  `~/.local/share/webmd/sandbox`. Delete it to start the sandbox over.
+- `IMAGE_ASSET_FOLDER`: where pasted images go when the workspace does not set
+  `imageAssetFolder`, defaults to `/assets`.
 
-```markdown
----
-type: meeting
-indico: https://indico.cern.ch/event/5678/
-date: 2026-09-11
-tags: [meeting]
----
+**Server**
 
-# Tracking weekly (2026-09-11)
-```
+- `PORT`: defaults to `3000`. WebMD always binds to `127.0.0.1`.
+- `WEBMD_CACHE_DIR`: cached News and Meetings data, defaults to
+  `~/.cache/webmd`. Safe to delete.
 
-The note's header also links to its day, `- **Day:** [[2026-09-11]]`: the
-day in your browser's timezone that the meeting starts on, which is the one
-whose daily note it belongs with. WebMD never writes into the daily note. The
-meeting shows up there among its backlinks. If that daily note does not exist
-yet, following the link offers to create it, from your daily template and in
-your daily-note folder, as with any date link to a missing daily note.
+**Auto-commit**
 
-The `indico:` line is what ties the note to the meeting, so retitling or moving
-the note keeps the link. Creating never overwrites a file: if the name is taken
-by another note, the event id is added to the name. After that the note is
-yours. Refreshing Indico never touches it, including its agenda. The only later
-changes WebMD makes are the ones you ask for from Meetings: the `recording:`
-line and a summary.
+- `AUTO_COMMIT_MINUTES`: when a workspace is a git repo, commit everything in
+  it on this interval and on shutdown. Nothing is pushed. Unset or `0` turns it
+  off.
+- `AUTO_COMMIT_SUMMARY_LINES`: snapshots larger than this many changed lines
+  (default `5`) get an AI-written commit message.
 
-### Troubleshooting
+**AI**
 
-- **"rejected INDICO_CERN_TOKEN"**: the token is expired, revoked, or lacks
-  `read:legacy_api`. Create a new one and restart WebMD.
-- **"No upcoming meetings visible without a login"**: without a token Indico
-  answers a protected category with an empty list, not an error. Set the
-  token.
-- **"is not a known Indico"**: the host does not start with `indico.`. Add
-  `INDICO_<NAME>_URL=https://…` for it.
-- **Timeouts or "Could not reach"**: the server running WebMD needs outbound
-  HTTPS to the Indico. Each request gives up after 15 seconds.
-- To check a token from the shell without starting WebMD:
-  `INDICO_SMOKE_SOURCE=https://indico.cern.ch/category/1234/ npm run smoke:indico`.
-  It only reads, and never prints the token.
+- `OPENAI_API_KEY`: turns on the AI features using OpenAI. It never reaches
+  the browser.
+- `AI_PROVIDER`: `openai` or `ollama`. Defaults to `openai` when a key is set,
+  `ollama` otherwise.
+- `AI_MODEL`: defaults to `gpt-5.6` for OpenAI and `llama3.2` for Ollama.
+- `OPENAI_BASE_URL`, `OLLAMA_BASE_URL`: point at another OpenAI-compatible
+  server or Ollama instance.
 
-## Note dates
+**Meetings and News**
 
-Saving a note stamps its frontmatter with `creation-date` and
-`last-modified-date`, so you can tell at a glance how old the information in a
-note is:
+- `INDICO_<NAME>_TOKEN`: an Indico personal access token, for protected
+  meetings. `CERN`, `FNAL`, and `GLOBAL` are known; for any other Indico, also
+  set `INDICO_<NAME>_URL=https://...`. See
+  [Tokens and scopes](docs/features.md#tokens-and-scopes).
+- `ARXIV_NEWS_CATEGORIES`: arXiv categories for the News view, defaults to
+  `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
+- `ARXIV_NEWS_INTERESTS`: what you care about, used to rank papers when the
+  workspace has no `.webmd/news.md`.
+- `ARXIV_NEWS_MAX_CANDIDATES`: how many papers the ranking reads each day,
+  defaults to `120`.
+- `QUOTE_THEMES`: themes for the daily-note quote, defaults to
+  `life,programming,finance`.
 
-```markdown
----
-creation-date: 2024-03-02
-last-modified-date: 2026-08-19
----
-```
+## Features
 
-Both are written automatically, with no frontmatter block needed up front — one
-is added when the note has none. `creation-date` is written once and never
-rewritten; a note that predates this feature is dated by the age of its file
-rather than by the day you happened to reopen it. `last-modified-date` moves at
-most once a day, so a note only changes when its contents actually do.
-
-Daily notes are exempt: their file name is already the date.
-
-## YAML frontmatter
-
-WebMD understands the Open Knowledge Format fields `type`, `title`,
-`description`, `resource`, `tags`, and `timestamp` in a Markdown file's leading
-YAML frontmatter. Preview renders the Markdown body, and workspace search can
-filter any field with `field:value`, for example `type:Playbook`, `tags:oncall`,
-or `timestamp:2026-07`. Tag matching is exact; other fields support partial,
-case-insensitive matching.
+The sandbox tour shows the basics. [docs/features.md](docs/features.md)
+describes everything else: tasks, daily notes, citations, meetings, arXiv
+news, prompt presets, and more.
 
 ## Scripts
 
