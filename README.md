@@ -1,6 +1,47 @@
 # WebMD
 
-A remote-first Markdown workspace for editing notes through an SSH tunnel.
+A remote-first Markdown workspace: your notes live on one machine, and you
+edit them from any browser — laptop or phone — over your private Tailscale
+network.
+
+## Quick start
+
+You need Node.js 20.12 or newer and git.
+
+**1. Try it locally.** Clone, install, and start the dev server:
+
+```bash
+git clone https://github.com/xju2/WebMD.git
+cd WebMD
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (usually `http://127.0.0.1:5173`). With no workspace
+configured you land in the [sandbox](#setup), an example workspace with a
+guided tour. Nothing you do there touches your own files.
+
+**2. Point it at your notes.** Create `~/.webmd.conf` with a folder of Markdown
+files (a git repo is best, so [Auto-Commit](#auto-commit) can snapshot it):
+
+```conf
+WORKSPACE_ROOT=/absolute/path/to/notes
+```
+
+Restart `npm run dev` and your notes appear in the sidebar.
+
+**3. Reach it from anywhere.** On the machine that holds your notes, build the
+app and run it, then share it on your tailnet:
+
+```bash
+npm run build
+npm start                                      # serves on 127.0.0.1:3000
+tailscale serve --bg http://127.0.0.1:3000
+```
+
+Open the HTTPS URL that `tailscale serve` prints from any device signed into
+the same tailnet. See [Remote access with Tailscale](#remote-access-with-tailscale)
+for the details and the iPhone home-screen app.
 
 ## Setup
 
@@ -72,37 +113,52 @@ This is the safety net that outlives the browser: the editor's undo history is
 per-note and dies with the tab, so `git show HEAD:note.md` (or
 `git checkout HEAD -- note.md`) is what recovers a note deleted by mistake.
 
-## SSH Tunnel
+## Remote access with Tailscale
 
-On the remote server:
+WebMD only ever binds to `127.0.0.1`, so nothing outside the host can reach it
+directly. [Tailscale](https://tailscale.com) is the supported way in: it puts
+the app behind HTTPS on your private tailnet, reachable from your own devices
+and nobody else's.
+
+On the machine that holds your notes:
 
 ```bash
 npm install
 npm run build
-WORKSPACE_ROOT=/absolute/path/to/notes PORT=3000 npm start
+npm start          # keep it running, e.g. in tmux or as a service
 ```
 
-From your local machine:
-
-```bash
-ssh -N -L 3000:127.0.0.1:3000 user@remote-host
-```
-
-Then open `http://127.0.0.1:3000` locally. The app still binds only to
-`127.0.0.1` on the remote host, so the SSH tunnel remains the access boundary.
-
-## iPhone access
-
-For persistent private access without keeping an SSH app open, install Tailscale
-on the server and iPhone, sign both into the same tailnet, and run on the server:
+Install Tailscale on that machine and on each device you want to use, sign them
+all into the same tailnet, and run on the server:
 
 ```bash
 tailscale serve --bg http://127.0.0.1:3000
 ```
 
-Open the HTTPS URL printed by Tailscale in Safari. Use **Share → Add to Home
-Screen**, enable **Open as Web App**, and tap **Add**. Keep Tailscale connected
-on the phone; do not use Tailscale Funnel, which would make WebMD public.
+`--bg` keeps the share in place across reboots. The first time, Tailscale may
+ask you to enable HTTPS certificates for your tailnet; follow the link it
+prints. Then open the printed `https://<machine>.<tailnet>.ts.net` URL in any
+browser on the tailnet. `tailscale serve status` shows the share and
+`tailscale serve reset` removes it.
+
+Do not use Tailscale Funnel: it would put WebMD on the public internet, and
+WebMD has no login of its own.
+
+### iPhone
+
+Install Tailscale on the phone and keep it connected. Open the HTTPS URL in
+Safari, then use **Share → Add to Home Screen**, enable **Open as Web App**,
+and tap **Add**. WebMD then opens full-screen like an app.
+
+### Without Tailscale
+
+An SSH tunnel still works for a one-off session from a laptop:
+
+```bash
+ssh -N -L 3000:127.0.0.1:3000 user@remote-host
+```
+
+Then open `http://127.0.0.1:3000` locally.
 
 ## Environment
 
