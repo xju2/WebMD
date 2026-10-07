@@ -379,12 +379,23 @@ export function parseIndicoPage(html, url) {
     );
   }
 
+  // An abstract's `<title>` names the call for abstracts, not the submission,
+  // whose title sits in its own heading beside a `#73` submission number.
+  if (/\/abstracts\//.test(url)) {
+    const submission = /class=["'][^"']*\bsubmission-title\b[\s\S]*?<h3[^>]*>([\s\S]*?)<\/h3>/i
+      .exec(page)?.[1]
+      ?.replace(/<span[^>]*submission-id[\s\S]*?<\/span>/i, '')
+      .replace(/<[^>]+>/g, '');
+    return { url, title: collapse(decodeHtml(submission || '')) || event, event };
+  }
+
   // An event's own page ends in the name of the view being shown ("General"),
-  // so only a contribution or session takes its name from the heading.
+  // so only a contribution or session takes its name from the heading. The
+  // site name after the `·` varies: `Indico`, `Indico Global`.
   const heading = /\/(contributions|sessions)\//.test(url)
     ? decodeHtml(
         /<title[^>]*>([\s\S]*?)<\/title>/i.exec(page)?.[1] || ''
-      ).replace(/\s*·\s*Indico$/, '')
+      ).replace(/\s*·\s*Indico\b[^·]*$/, '')
     : '';
   const rest = heading.startsWith(event) ? heading.slice(event.length) : '';
   const section = /\)\s*:\s*(.+)$/.exec(rest)?.[1]?.trim() || '';

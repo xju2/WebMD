@@ -510,9 +510,12 @@ test('gives an Indico link a placeholder to be filled in later', () => {
 
   const session = 'https://indico.fnal.gov/event/12/sessions/3';
   assert.equal(shortLinkPaste(session), `[Indico session 3](${session})`);
+
+  const abstract = 'https://indico.global/event/17230/abstracts/56111/';
+  assert.equal(shortLinkPaste(abstract), `[Indico abstract 56111](${abstract})`);
 });
 
-test('only sends event, contribution and session links to Indico', () => {
+test('only sends event, contribution, session and abstract links to Indico', () => {
   assert.equal(
     indicoReference('https://indico.cern.ch/event/9/contributions/8').url,
     'https://indico.cern.ch/event/9/contributions/8/'

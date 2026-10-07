@@ -65,6 +65,37 @@ test('names a contribution after the talk, keeping its meeting', () => {
   );
 });
 
+test('reads past the site name on other Indico installations', () => {
+  const url = 'https://indico.global/event/17230/contributions/5/';
+  const html = page(`${EVENT} (20-23 October 2026): Tracking`).replace(
+    '· Indico<',
+    '· Indico Global<'
+  );
+  assert.equal(parseIndicoPage(html, url).title, 'Tracking');
+});
+
+test('names an abstract after the submission, not the call for abstracts', () => {
+  const url = 'https://indico.global/event/17230/abstracts/56111/';
+  const html = `<html><head>
+    <title>${EVENT} (20-23 October 2026): Call for Abstracts · Indico Global</title>
+    <meta property="og:title" content="${EVENT}">
+  </head><body>
+    <h2 id="main-content">Call for Abstracts</h2>
+    <div class="submission-title flexrow">
+      <h3 class="f-self-stretch js-mathjax">
+        Fault Tolerance &amp; Recovery
+        <span class="submission-id">#73</span>
+      </h3>
+    </div>
+  </body></html>`;
+  assert.deepEqual(parseIndicoPage(html, url), {
+    url,
+    title: 'Fault Tolerance & Recovery',
+    event: EVENT_TEXT
+  });
+  assert.equal(parseIndicoPage(page(EVENT), url).title, EVENT_TEXT);
+});
+
 test('falls back to the event when the heading says nothing else', () => {
   const url = 'https://indico.cern.ch/event/1338689/contributions/6081535/';
   assert.equal(parseIndicoPage(page(EVENT), url).title, EVENT_TEXT);

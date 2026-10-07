@@ -334,7 +334,7 @@ export function shortLinkLabel(url) {
 }
 
 /**
- * An Indico event, contribution or session, as `{ url, label }`. Nothing in
+ * An Indico event, contribution, session or abstract, as `{ url, label }`. Nothing in
  * the URL says what the meeting is called, so the label is a placeholder the
  * caller can trade for the real title — see `/api/indico`.
  */
@@ -348,7 +348,7 @@ export function indicoReference(url) {
 
   if (!/^indico\./i.test(parsed.hostname)) return null;
 
-  const path = /^\/event\/(\d+)(?:\/(contributions|sessions)\/(\d+))?\/?$/.exec(
+  const path = /^\/event\/(\d+)(?:\/(contributions|sessions|abstracts)\/(\d+))?\/?$/.exec(
     parsed.pathname
   );
   if (!path) return null;
@@ -360,7 +360,7 @@ export function indicoReference(url) {
     kind ? `${kind}/${id}/` : ''
   }`;
   const label = kind
-    ? `Indico ${kind === 'contributions' ? 'contribution' : 'session'} ${id}`
+    ? `Indico ${INDICO_KINDS[kind]} ${id}`
     : `Indico event ${event}`;
   return {
     url: canonical,
@@ -371,6 +371,12 @@ export function indicoReference(url) {
     label
   };
 }
+
+const INDICO_KINDS = {
+  contributions: 'contribution',
+  sessions: 'session',
+  abstracts: 'abstract'
+};
 
 /** `Talk title (Meeting)`, dropping the meeting when that runs long. */
 export function indicoLabel({ title = '', event = '' } = {}) {
