@@ -26,6 +26,15 @@
   import { buildReplacementDiffFile, parseUnifiedDiff } from './diff.js';
   import { ICONS } from './icons.js';
   import MeetingsView from './MeetingsView.svelte';
+  import MeetingAgenda from './MeetingAgenda.svelte';
+  import {
+    describeMeetingTime,
+    deviceTimeZone,
+    meetingZones,
+    noteMeetingEvent,
+    readDeviceZonePref
+  } from './meetings.js';
+  import { parseFrontmatter } from './frontmatter.js';
   import ConferenceView from './ConferenceView.svelte';
   import {
     LAYOUT_KEY,
@@ -173,6 +182,9 @@
   const PROJECT_LOG_HEADING = 'Log';
   const DEFAULT_IMAGE_ASSET_FOLDER = '/assets';
   const REFERENCE_PANE_KEY = 'webmd:reference-pane';
+  // The reference pane's choice for "the open meeting note's agenda"; note
+  // paths always start with a slash, so it can never name one.
+  const AGENDA_OPTION = 'agenda:';
   const IMAGE_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp)$/i;
   const MARKDOWN_UPLOAD = /\.(md|markdown)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
@@ -351,6 +363,12 @@
   // editor no longer drags the reference along with it.
   let referencePinned = false;
   let referenceRun = 0;
+  // A meeting note's agenda takes the reference pane while the pane follows
+  // the editor, so the talks sit beside the notes taken on them.
+  let agendaKey = '';
+  let agendaDetail = null;
+  let agendaLoading = false;
+  let agendaError = null;
   let markdownHelpOpen = false;
   let viewMenuOpen = false;
   let diffFiles = [];
@@ -748,6 +766,25 @@
     referenceOpen && referencePath && !referenceStatus
       ? renderMarkdown(referenceContent)
       : [];
+  $: openMeetingEvent = selectedIsMarkdown
+    ? noteMeetingEvent(frontmatterField(content, 'indico'))
+    : null;
+  // Meetings shows the agenda itself, and needs the width for list and detail.
+  $: referenceShown = referenceOpen && viewMode !== 'meetings';
+  // Only beside the note itself, never beside a workspace view.
+  $: agendaShown =
+    referenceOpen && !referencePinned && !!openMeetingEvent && !workspacePaneOpen;
+  $: wantedAgendaKey = agendaShown
+    ? [selectedRoot, openMeetingEvent.origin, openMeetingEvent.eventId].join('|')
+    : '';
+  $: if (wantedAgendaKey !== agendaKey) loadAgenda(wantedAgendaKey);
+  // Read again with each meeting, so a zone switched in Meetings carries over.
+  $: agendaZone =
+    wantedAgendaKey &&
+    meetingZones(meetingTimeZone, deviceTimeZone(), readDeviceZonePref()).zone;
+  $: agendaTime = agendaDetail
+    ? describeMeetingTime(agendaDetail, { timeZone: agendaZone })
+    : null;
   $: queueWorkspaceSearch(searchQuery.trim(), selectedRoot, workspaceTree);
   $: if (paletteOpen) queuePaletteSearch(paletteQuery.trim(), selectedRoot);
 
@@ -845,6 +882,7 @@
     if (!response.ok) {
       const error = new Error(payload?.error || response.statusText);
       error.status = response.status;
+      error.kind = payload?.kind || '';
       throw error;
     }
     return payload;
@@ -1960,7 +1998,42 @@
   }
 
   function chooseReferencePath(event) {
-    setReferencePath(event.currentTarget.value);
+    const value = event.currentTarget.value;
+    if (value === AGENDA_OPTION) autoPickReference();
+    else setReferencePath(value);
+  }
+
+  // Only the frontmatter is read, so a long note costs nothing per keystroke.
+  function frontmatterField(source, field) {
+    if (!source.startsWith('---')) return '';
+    const end = source.indexOf('\n---', 3);
+    if (end === -1) return '';
+    return parseFrontmatter(source.slice(0, end + 4)).attributes[field] ?? '';
+  }
+
+  // Like the Meetings view: a stale agenda shows at once and is replaced quietly.
+  async function loadAgenda(key, { refresh = false, fresh = false } = {}) {
+    if (!fresh) {
+      agendaKey = key;
+      agendaDetail = null;
+      agendaError = null;
+      agendaLoading = !!key;
+    }
+    if (!key) return;
+    const [root, origin, eventId] = key.split('|');
+    try {
+      const body = await requestJson(
+        `/api/meetings/event?root=${encodeURIComponent(root)}&origin=${encodeURIComponent(origin)}&id=${encodeURIComponent(eventId)}${refresh ? '&refresh=1' : fresh ? '&fresh=1' : ''}`
+      );
+      if (agendaKey !== key) return;
+      agendaDetail = body;
+      if (body.stale && !fresh) loadAgenda(key, { fresh: true });
+    } catch (err) {
+      if (agendaKey !== key || fresh) return;
+      agendaError = { message: err.message, kind: err.kind };
+    } finally {
+      if (agendaKey === key && !fresh) agendaLoading = false;
+    }
   }
 
   // Read-only: never joins the collaboration stream, the save queue, or fileCache.
@@ -2132,6 +2205,11 @@
     if (root !== selectedRoot) return;
     await openFile(path);
     setViewMode('edit', { remember: false });
+    // The agenda comes along beside the note; narrow windows hide the pane.
+    if (!referenceOpen || referencePinned) {
+      referenceOpen = true;
+      await autoPickReference();
+    }
   }
 
   async function loadNews({ refresh = false } = {}) {
@@ -6829,7 +6907,7 @@
       <div class="error-banner" role="alert">{error}</div>
     {/if}
 
-    <div class:split={referenceOpen} class="editor-split">
+    <div class:split={referenceShown} class="editor-split">
       <div class:empty={!selectedPath} class="editor-frame">
         {#if !selectedPath && !workspacePaneOpen}
           <section class="workspace-home" aria-label="Workspace Home">
@@ -7868,13 +7946,13 @@
         {/if}
       </div>
 
-      {#if referenceOpen}
+      {#if referenceShown}
         <aside class="reference-pane" aria-label="Reference note">
           <header class="reference-toolbar">
             <div class="reference-step">
               <button
                 aria-label="Older reference note"
-                disabled={!olderReferencePath}
+                disabled={agendaShown || !olderReferencePath}
                 title="Older note"
                 type="button"
                 on:click={() => stepReferenceNote(-1)}
@@ -7883,7 +7961,7 @@
               </button>
               <button
                 aria-label="Newer reference note"
-                disabled={!newerReferencePath}
+                disabled={agendaShown || !newerReferencePath}
                 title="Newer note"
                 type="button"
                 on:click={() => stepReferenceNote(1)}
@@ -7893,10 +7971,12 @@
             </div>
             <select
               aria-label="Reference note"
-              value={referencePath}
+              value={agendaShown ? AGENDA_OPTION : referencePath}
               on:change={chooseReferencePath}
             >
-              {#if !referencePath}
+              {#if openMeetingEvent}
+                <option value={AGENDA_OPTION}>Meeting agenda</option>
+              {:else if !referencePath}
                 <option value="">No note</option>
               {/if}
               {#each markdownFiles as file}
@@ -7913,6 +7993,31 @@
               {@render icon('close')}
             </button>
           </header>
+          {#if agendaShown}
+            <article class="reference-body reference-agenda meetings-detail">
+              {#if agendaDetail}
+                <h3>{agendaDetail.title}</h3>
+                <p class="reference-agenda-when">
+                  {agendaTime.full}
+                  {#if agendaTime.zoned}<span class="meetings-zone">({agendaTime.zoned})</span>{/if}
+                </p>
+                <a
+                  class="reference-agenda-indico"
+                  href={agendaDetail.url}
+                  rel="noopener noreferrer"
+                  target="_blank">{@render icon('external')} Open in Indico</a
+                >
+              {/if}
+              <MeetingAgenda
+                detail={agendaDetail}
+                error={agendaError}
+                loading={agendaLoading}
+                meeting={agendaDetail}
+                zone={agendaZone || undefined}
+                onRetry={() => loadAgenda(agendaKey, { refresh: true })}
+              />
+            </article>
+          {:else}
           <article class="preview-pane reference-body">
             {#if referenceStatus}
               <p class="preview-empty">{referenceStatus}</p>
@@ -7922,6 +8027,7 @@
               <p class="preview-empty">Empty file</p>
             {/if}
           </article>
+          {/if}
         </aside>
       {/if}
     </div>

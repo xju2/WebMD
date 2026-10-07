@@ -127,7 +127,7 @@ try {
   s = await snapshot();
   check(
     'a protected meeting opens with its agenda',
-    s.heading === 'Tracking and reconstruction weekly' && s.agenda === 4,
+    s.heading === 'Tracking and reconstruction weekly' && s.agenda === 5,
     `${s.heading} / ${s.agenda}`
   );
   check(
@@ -170,7 +170,7 @@ try {
   s = await snapshot();
   check(
     'returning to Meetings keeps the chosen meeting',
-    s.selected === 'Tracking and reconstruction weekly' && s.agenda === 4,
+    s.selected === 'Tracking and reconstruction weekly' && s.agenda === 5,
     s.selected
   );
   check('the meeting now offers Open note', s.noteButton === 'Open note', s.noteButton);
@@ -190,6 +190,40 @@ try {
     notes.filter((name) => name.startsWith('Tracking')).length === 1,
     notes.join(', ')
   );
+  await page.waitFor(`document.querySelector('.reference-agenda .meetings-agenda')`);
+  const pane = () =>
+    page.eval(`
+      const aside = document.querySelector('.reference-pane');
+      return {
+        visible: Boolean(aside && aside.getClientRects().length),
+        heading: aside?.querySelector('.reference-agenda h3')?.textContent.trim() || '',
+        agenda: aside?.querySelectorAll('.meetings-agenda li').length || 0,
+        choice: aside?.querySelector('select')?.value || ''
+      };`);
+  let side = await pane();
+  check(
+    'the note opens with its agenda beside it',
+    side.visible &&
+      side.heading === 'Tracking and reconstruction weekly' &&
+      side.agenda === 5 &&
+      side.choice === 'agenda:',
+    JSON.stringify(side)
+  );
+  await page.shot('meeting-note-with-agenda-desktop');
+  await page.eval(`
+    const select = document.querySelector('.reference-pane select');
+    select.value = '/README.md';
+    select.dispatchEvent(new Event('change'));`);
+  await sleep(400);
+  side = await pane();
+  check('picking a note replaces the agenda', side.agenda === 0 && side.choice === '/README.md', JSON.stringify(side));
+  await page.eval(`
+    const select = document.querySelector('.reference-pane select');
+    select.value = 'agenda:';
+    select.dispatchEvent(new Event('change'));`);
+  await page.waitFor(`document.querySelector('.reference-agenda .meetings-agenda')`);
+  side = await pane();
+  check('Meeting agenda brings it back', side.agenda === 5, JSON.stringify(side));
 
   // 3. Views come and go around the open note without disturbing it.
   await page.click('.global-action[aria-controls="ai-panel"]');

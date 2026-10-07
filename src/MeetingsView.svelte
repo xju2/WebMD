@@ -5,11 +5,10 @@
   // and the scroll position are where they were left.
   import { onDestroy, onMount, tick } from 'svelte';
   import { ICONS } from './icons.js';
+  import MeetingAgenda from './MeetingAgenda.svelte';
   import {
     DEFAULT_MEETING_TIME_ZONE,
-    agendaGroups,
-    describeAgendaTime,
-    describeSessionTime,
+    DEVICE_ZONE_KEY,
     describeMeetingTime,
     describeRange,
     filterMeetings,
@@ -24,6 +23,7 @@
     meetingPlace,
     meetingsPane,
     noteName,
+    readDeviceZonePref,
     sourceNotices,
     zoomMeetingId
   } from './meetings.js';
@@ -38,8 +38,6 @@
   export let onFilesChanged = async () => {};
 
   const COMPACT_WIDTH = 720;
-  // Per device: a traveller reads times on the clock where they are.
-  const DEVICE_ZONE_KEY = 'webmd.meetings.deviceZone';
 
   let loadedRoot = null;
   let loading = false;
@@ -99,14 +97,6 @@
   $: if (active && root !== loadedRoot) resetFor(root);
   $: if (active && loadedRoot === root && !loading && !listing && !loadError)
     load();
-
-  function readDeviceZonePref() {
-    try {
-      return localStorage.getItem(DEVICE_ZONE_KEY) === '1';
-    } catch {
-      return false;
-    }
-  }
 
   function toggleDeviceZone() {
     useDeviceZone = !useDeviceZone;
@@ -287,14 +277,6 @@
     } finally {
       noteBusy = false;
     }
-  }
-
-  // Files come through the server, which holds the Indico token, so no
-  // device is sent to a sign-on page; a link opens where it points.
-  function materialHref(material) {
-    return material.file
-      ? `/api/meetings/attachment?url=${encodeURIComponent(material.url)}${material.version ? `&v=${encodeURIComponent(material.version)}` : ''}`
-      : material.url;
   }
 
   function meetingFiles(item) {
@@ -892,75 +874,14 @@
             </details>
           {/if}
 
-          {#if detail?.materials?.length}
-            <h4 class="meetings-agenda-title">Materials</h4>
-            <p class="meetings-materials">
-              {#each detail.materials as material (material.id + material.url)}
-                <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
-              {/each}
-            </p>
-          {/if}
-
-          <h4 class="meetings-agenda-title">Agenda</h4>
-          {#if detailLoading}
-            <p class="tasks-note" aria-live="polite">Loading agenda…</p>
-          {:else if detailError}
-            <p class="meetings-notice {detailError.kind === 'auth' || detailError.kind === 'network' || detailError.kind === 'timeout' ? 'error' : 'hint'}" role="alert">
-              {detailError.message}
-              <button
-                class="meetings-link-button"
-                type="button"
-                on:click={() => loadDetail(selected.key, { refresh: true })}
-              >
-                Try again
-              </button>
-            </p>
-          {:else if detail?.agenda?.length || detail?.sessions?.length}
-            <ol class="meetings-agenda">
-              {#each agendaGroups(detail.agenda, detail.sessions) as group, index (index)}
-                {#if group.session}
-                  <li class="meetings-agenda-session">
-                    <span class="meetings-agenda-time">{group.session.start ? describeSessionTime(group.session, selected, { timeZone: zone }) : ''}</span>
-                    <span class="meetings-agenda-main">
-                      <strong>{group.session.title}</strong>
-                      {#if group.session.conveners?.length}
-                        <span class="meetings-agenda-meta">{group.session.conveners.join(', ')}</span>
-                      {/if}
-                    </span>
-                  </li>
-                {/if}
-                {#each group.items as item (item.id + item.start.iso)}
-                  <li>
-                    <span class="meetings-agenda-time">{describeAgendaTime(item, selected, { timeZone: zone })}</span>
-                    <span class="meetings-agenda-main">
-                      {#if item.url}
-                        <a href={item.url} rel="noopener noreferrer" target="_blank">{item.title}</a>
-                      {:else}
-                        <span>{item.title}</span>
-                      {/if}
-                      {#if item.speakers.length}
-                        <span class="meetings-agenda-meta">{item.speakers.join(', ')}</span>
-                      {/if}
-                      {#if item.materials?.length}
-                        <span class="meetings-materials">
-                          {#each item.materials as material (material.id + material.url)}
-                            <a href={materialHref(material)} rel="noopener noreferrer" target="_blank">{material.title}</a>
-                          {/each}
-                        </span>
-                      {/if}
-                    </span>
-                  </li>
-                {/each}
-              {/each}
-            </ol>
-            {#if detail.unscheduled}
-              <p class="tasks-note">
-                {detail.unscheduled} more {detail.unscheduled === 1 ? 'contribution is' : 'contributions are'} not on the timetable yet.
-              </p>
-            {/if}
-          {:else if detail}
-            <p class="preview-empty">Indico lists no timetable for this meeting yet.</p>
-          {/if}
+          <MeetingAgenda
+            {detail}
+            error={detailError}
+            loading={detailLoading}
+            meeting={selected}
+            {zone}
+            onRetry={() => loadDetail(selected.key, { refresh: true })}
+          />
         {:else}
           <p class="preview-empty meetings-pick">Choose a meeting to see its agenda.</p>
         {/if}

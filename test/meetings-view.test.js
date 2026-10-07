@@ -12,6 +12,7 @@ import {
   meetingSection,
   meetingsPane,
   meetingZones,
+  noteMeetingEvent,
   sourceNotice,
   sourceNotices,
   zoomMeetingId
@@ -255,4 +256,26 @@ test('meetingZones offers the device zone only when it differs', () => {
     zone: 'America/Los_Angeles',
     other: ''
   });
+});
+
+test('reads the meeting a note names in its indico field', () => {
+  assert.deepEqual(noteMeetingEvent(' https://indico.cern.ch/event/1234/ '), {
+    origin: 'https://indico.cern.ch',
+    eventId: '1234'
+  });
+  assert.deepEqual(noteMeetingEvent('https://indico.cern.ch/event/1234'), {
+    origin: 'https://indico.cern.ch',
+    eventId: '1234'
+  });
+  for (const value of [
+    'http://indico.cern.ch/event/1234/',
+    'https://indico.cern.ch/category/12/',
+    'https://indico.cern.ch/event/12x/',
+    'not a link',
+    '',
+    undefined,
+    ['https://indico.cern.ch/event/1234/']
+  ]) {
+    assert.equal(noteMeetingEvent(value), null, String(value));
+  }
 });

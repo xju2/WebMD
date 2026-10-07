@@ -91,7 +91,10 @@ content carries the contrast.
   workspace views launched from the rail (Tasks, arXiv News) own
   their own toolbars and keep only navigation and the overflow menu above.
   Meetings is one of them too. It stays mounted once visited, so its list and
-  selection survive a trip to a note.
+  selection survive a trip to a note. Opening a meeting's note from it opens
+  the reference pane, which shows the agenda of the meeting the open note's
+  `indico:` field names whenever the pane is not pinned to another note; the
+  pane steps aside on the Meetings view itself and on narrow windows.
 * **Mockup content is illustrative.** Titles, counts, and AI text always come
   from the workspace and APIs; titles are never truncated server-side.
 

@@ -226,6 +226,44 @@ export function noteName(path = '') {
   return String(path).split('/').pop().replace(/\.md$/i, '');
 }
 
+/**
+ * `{ origin, eventId }` for the event a note's `indico:` field names, or null.
+ * Mirrors the server's noteMeetingKey, so the note it ties to a meeting is
+ * the one whose agenda shows beside it.
+ */
+export function noteMeetingEvent(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const url = new URL(value.trim());
+    const match = /^\/event\/(\d+)(?:\/|$)/.exec(url.pathname);
+    if (url.protocol !== 'https:' || !match) return null;
+    return { origin: url.origin, eventId: match[1] };
+  } catch {
+    return null;
+  }
+}
+
+// Per device: a traveller reads times on the clock where they are.
+export const DEVICE_ZONE_KEY = 'webmd.meetings.deviceZone';
+
+export function readDeviceZonePref() {
+  try {
+    return localStorage.getItem(DEVICE_ZONE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Files come through the server, which holds the Indico token, so no device
+ * is sent to a sign-on page; a link opens where it points.
+ */
+export function materialHref(material) {
+  return material.file
+    ? `/api/meetings/attachment?url=${encodeURIComponent(material.url)}${material.version ? `&v=${encodeURIComponent(material.version)}` : ''}`
+    : material.url;
+}
+
 /** Meetings from one source, or from every source when `sourceId` is empty. */
 export function filterMeetings(meetings, sourceId = '') {
   if (!sourceId) return meetings || [];
