@@ -6,6 +6,7 @@
   import { EditorView, keymap } from '@codemirror/view';
   import katex from 'katex';
   import 'katex/dist/katex.min.css';
+  import { withMathMacros } from './math-macros.js';
   import { basicSetup } from 'codemirror';
   import { onDestroy, onMount, tick } from 'svelte';
   import {
@@ -198,8 +199,13 @@
   const MARKDOWN_UPLOAD = /\.(md|markdown)$/i;
   const UPLOAD_EXTENSIONS = /\.(avif|gif|heic|heif|jpe?g|png|svg|webp|pdf)$/i;
 
-  function renderMath(source, displayMode = false) {
-    return katex.renderToString(source, { throwOnError: false, displayMode });
+  function renderMath(source, displayMode = false, macros = {}) {
+    return katex.renderToString(source, {
+      throwOnError: false,
+      displayMode,
+      globalGroup: true,
+      macros: { ...macros }
+    });
   }
 
   const MERMAID_REDRAW_DELAY = 250;
@@ -574,7 +580,9 @@
     presetGroups.find((group) => group.name === activePresetGroup)?.items ?? [];
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
-    selectedIsMarkdown && viewMode === 'preview' ? renderMarkdown(content) : [];
+    selectedIsMarkdown && viewMode === 'preview'
+      ? withMathMacros(renderMarkdown(content))
+      : [];
   // Only headings the preview actually rendered, so a `#` line in front matter
   // or a comment never becomes an entry that scrolls nowhere.
   $: previewHeadingLines = new Set(
@@ -796,7 +804,7 @@
   $: firstOpenTask = noteTasks.find((task) => !task.checked) ?? null;
   $: referenceBlocks =
     referenceOpen && referencePath && !referenceStatus
-      ? renderMarkdown(referenceContent)
+      ? withMathMacros(renderMarkdown(referenceContent))
       : [];
   $: openMeetingEvent = selectedIsMarkdown
     ? noteMeetingEvent(frontmatterField(content, 'indico'))
@@ -4507,7 +4515,7 @@
       views[target] = {
         label,
         status: 'ready',
-        blocks: renderMarkdown(section)
+        blocks: withMathMacros(renderMarkdown(section))
       };
     }
 
@@ -5736,7 +5744,9 @@
     {#if segment.type === 'code'}
       <code>{segment.text}</code>
     {:else if segment.type === 'math'}
-      <span class="math-inline">{@html renderMath(segment.text)}</span>
+      <span class="math-inline"
+        >{@html renderMath(segment.text, false, segment.macros)}</span
+      >
     {:else if segment.type === 'link' && segment.href}
       <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a>
     {:else if segment.type === 'citation'}
@@ -5850,7 +5860,7 @@
       </details>
     {:else if block.type === 'mathBlock'}
       <div class="math-block" data-line={block.line}>
-        {@html renderMath(block.text, true)}
+        {@html renderMath(block.text, true, block.macros)}
       </div>
     {:else if block.type === 'rule'}
       <hr data-line={block.line} />
@@ -8227,7 +8237,10 @@
                 <p>{message.text}</p>
               {:else}
                 <div class="ai-markdown">
-                  {@render markdownBlocks(renderMarkdown(message.text), true)}
+                  {@render markdownBlocks(
+                    withMathMacros(renderMarkdown(message.text)),
+                    true
+                  )}
                 </div>
               {/if}
             </div>

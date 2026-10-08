@@ -36,6 +36,9 @@ $$
 \int_0^\infty e^{-x^2}\,dx = \frac{\sqrt{\pi}}{2}
 $$
 
+Define a macro once and use it anywhere in the same note:
+$\newcommand{\bnoise}{B_\text{noise}}$ then $S / \sqrt{\bnoise}$.
+
 ## Diagrams
 
 ```mermaid
