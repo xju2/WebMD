@@ -292,6 +292,22 @@ test('follows a same-origin redirect with the token, and no other', async () => 
   assert.ok(!seen.some(([target]) => !target.startsWith(CERN)));
 });
 
+test('a token without the needed scope reads as a rejected token, not a bare 400', async () => {
+  const scope = async () =>
+    new Response('<h1>Bad Request</h1>OAuth error: insufficient_scope: requires higher privileges', {
+      status: 400
+    });
+  await assert.rejects(
+    () =>
+      indicoFetch('https://indico.cern.ch/export/categ/1.json', {
+        fetchImpl: scope,
+        sites: cernSites('indp_secret_value'),
+        token: 'indp_secret_value'
+      }),
+    (error) => error.kind === 'auth' && /read:legacy_api/.test(error.message)
+  );
+});
+
 test('tells a rejected token apart from a missing one, without echoing it', async () => {
   const invalid = async () =>
     new Response('<h1>Bad Request</h1>invalid_token: The access token provided is expired', {

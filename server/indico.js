@@ -212,9 +212,9 @@ export async function indicoFetch(
     }
     if (response.status === 400 && token) {
       // Indico answers an unknown, expired, or revoked token with a 400 whose
-      // page says invalid_token, rather than with a 401.
+      // page says invalid_token (or insufficient_scope), rather than with a 401.
       const body = await safeText(response);
-      if (/invalid_token/i.test(body)) {
+      if (/invalid_token|insufficient_scope/i.test(body)) {
         throw authError(start.hostname, origin, sites, token, 400);
       }
       throw new IndicoError('upstream', `${start.hostname} failed with 400 Bad Request.`);
