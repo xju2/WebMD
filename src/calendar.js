@@ -17,6 +17,36 @@ export function defaultReferencePath(paths, currentPath) {
   return target === null ? '' : paths[target];
 }
 
+let workspaceZone = '';
+
+/** The IANA zone "now" is read in; '' means this device's own clock. */
+export function setWorkspaceZone(zone) {
+  workspaceZone = zone || '';
+}
+
+/**
+ * A Date whose local fields show `ms` on the workspace's wall clock, so the
+ * code that reads getDate() and getHours() follows the workspace zone.
+ */
+export function zonedNow(ms = Date.now()) {
+  if (!workspaceZone) return new Date(ms);
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: workspaceZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric'
+    })
+      .formatToParts(ms)
+      .map((part) => [part.type, Number(part.value)])
+  );
+  return new Date(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+}
+
 export function dailyNoteDateFromPath(path) {
   const name = String(path ?? '')
     .split('/')

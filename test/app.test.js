@@ -1342,3 +1342,30 @@ test('opens web links in Chrome only for a browser on this machine', async () =>
     server.close();
   }
 });
+
+test('saves the workspace time zone and keeps the other settings', async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, '.webmd'));
+  await fs.writeFile(
+    path.join(root, '.webmd/settings.json'),
+    JSON.stringify({ dailyNoteFolder: '/journal' })
+  );
+  const { server, url } = await listen(
+    await createApp({ workspaceRoots: [root], env: {} })
+  );
+  const post = (timeZone) =>
+    fetch(`${url}/api/settings/time-zone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: '0', timeZone })
+    });
+  try {
+    assert.equal((await post('Nope/Zone')).status, 400);
+    assert.equal((await post('Europe/Zurich')).status, 200);
+    const settings = await (await fetch(`${url}/api/settings?root=0`)).json();
+    assert.equal(settings.meetingTimeZone, 'Europe/Zurich');
+    assert.equal(settings.dailyNoteFolder, '/journal');
+  } finally {
+    server.close();
+  }
+});

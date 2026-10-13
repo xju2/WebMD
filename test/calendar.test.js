@@ -7,7 +7,9 @@ import {
   defaultDailyNoteTemplatePath,
   defaultReferencePath,
   stepDailyNote,
-  templateNeedsQuote
+  setWorkspaceZone,
+  templateNeedsQuote,
+  zonedNow
 } from '../src/calendar.js';
 
 test('indexes the neighbouring daily note', () => {
@@ -134,3 +136,15 @@ test('picks the reference note beside the open file', () => {
   );
 });
 
+
+test("reads now on the workspace zone's wall clock", () => {
+  const instant = Date.UTC(2026, 9, 13, 3, 30); // 03:30 UTC
+  try {
+    setWorkspaceZone('America/Los_Angeles');
+    assert.equal(dailyNoteDate(zonedNow(instant)), '2026-10-12');
+    setWorkspaceZone('Asia/Tokyo');
+    assert.equal(dailyNoteDate(zonedNow(instant)), '2026-10-13');
+  } finally {
+    setWorkspaceZone('');
+  }
+});

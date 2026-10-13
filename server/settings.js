@@ -1,5 +1,9 @@
 import fs from 'node:fs/promises';
-import { normalizeWorkspaceFolder, normalizeWorkspacePath } from './workspace.js';
+import {
+  WorkspaceError,
+  normalizeWorkspaceFolder,
+  normalizeWorkspacePath
+} from './workspace.js';
 
 export const SETTINGS_CONFIG_PATH = '/.webmd/settings.json';
 
@@ -40,6 +44,31 @@ export async function readWorkspaceSettings(workspace, env = {}) {
     meetingTimeZone: timeZoneSetting(values, warnings),
     ...(warnings.length ? { warning: warnings.join(' ') } : {})
   };
+}
+
+/** Saves the workspace's zone, keeping every other key of the file. */
+export async function writeMeetingTimeZone(workspace, zone) {
+  const resolved = validZone(zone);
+  if (!resolved) throw new WorkspaceError(400, 'Not an IANA time zone.');
+  const { values } = await readSettingsFile(workspace);
+  const absolute = await workspace.resolvePath(SETTINGS_CONFIG_PATH, {
+    forWrite: true
+  });
+  await fs.mkdir(absolute.replace(/\/[^/]*$/, ''), { recursive: true });
+  await fs.writeFile(
+    absolute,
+    `${JSON.stringify({ ...values, meetingTimeZone: resolved }, null, 2)}\n`
+  );
+  return resolved;
+}
+
+function validZone(value) {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: String(value).trim() })
+      .resolvedOptions().timeZone;
+  } catch {
+    return '';
+  }
 }
 
 async function readSettingsFile(workspace) {

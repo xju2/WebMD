@@ -94,7 +94,7 @@ import {
 } from './project-log.js';
 import { agendaDays } from '../src/conference-plan.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
-import { readWorkspaceSettings } from './settings.js';
+import { readWorkspaceSettings, writeMeetingTimeZone } from './settings.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -136,6 +136,16 @@ export async function createApp({
       res.json(
         await readWorkspaceSettings(workspaces.get(req.query.root), env)
       );
+    })
+  );
+
+  app.post(
+    '/api/settings/time-zone',
+    asyncHandler(async (req, res) => {
+      const workspace = workspaces.get(req.body?.root);
+      res.json({
+        meetingTimeZone: await writeMeetingTimeZone(workspace, req.body?.timeZone)
+      });
     })
   );
 
@@ -975,13 +985,19 @@ export async function createApp({
   app.get(
     '/api/news/arxiv',
     asyncHandler(async (req, res) => {
-      const news = await newsListing(req.query.day, {
+      let news = await newsListing(req.query.day, {
         refresh: req.query.refresh === '1'
       });
+      const days = await newsHistory(newsCategories(env), { cacheDir });
+      // A feed dated for a day that has not been announced yet carries no
+      // papers; show the newest listing that exists instead.
+      if (!req.query.day && !news.papers.length && days[0]) {
+        news = await newsListing(days[0]);
+      }
       res.json({
         ...news,
         day: newsDay(news.published),
-        days: await newsHistory(newsCategories(env), { cacheDir })
+        days
       });
     })
   );

@@ -2093,6 +2093,19 @@ input[type='radio'] {
   text-transform: uppercase;
 }
 
+.home-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+
+.home-zone select {
+  max-width: 220px;
+}
+
 .home-counts {
   display: grid;
   grid-template-columns: auto auto;

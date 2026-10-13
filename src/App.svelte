@@ -16,8 +16,10 @@
     dailyNotePath as buildDailyNotePath,
     defaultDailyNoteTemplatePath,
     defaultReferencePath,
+    setWorkspaceZone,
     stepDailyNote,
-    templateNeedsQuote
+    templateNeedsQuote,
+    zonedNow
   } from './calendar.js';
   import {
     rebaseRemoteUpdate,
@@ -33,7 +35,8 @@
     deviceTimeZone,
     meetingZones,
     noteMeetingEvent,
-    readDeviceZonePref
+    readDeviceZonePref,
+    zoneName
   } from './meetings.js';
   import { parseFrontmatter } from './frontmatter.js';
   import ConferenceView from './ConferenceView.svelte';
@@ -331,7 +334,7 @@
   let viewMode = 'edit';
   // Refreshed whenever a task surface opens, so a session left running past
   // midnight does not keep grading due dates against yesterday.
-  let todayText = dailyNoteDate(new Date());
+  let todayText = dailyNoteDate(zonedNow());
   let workspaceTasks = [];
   let tasksStatus = '';
   let newsPapers = [];
@@ -1503,7 +1506,7 @@
     if (sourceLine + 1 > doc.lines) return;
 
     const target = doc.line(sourceLine + 1);
-    const insert = toggleTaskLine(target.text, dailyNoteDate(new Date()));
+    const insert = toggleTaskLine(target.text, dailyNoteDate(zonedNow()));
     if (insert === target.text) return;
 
     editorView.dispatch({
@@ -1534,7 +1537,29 @@
     dailyNoteFolderConfigured = Boolean(settings.dailyNoteFolderConfigured);
     dailyNoteTemplatePath = settings.dailyNoteTemplate ?? null;
     meetingTimeZone = settings.meetingTimeZone || '';
+    setWorkspaceZone(meetingTimeZone);
+    todayText = dailyNoteDate(zonedNow());
     settingsWarning = settings.warning ?? '';
+  }
+
+  const timeZoneChoices = Intl.supportedValuesOf?.('timeZone') ?? [];
+
+  /** Saves the workspace zone; every "today" in the app follows it. */
+  async function changeTimeZone(zone) {
+    const root = selectedRoot;
+    try {
+      const saved = await requestJson('/api/settings/time-zone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, timeZone: zone })
+      });
+      if (root !== selectedRoot) return;
+      meetingTimeZone = saved.meetingTimeZone;
+      setWorkspaceZone(meetingTimeZone);
+      todayText = dailyNoteDate(zonedNow());
+    } catch (err) {
+      error = err.message;
+    }
   }
 
   async function loadRoots() {
@@ -1765,7 +1790,7 @@
     await openDailyNote();
   }
 
-  async function openDailyNote(date = new Date()) {
+  async function openDailyNote(date = zonedNow()) {
     const path = todayNotePath(date);
     const root = selectedRoot;
     const previousEntry = currentNavigationEntry();
@@ -1854,7 +1879,7 @@
     const heading = `# ${basename(path).replace(/\.(md|markdown)$/i, '')}\n\n`;
     const content = isDateNamedPath(path)
       ? heading
-      : stampNoteDates(heading, dailyNoteDate(new Date()));
+      : stampNoteDates(heading, dailyNoteDate(zonedNow()));
     status = '[Syncing...]';
     error = '';
 
@@ -1886,7 +1911,7 @@
     }
   }
 
-  function todayNotePath(date = new Date(), folder = activeDailyNoteFolder) {
+  function todayNotePath(date = zonedNow(), folder = activeDailyNoteFolder) {
     return buildDailyNotePath(date, folder);
   }
 
@@ -2151,7 +2176,7 @@
    * what today's quote is.
    */
   async function loadDailyQuote(root = selectedRoot) {
-    const date = dailyNoteDate(new Date());
+    const date = dailyNoteDate(zonedNow());
     const key = `${root}\u0000${date}`;
     if (dailyQuoteKey === key) return;
 
@@ -2175,7 +2200,7 @@
     if (selectedPath && hasUnsavedChanges()) await saveNow();
     if (remember) rememberViewNavigation('tasks');
     viewMode = 'tasks';
-    todayText = dailyNoteDate(new Date());
+    todayText = dailyNoteDate(zonedNow());
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -2443,7 +2468,7 @@
    */
   async function clipPaper(paper) {
     const root = selectedRoot;
-    const date = new Date();
+    const date = zonedNow();
     const path = todayNotePath(date);
     const line = arxivCitation(paper);
     newsClipping = new Set(newsClipping).add(paper.id);
@@ -3003,7 +3028,7 @@
     if (!selection.empty) return false;
 
     const line = view.state.doc.lineAt(selection.head);
-    const now = new Date();
+    const now = zonedNow();
     const expansion = snippetExpansion(
       line.text.slice(0, selection.head - line.from),
       { date: dailyNoteDate(now), time: clockTime(now) }
@@ -3453,7 +3478,7 @@
     const caretLine = doc.lineAt(selection.main.head).number;
     const changes = taskShorthandEdits(
       doc.toString(),
-      dailyNoteDate(new Date())
+      dailyNoteDate(zonedNow())
     )
       .filter((edit) => all || edit.line + 1 !== caretLine)
       .map((edit) => {
@@ -3476,7 +3501,7 @@
 
     const changes = noteDateEdits(
       editorView.state.doc.toString(),
-      dailyNoteDate(new Date()),
+      dailyNoteDate(zonedNow()),
       localDate(selectedFileCreated)
     );
     if (changes.length) editorView.dispatch({ changes });
@@ -3484,8 +3509,8 @@
 
   /** An ISO timestamp from the server as a local `YYYY-MM-DD`. */
   function localDate(timestamp) {
-    const date = timestamp ? new Date(timestamp) : null;
-    return date && !Number.isNaN(date.getTime()) ? dailyNoteDate(date) : '';
+    const ms = timestamp ? new Date(timestamp).getTime() : NaN;
+    return Number.isNaN(ms) ? '' : dailyNoteDate(zonedNow(ms));
   }
 
   /**
@@ -4593,7 +4618,7 @@
     const heading = `# ${title}\n\n`;
     const body = isDateNamedPath(path)
       ? heading
-      : stampNoteDates(heading, dailyNoteDate(new Date()));
+      : stampNoteDates(heading, dailyNoteDate(zonedNow()));
 
     try {
       await requestJson('/api/workspace/save', {
@@ -5513,7 +5538,7 @@
 
   function setViewMode(mode, { remember = true } = {}) {
     viewMode = mode;
-    if (mode === 'preview') todayText = dailyNoteDate(new Date());
+    if (mode === 'preview') todayText = dailyNoteDate(zonedNow());
     selectedText = '';
     selectedRange = null;
     if (remember) rememberWorkspaceViewMode(mode);
@@ -7005,6 +7030,19 @@
                 <p class="home-eyebrow">{activeWorkspaceName}</p>
                 <h1>Workspace Home</h1>
                 <p>Capture, resume, and review your research.</p>
+                <label class="home-zone">
+                  Time zone
+                  <select
+                    value={meetingTimeZone}
+                    on:change={(event) =>
+                      changeTimeZone(event.currentTarget.value)}
+                  >
+                    {#each timeZoneChoices.includes(meetingTimeZone) ? timeZoneChoices : [meetingTimeZone, ...timeZoneChoices] as zone (zone)}
+                      <option value={zone}>{zone}</option>
+                    {/each}
+                  </select>
+                  <small>{todayText} · {zoneName(meetingTimeZone)}</small>
+                </label>
               </div>
               <div class="home-counts" aria-label="Workspace file counts">
                 <strong>{overview.markdownCount}</strong>
