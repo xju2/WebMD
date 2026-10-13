@@ -204,7 +204,8 @@
       throwOnError: false,
       displayMode,
       globalGroup: true,
-      macros: { ...macros }
+      // KaTeX has no \textsc, which arXiv titles use; plain text beats a red error.
+      macros: { '\\textsc': '\\text{#1}', ...macros }
     });
   }
 
