@@ -230,7 +230,7 @@ test('drops papers an earlier day already announced', async () => {
     cacheDir
   });
   assert.equal(
-    await withoutRepeats(categories, thursday, { cacheDir }),
+    await withoutRepeats(categories, thursday, { cacheDir, now }),
     thursday
   );
 
@@ -239,7 +239,7 @@ test('drops papers an earlier day already announced', async () => {
     published: 'Fri, 11 Sep 2026 00:00:00 -0400',
     papers: [{ ...repeat, announceType: 'cross' }, { id: '2609.99999' }]
   };
-  const shown = await withoutRepeats(categories, friday, { cacheDir });
+  const shown = await withoutRepeats(categories, friday, { cacheDir, now });
   assert.deepEqual(
     shown.papers.map((paper) => paper.id),
     ['2609.99999']

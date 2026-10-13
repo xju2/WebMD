@@ -985,15 +985,10 @@ export async function createApp({
   app.get(
     '/api/news/arxiv',
     asyncHandler(async (req, res) => {
-      let news = await newsListing(req.query.day, {
+      const news = await newsListing(req.query.day, {
         refresh: req.query.refresh === '1'
       });
       const days = await newsHistory(newsCategories(env), { cacheDir });
-      // A feed dated for a day that has not been announced yet carries no
-      // papers; show the newest listing that exists instead.
-      if (!req.query.day && !news.papers.length && days[0]) {
-        news = await newsListing(days[0]);
-      }
       res.json({
         ...news,
         day: newsDay(news.published),
@@ -1007,13 +1002,19 @@ export async function createApp({
     if (day && !isNewsDay(day)) {
       throw new WorkspaceError(400, 'The day must be written YYYY-MM-DD.');
     }
-    const news = day
+    let news = day
       ? await readNewsDay(categories, day, { cacheDir })
       : await fetchArxivNews(categories, {
           fetchImpl: newsFetch,
           refresh,
           cacheDir
         });
+    // A feed dated for a day not yet announced carries no papers; the view
+    // and the ranking both use the newest listing that exists instead.
+    const [latest] = day || news.papers.length
+      ? []
+      : await newsHistory(categories, { cacheDir });
+    if (latest) news = await readNewsDay(categories, latest, { cacheDir });
     return withoutRepeats(categories, news, { cacheDir });
   }
 

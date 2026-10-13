@@ -213,11 +213,15 @@ const dayIds = new Map();
  * The listing without papers an earlier kept day already announced: arXiv
  * lists a paper again, as a cross-list, when it gains another category.
  */
-export async function withoutRepeats(categories, news, { cacheDir } = {}) {
+export async function withoutRepeats(
+  categories,
+  news,
+  { cacheDir, now = Date.now } = {}
+) {
   const key = categories.join('+');
   const day = newsDay(news.published);
   const seen = new Set();
-  for (const earlier of await newsHistory(categories, { cacheDir })) {
+  for (const earlier of await newsHistory(categories, { cacheDir, now })) {
     if (earlier >= day) continue;
     let ids = dayIds.get(`${key}/${earlier}`);
     if (!ids) {
