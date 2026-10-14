@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { decodeXml } from './arxiv.js';
+import { decodeXml, fetchArxivTimes } from './arxiv.js';
 import { WorkspaceError } from './workspace.js';
 
 const ARXIV_RSS_URL = 'https://rss.arxiv.org/rss/';
@@ -149,6 +149,15 @@ export function oldestNewsDay(now = Date.now) {
 async function archiveListing(key, news, { cacheDir, now = Date.now } = {}) {
   const day = newsDay(news?.published);
   if (!day || !news.papers?.length || archived.has(`${key}/${day}`)) return;
+  // A kept day stays as kept: it may since have been split out of a merged feed.
+  const kept = cacheDir
+    ? await historyDays(historyDir(cacheDir, key))
+    : [...(memoryHistory.get(key)?.keys() ?? [])];
+  if (!kept.includes(day)) await keepDay(key, day, news, { cacheDir, now });
+  archived.add(`${key}/${day}`);
+}
+
+async function keepDay(key, day, news, { cacheDir, now = Date.now }) {
   const oldest = oldestNewsDay(now);
   if (cacheDir) {
     const dir = historyDir(cacheDir, key);
@@ -163,7 +172,7 @@ async function archiveListing(key, news, { cacheDir, now = Date.now } = {}) {
     for (const kept of days.keys()) if (kept < oldest) days.delete(kept);
     memoryHistory.set(key, days);
   }
-  archived.add(`${key}/${day}`);
+  dayIds.delete(`${key}/${day}`);
 }
 
 async function historyDays(dir) {
@@ -238,6 +247,89 @@ export async function withoutRepeats(
   return papers.length === news.papers.length ? news : { ...news, papers };
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const weekday = (day) => new Date(`${day}T00:00:00Z`).getUTCDay();
+const addDays = (day, n) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+
+/** The weekdays strictly between two kept days: each should have a listing. */
+export function missingDays(earlier, day) {
+  const days = [];
+  for (let d = addDays(earlier, 1); d < day; d = addDays(d, 1)) {
+    if (weekday(d) % 6) days.push(d);
+  }
+  return days;
+}
+
+/**
+ * When arXiv closes a listing: 14:00 New York time on the weekday before its
+ * day, since the Monday listing is announced on Sunday evening.
+ */
+export function announceCutoff(day) {
+  let before = addDays(day, -1);
+  while (weekday(before) % 6 === 0) before = addDays(before, -1);
+  const guess = Date.parse(`${before}T18:00:00Z`); // 14:00 EDT
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    hourCycle: 'h23'
+  }).format(guess);
+  return guess + (Number(hour) === 14 ? 0 : 60 * 60 * 1000);
+}
+
+// `${key}/${day}` already checked for a merged feed this run.
+const splitTried = new Set();
+
+/**
+ * arXiv sometimes skips a day's rebuild and the next feed carries both days
+ * (the Oct 13 papers arrived inside the Oct 14 listing). Files each paper
+ * under the announcement day its submission time belongs to, so every day
+ * with an announcement keeps its own listing. The feed is capped at 2000
+ * items, so a merged one can already have lost its oldest papers.
+ */
+export async function splitMergedDays(
+  categories,
+  news,
+  { cacheDir, now = Date.now, fetchImpl = fetch } = {}
+) {
+  const key = categories.join('+');
+  const day = newsDay(news?.published);
+  if (!day || !news.papers?.length || splitTried.has(`${key}/${day}`)) return;
+  splitTried.add(`${key}/${day}`);
+  const earlier = (await newsHistory(categories, { cacheDir, now })).find(
+    (kept) => kept < day
+  );
+  const gap = earlier ? missingDays(earlier, day) : [];
+  if (!gap.length) return;
+
+  let times;
+  try {
+    times = await fetchArxivTimes(
+      news.papers.map((paper) => paper.id),
+      { fetchImpl }
+    );
+  } catch (error) {
+    splitTried.delete(`${key}/${day}`);
+    throw error;
+  }
+  const days = [...gap, day];
+  const split = new Map(days.map((d) => [d, []]));
+  for (const paper of news.papers) {
+    const time = times.get(paper.id);
+    const at = paper.announceType === 'new' ? time?.published : time?.updated;
+    // A paper without a time stays on the day the feed named.
+    split.get(days.find((d) => at <= announceCutoff(d)) ?? day).push(paper);
+  }
+  for (const [d, papers] of split) {
+    if (!papers.length) continue;
+    const published =
+      d === day ? news.published : new Date(`${d}T00:00:00Z`).toUTCString();
+    await keepDay(key, d, { ...news, published, papers }, { cacheDir, now });
+  }
+}
+
 /**
  * Checks the feed every `intervalMs`, so a day you never open News for is
  * still kept. Most ticks are cache hits; a stale listing costs arXiv a 304.
@@ -250,7 +342,11 @@ export function startNewsArchive({
   onError = () => {}
 }) {
   const tick = () =>
-    fetchArxivNews(categories, { cacheDir, fetchImpl }).catch(onError);
+    fetchArxivNews(categories, { cacheDir, fetchImpl })
+      .then((news) =>
+        splitMergedDays(categories, news, { cacheDir, fetchImpl })
+      )
+      .catch(onError);
   tick();
   const timer = setInterval(tick, intervalMs);
   timer.unref?.();
@@ -375,4 +471,5 @@ export function resetNewsCache() {
   inFlight.clear();
   memoryHistory.clear();
   archived.clear();
+  splitTried.clear();
 }

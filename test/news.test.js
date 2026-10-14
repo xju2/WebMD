@@ -5,7 +5,10 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   DEFAULT_NEWS_CATEGORIES,
+  announceCutoff,
   fetchArxivNews,
+  missingDays,
+  splitMergedDays,
   newsCategories,
   newsDay,
   newsHistory,
@@ -355,4 +358,67 @@ test('sums up who ranked the papers and what it cost', () => {
     'llama reviewed 3 papers'
   );
   assert.equal(newsRankSummary({ method: 'similarity' }), '');
+});
+
+test('files a merged feed under the days it announced', async () => {
+  assert.equal(
+    announceCutoff('2026-10-13'),
+    Date.parse('2026-10-12T18:00:00Z')
+  );
+  assert.equal(
+    announceCutoff('2026-10-12'),
+    Date.parse('2026-10-09T18:00:00Z')
+  );
+  assert.equal(
+    announceCutoff('2026-12-15'),
+    Date.parse('2026-12-14T19:00:00Z')
+  );
+  assert.deepEqual(missingDays('2026-10-09', '2026-10-14'), [
+    '2026-10-12',
+    '2026-10-13'
+  ]);
+
+  const cacheDir = await fs.mkdtemp(path.join(tmpdir(), 'webmd-cache-'));
+  const categories = ['hep-ex'];
+  const now = () => Date.parse('2026-10-14T20:00:00Z');
+  await fetchArxivNews(categories, {
+    cacheDir,
+    now,
+    fetchImpl: async () =>
+      new Response(
+        RSS.replace(
+          /<pubDate>[^<]*<\/pubDate>/g,
+          '<pubDate>Mon, 12 Oct 2026 00:00:00 -0400</pubDate>'
+        ),
+        { status: 200 }
+      )
+  });
+  const paper = (id, announceType) => ({ id, announceType });
+  const merged = {
+    published: 'Wed, 14 Oct 2026 00:00:00 -0400',
+    papers: [paper('2610.00002', 'new'), paper('2610.00003', 'replace')]
+  };
+  const times = {
+    2610.00002: '2026-10-12T20:00:00Z', // after Monday 14:00 ET: Wednesday's
+    2610.00003: '2026-10-12T15:00:00Z' // Tuesday's
+  };
+  const entry = (id) =>
+    `<entry><id>http://arxiv.org/abs/${id}v1</id><published>${times[id]}</published><updated>${times[id]}</updated></entry>`;
+  await splitMergedDays(categories, merged, {
+    cacheDir,
+    now,
+    fetchImpl: async () =>
+      new Response(Object.keys(times).map(entry).join(''), { status: 200 })
+  });
+
+  assert.deepEqual(await newsHistory(categories, { cacheDir, now }), [
+    '2026-10-14',
+    '2026-10-13',
+    '2026-10-12'
+  ]);
+  const tuesday = await readNewsDay(categories, '2026-10-13', { cacheDir });
+  assert.deepEqual(
+    tuesday.papers.map((paper) => paper.id),
+    ['2610.00003']
+  );
 });

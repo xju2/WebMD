@@ -78,6 +78,38 @@ async function requestArxiv(id, fetchImpl) {
   return parseArxivEntry(await response.text(), id);
 }
 
+/**
+ * `id → { published, updated }` (epoch ms) for many ids at once, from the API
+ * rather than the feed, which carries no submission time.
+ */
+export async function fetchArxivTimes(ids, { fetchImpl = fetch } = {}) {
+  const times = new Map();
+  for (let i = 0; i < ids.length; i += 100) {
+    await waitForRequestSlot();
+    const list = ids
+      .slice(i, i + 100)
+      .map(encodeURIComponent)
+      .join(',');
+    const response = await fetchImpl(
+      `${ARXIV_API_URL}?id_list=${list}&max_results=100`
+    );
+    if (!response?.ok) {
+      throw new WorkspaceError(502, `arXiv failed with ${response?.status}.`);
+    }
+    for (const entry of (await response.text()).split('<entry>').slice(1)) {
+      const id = /abs\/(.+?)(?:v\d+)?<\/id>/.exec(entry)?.[1];
+      const when = (name) =>
+        Date.parse(new RegExp(`<${name}>([^<]*)<`).exec(entry)?.[1]);
+      if (id)
+        times.set(id, {
+          published: when('published'),
+          updated: when('updated')
+        });
+    }
+  }
+  return times;
+}
+
 /** Serializes outbound calls so bursts of pastes stay inside arXiv's rate limit. */
 async function waitForRequestSlot() {
   const now = Date.now();
