@@ -2580,13 +2580,6 @@
     newsExpanded = expanded;
   }
 
-  function toggleNewsCategory(category) {
-    const categories = newsFilter.categories.includes(category)
-      ? []
-      : [category];
-    setNewsFilter({ categories });
-  }
-
   function readNewsFilter() {
     const empty = {
       query: '',
@@ -5790,12 +5783,13 @@
           </button>
         {/each}
         <button
+          aria-label="Open beside notes"
           class="news-clip news-beside"
-          title="Read the PDF beside your note"
+          title="Open beside notes: read the PDF next to your note"
           type="button"
           on:click={() => openPaperBesideNotes(paper)}
         >
-          {@render icon('external')} Open beside notes
+          {@render icon('external')}
         </button>
         <button
           class="news-clip"
@@ -7503,6 +7497,34 @@
                     arXiv
                   </button>
                 </div>
+                <select
+                  aria-label="Category"
+                  class="news-category-select"
+                  value={newsFilter.categories[0] ?? ''}
+                  on:change={(event) =>
+                    setNewsFilter({
+                      categories: event.currentTarget.value
+                        ? [event.currentTarget.value]
+                        : []
+                    })}
+                >
+                  <option value="">All categories</option>
+                  {#each newsCategories as category}
+                    <option value={category}
+                      >{category} ({newsCounts.get(category) ?? 0})</option
+                    >
+                  {/each}
+                </select>
+                <button
+                  type="button"
+                  class="news-clipped-toggle"
+                  class:active={newsOnlyClipped}
+                  aria-pressed={newsOnlyClipped}
+                  title="Show only the papers you clipped from this day"
+                  on:click={() => (newsOnlyClipped = !newsOnlyClipped)}
+                >
+                  {@render icon('clip')} Clipped <span>{newsClippedCount}</span>
+                </button>
                 <div class="search-field news-filter">
                   {@render icon('search')}
                   <input
@@ -7537,32 +7559,6 @@
                 >
                   {@render icon('refresh')}
                   <span class="news-refresh-label">Refresh</span>
-                </button>
-              </div>
-              <div
-                class="news-categories"
-                role="group"
-                aria-label="Show categories"
-              >
-                {#each newsCategories as category}
-                  <button
-                    type="button"
-                    class:active={newsFilter.categories.includes(category)}
-                    aria-pressed={newsFilter.categories.includes(category)}
-                    on:click={() => toggleNewsCategory(category)}
-                  >
-                    {category} <span>{newsCounts.get(category) ?? 0}</span>
-                  </button>
-                {/each}
-                <button
-                  type="button"
-                  class="news-clipped-toggle"
-                  class:active={newsOnlyClipped}
-                  aria-pressed={newsOnlyClipped}
-                  title="Show only the papers you clipped from this day"
-                  on:click={() => (newsOnlyClipped = !newsOnlyClipped)}
-                >
-                  {@render icon('clip')} Clipped <span>{newsClippedCount}</span>
                 </button>
               </div>
             </header>

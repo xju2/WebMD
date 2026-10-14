@@ -2817,53 +2817,34 @@ input[type='radio'] {
   width: 220px;
 }
 
-.news-categories {
-  display: flex;
-  flex-basis: 100%;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.news-categories button {
+.news-clipped-toggle {
+  display: inline-flex;
   height: var(--control-height);
+  align-items: center;
+  gap: 4px;
   padding: 0 12px;
   border: 1px solid var(--border-control);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
   cursor: pointer;
   font: inherit;
   font-size: 0.86rem;
-  font-weight: 500;
 }
 
-.news-categories button:hover:not(.active) {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-}
-
-.news-categories button span {
-  margin-left: 4px;
+.news-clipped-toggle span {
   color: var(--ink-subtle);
   font-variant-numeric: tabular-nums;
 }
 
-.news-categories button.active {
+.news-clipped-toggle.active {
   border-color: var(--accent);
-  background: var(--accent);
-  color: #ffffff;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
-.news-categories button.active span {
-  color: #ffffff;
-  opacity: 0.85;
-}
-
-.news-categories .news-clipped-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
+.news-beside {
+  padding: 0 9px;
 }
 
 .news-cite {
