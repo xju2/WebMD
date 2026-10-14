@@ -387,6 +387,8 @@
   // The open note's editor sits beside the arXiv list, so notes are taken
   // without leaving it.
   let newsNotes = readNewsNotes();
+  // Whether that column shows the note rendered rather than its source.
+  let newsPreview = false;
   let referenceRun = 0;
   // A meeting note's agenda takes the reference pane while the pane follows
   // the editor, so the talks sit beside the notes taken on them.
@@ -571,6 +573,8 @@
     'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
   $: newsBeside = viewMode === 'news' && newsNotes && selectedIsMarkdown;
+  $: previewShown = viewMode === 'preview' || (newsBeside && newsPreview);
+  $: editorShown = viewMode === 'edit' || (newsBeside && !newsPreview);
   $: if (newsBeside) requestAnimationFrame(() => editorView?.requestMeasure());
   // Which notes link here follows the open note, and nothing else, so reading
   // one always shows its own mentions.
@@ -592,7 +596,7 @@
     presetGroups.find((group) => group.name === activePresetGroup)?.items ?? [];
   $: mediaPreviewUrl = selectedIsMedia ? mediaUrl(selectedPath) : '';
   $: renderedBlocks =
-    selectedIsMarkdown && viewMode === 'preview'
+    selectedIsMarkdown && previewShown
       ? withMathMacros(renderMarkdown(content))
       : [];
   // Only headings the preview actually rendered, so a `#` line in front matter
@@ -809,7 +813,7 @@
     ? rankedPapers.filter((paper) => !pickById.has(paper.id))
     : rankedPapers;
   $: noteTasks =
-    selectedIsMarkdown && viewMode === 'preview' ? collectTasks(content) : [];
+    selectedIsMarkdown && previewShown ? collectTasks(content) : [];
   $: noteProgress = taskProgress(noteTasks);
   // What the progress bar jumps to: the first box still to be ticked, in the
   // order the note writes them.
@@ -2000,7 +2004,7 @@
       KeyD: () => workspaceRoots.length && openTodayNote(),
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
-      KeyP: () => selectedPath && setViewMode('preview'),
+      KeyV: () => selectedPath && setViewMode('preview'),
       KeyT: () => workspaceRoots.length && showTasks(),
       // Not KeyR: Chrome reserves Cmd/Ctrl+Shift+R for a hard reload.
       Backslash: () => toggleReferencePane()
@@ -2635,7 +2639,7 @@
   // Leaves the list for the note, with the paper's PDF in the reference pane.
   async function openPaperBesideNotes(paper) {
     if (!selectedIsMarkdown) await openDailyNote();
-    setViewMode('edit', { remember: false });
+    viewMode = 'edit';
     referenceOpen = true;
     referencePinned = true;
     referencePaper = paper.id;
@@ -4702,7 +4706,7 @@
    */
   async function revealSourceLine(line) {
     await tick();
-    if (viewMode === 'preview') {
+    if (previewShown) {
       revealPreviewLine(line);
       return;
     }
@@ -5583,6 +5587,19 @@
   }
 
   function setViewMode(mode, { remember = true } = {}) {
+    // Beside the arXiv list, Edit and Preview change the note's column only.
+    if (
+      viewMode === 'news' &&
+      newsNotes &&
+      selectedIsMarkdown &&
+      (mode === 'edit' || mode === 'preview')
+    ) {
+      newsPreview = mode === 'preview';
+      selectedText = '';
+      selectedRange = null;
+      requestAnimationFrame(() => editorView?.requestMeasure());
+      return;
+    }
     viewMode = mode;
     if (mode === 'preview') todayText = dailyNoteDate(zonedNow());
     selectedText = '';
@@ -7018,7 +7035,7 @@
                 <code>{shortcutKey}+Shift+T</code> tasks
                 <code>/</code> filter tasks (on the Tasks board)
                 <code>{shortcutKey}+Shift+E</code> edit
-                <code>{shortcutKey}+Shift+P</code> preview
+                <code>{shortcutKey}+Shift+V</code> preview
                 <code>{shortcutKey}+Shift+\</code> reference note
                 <code>{shortcutKey}+Shift+&lt;</code> older day
                 <code>{shortcutKey}+Shift+&gt;</code> newer day
@@ -7168,8 +7185,7 @@
         {/if}
         <div
           bind:this={editorHost}
-          class:hidden={!selectedIsMarkdown ||
-            (viewMode !== 'edit' && !newsBeside)}
+          class:hidden={!selectedIsMarkdown || !editorShown}
           class:beside-news={newsBeside}
           class="editor-host"
         ></div>
@@ -7557,6 +7573,24 @@
                 >
                   Notes
                 </button>
+                {#if newsBeside}
+                  <div class="view-toggle" aria-label="Note view">
+                    <button
+                      class:active={!newsPreview}
+                      type="button"
+                      on:click={() => setViewMode('edit')}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      class:active={newsPreview}
+                      type="button"
+                      on:click={() => setViewMode('preview')}
+                    >
+                      Preview
+                    </button>
+                  </div>
+                {/if}
                 <button
                   aria-label="Refresh"
                   class="primary"
@@ -7847,7 +7881,8 @@
         {#if selectedPath && selectedIsMarkdown}
           <article
             aria-label="Rendered Markdown preview"
-            class:hidden={viewMode !== 'preview'}
+            class:hidden={!previewShown}
+            class:beside-news={newsBeside}
             class="preview-pane"
             on:dblclick={handlePreviewDoubleClick}
           >

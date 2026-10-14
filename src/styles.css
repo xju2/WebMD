@@ -2757,13 +2757,20 @@ input[type='radio'] {
   right: 42%;
 }
 
-.editor-host.beside-news {
+.editor-host.beside-news,
+.preview-pane.beside-news {
   position: absolute;
   inset: 0 0 0 auto;
   z-index: 3;
   width: 42%;
   border-left: 1px solid var(--border);
   background: var(--surface);
+}
+
+.preview-pane.beside-news {
+  max-width: none;
+  margin: 0;
+  padding: 18px 20px 60px;
 }
 
 .news-notes-toggle.active {
@@ -4978,6 +4985,7 @@ input[type='radio'] {
 
 @media (max-width: 760px) {
   .news-notes-toggle,
+  .news-toolbar .view-toggle,
   .news-beside {
     display: none;
   }
@@ -4986,7 +4994,8 @@ input[type='radio'] {
     right: 0;
   }
 
-  .editor-host.beside-news {
+  .editor-host.beside-news,
+  .preview-pane.beside-news {
     display: none;
   }
 
