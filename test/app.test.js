@@ -1329,12 +1329,19 @@ test('opens web links in Chrome only for a browser on this machine', async () =>
     });
 
   try {
-    assert.equal((await post({ url: 'https://indico.cern.ch/event/1/' })).status, 200);
+    assert.equal(
+      (await post({ url: 'https://indico.cern.ch/event/1/' })).status,
+      200
+    );
     assert.equal((await post({ url: 'file:///etc/passwd' })).status, 400);
     assert.equal((await post({ url: 'javascript:alert(1)' })).status, 400);
     assert.equal(
-      (await post({ url: 'https://indico.cern.ch/' }, { 'x-forwarded-for': '100.64.0.2' }))
-        .status,
+      (
+        await post(
+          { url: 'https://indico.cern.ch/' },
+          { 'x-forwarded-for': '100.64.0.2' }
+        )
+      ).status,
       403
     );
     assert.deepEqual(opened, ['https://indico.cern.ch/event/1/']);
@@ -1365,6 +1372,36 @@ test('saves the workspace time zone and keeps the other settings', async () => {
     const settings = await (await fetch(`${url}/api/settings?root=0`)).json();
     assert.equal(settings.meetingTimeZone, 'Europe/Zurich');
     assert.equal(settings.dailyNoteFolder, '/journal');
+  } finally {
+    server.close();
+  }
+});
+
+test('serves an arXiv PDF once and from the cache after', async () => {
+  const root = await tempRoot();
+  const cacheDir = await tempRoot();
+  let requests = 0;
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      cacheDir,
+      arxivFetch: async () => {
+        requests += 1;
+        return new Response('%PDF-1.5 body');
+      }
+    })
+  );
+
+  try {
+    for (let i = 0; i < 2; i += 1) {
+      const response = await fetch(`${url}/api/arxiv/pdf?id=2608.00146`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/pdf');
+      assert.match(await response.text(), /^%PDF-/);
+    }
+    assert.equal(requests, 1);
+    const bad = await fetch(`${url}/api/arxiv/pdf?id=../etc/passwd`);
+    assert.equal(bad.status, 400);
   } finally {
     server.close();
   }

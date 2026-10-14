@@ -185,6 +185,7 @@
     'conference'
   ]);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
+  const NEWS_NOTES_KEY = 'webmd:news-notes';
   // The preview's outline: off until asked for, then remembered. It docks
   // beside the note only while the reading column keeps CENTER_MIN next to it.
   const PREVIEW_TOC_KEY = 'webmd:preview-toc';
@@ -381,6 +382,11 @@
   // Pinned once the reader picks a note by hand, so opening another file in the
   // editor no longer drags the reference along with it.
   let referencePinned = false;
+  // An arXiv id whose PDF takes the pane instead of a note.
+  let referencePaper = '';
+  // The open note's editor sits beside the arXiv list, so notes are taken
+  // without leaving it.
+  let newsNotes = readNewsNotes();
   let referenceRun = 0;
   // A meeting note's agenda takes the reference pane while the pane follows
   // the editor, so the talks sit beside the notes taken on them.
@@ -564,6 +570,8 @@
     workspaceRoots.find((root) => root.id === selectedRoot)?.name ||
     'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
+  $: newsBeside = viewMode === 'news' && newsNotes && selectedIsMarkdown;
+  $: if (newsBeside) requestAnimationFrame(() => editorView?.requestMeasure());
   // Which notes link here follows the open note, and nothing else, so reading
   // one always shows its own mentions.
   $: loadBacklinks(selectedRoot, selectedIsMarkdown ? selectedPath : '');
@@ -2018,6 +2026,7 @@
     const stored = readReferencePane(root);
     referenceOpen = stored.open;
     referencePinned = false;
+    referencePaper = '';
     referencePath = '';
     referenceContent = '';
     referenceStatus = '';
@@ -2044,6 +2053,7 @@
   function closeReferencePane() {
     referenceOpen = false;
     referencePinned = false;
+    referencePaper = '';
     referenceContent = '';
     referenceStatus = '';
     referenceRun += 1;
@@ -2063,6 +2073,7 @@
 
   async function setReferencePath(path, { pin = true } = {}) {
     referencePath = path;
+    referencePaper = '';
     if (pin) referencePinned = true;
     referenceContent = '';
     referenceStatus = path ? '' : 'No other note to show yet.';
@@ -2221,6 +2232,7 @@
       loadNewsClipped(selectedRoot),
       loadNewsVotes(selectedRoot)
     ]);
+    if (newsNotes && viewMode === 'news') await openNewsNotes();
     if (viewMode === 'news' && newsPapers.length) rankNews();
   }
 
@@ -2593,6 +2605,40 @@
     } catch {
       return empty;
     }
+  }
+
+  function readNewsNotes() {
+    try {
+      return localStorage.getItem(NEWS_NOTES_KEY) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  // The note taken beside the list: the open one, else today's.
+  async function openNewsNotes() {
+    if (selectedIsMarkdown) return;
+    await openDailyNote();
+    viewMode = 'news';
+  }
+
+  async function toggleNewsNotes() {
+    newsNotes = !newsNotes;
+    try {
+      localStorage.setItem(NEWS_NOTES_KEY, newsNotes ? '1' : '0');
+    } catch {
+      // Ignore storage failures; the toggle still works this session.
+    }
+    if (newsNotes) await openNewsNotes();
+  }
+
+  // Leaves the list for the note, with the paper's PDF in the reference pane.
+  async function openPaperBesideNotes(paper) {
+    if (!selectedIsMarkdown) await openDailyNote();
+    setViewMode('edit', { remember: false });
+    referenceOpen = true;
+    referencePinned = true;
+    referencePaper = paper.id;
   }
 
   /** The filter is kept, so tomorrow's listing opens narrowed the same way. */
@@ -5744,6 +5790,14 @@
           </button>
         {/each}
         <button
+          class="news-clip news-beside"
+          title="Read the PDF beside your note"
+          type="button"
+          on:click={() => openPaperBesideNotes(paper)}
+        >
+          {@render icon('external')} Open beside notes
+        </button>
+        <button
           class="news-clip"
           class:clipped
           disabled={clipped || newsClipping.has(paper.id)}
@@ -7113,7 +7167,9 @@
         {/if}
         <div
           bind:this={editorHost}
-          class:hidden={!selectedIsMarkdown || viewMode !== 'edit'}
+          class:hidden={!selectedIsMarkdown ||
+            (viewMode !== 'edit' && !newsBeside)}
+          class:beside-news={newsBeside}
           class="editor-host"
         ></div>
         {#if viewMode === 'tasks'}
@@ -7369,7 +7425,11 @@
           </section>
         {/if}
         {#if viewMode === 'news'}
-          <section class="news-pane" aria-label="arXiv news">
+          <section
+            class:beside={newsBeside}
+            class="news-pane"
+            aria-label="arXiv news"
+          >
             <header class="tasks-toolbar news-toolbar">
               <h2>
                 arXiv
@@ -7456,6 +7516,18 @@
                       setNewsFilter({ query: event.currentTarget.value })}
                   />
                 </div>
+                <button
+                  aria-pressed={newsNotes}
+                  class="news-notes-toggle"
+                  class:active={newsNotes}
+                  type="button"
+                  title={newsNotes && selectedIsMarkdown
+                    ? `Taking notes in ${selectedPath}`
+                    : 'Show a note beside the list, to write while you read'}
+                  on:click={toggleNewsNotes}
+                >
+                  Notes
+                </button>
                 <button
                   aria-label="Refresh"
                   class="primary"
@@ -8104,7 +8176,9 @@
             <div class="reference-step">
               <button
                 aria-label="Older reference note"
-                disabled={agendaShown || !olderReferencePath}
+                disabled={agendaShown ||
+                  !!referencePaper ||
+                  !olderReferencePath}
                 title="Older note"
                 type="button"
                 on:click={() => stepReferenceNote(-1)}
@@ -8113,7 +8187,9 @@
               </button>
               <button
                 aria-label="Newer reference note"
-                disabled={agendaShown || !newerReferencePath}
+                disabled={agendaShown ||
+                  !!referencePaper ||
+                  !newerReferencePath}
                 title="Newer note"
                 type="button"
                 on:click={() => stepReferenceNote(1)}
@@ -8123,10 +8199,16 @@
             </div>
             <select
               aria-label="Reference note"
-              value={agendaShown ? AGENDA_OPTION : referencePath}
+              value={referencePaper
+                ? ''
+                : agendaShown
+                  ? AGENDA_OPTION
+                  : referencePath}
               on:change={chooseReferencePath}
             >
-              {#if openMeetingEvent}
+              {#if referencePaper}
+                <option value="">arXiv:{referencePaper}</option>
+              {:else if openMeetingEvent}
                 <option value={AGENDA_OPTION}>Meeting agenda</option>
               {:else if !referencePath}
                 <option value="">No note</option>
@@ -8145,7 +8227,20 @@
               {@render icon('close')}
             </button>
           </header>
-          {#if agendaShown}
+          {#if referencePaper}
+            <object
+              class="media-pdf"
+              data={`/api/arxiv/pdf?id=${encodeURIComponent(referencePaper)}`}
+              title={`arXiv:${referencePaper}`}
+              type="application/pdf"
+            >
+              <a
+                href={`https://arxiv.org/pdf/${referencePaper}`}
+                rel="noreferrer"
+                target="_blank">Open arXiv:{referencePaper}</a
+              >
+            </object>
+          {:else if agendaShown}
             <article class="reference-body reference-agenda meetings-detail">
               {#if agendaDetail}
                 <h3>{agendaDetail.title}</h3>

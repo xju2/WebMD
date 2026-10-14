@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
-import { fetchArxivMetadata, isArxivId } from './arxiv.js';
+import { fetchArxivMetadata, fetchArxivPdf, isArxivId } from './arxiv.js';
 import { fetchCitationBibtex, upgradeArxivCitationKeys } from './citations.js';
 import { fetchIndicoTitle, indicoSites, isIndicoUrl } from './indico.js';
 import {
@@ -144,7 +144,10 @@ export async function createApp({
     asyncHandler(async (req, res) => {
       const workspace = workspaces.get(req.body?.root);
       res.json({
-        meetingTimeZone: await writeMeetingTimeZone(workspace, req.body?.timeZone)
+        meetingTimeZone: await writeMeetingTimeZone(
+          workspace,
+          req.body?.timeZone
+        )
       });
     })
   );
@@ -414,6 +417,20 @@ export async function createApp({
         throw new WorkspaceError(400, 'An arXiv identifier is required.');
       }
       res.json(await fetchArxivMetadata(id.trim(), { fetchImpl: arxivFetch }));
+    })
+  );
+
+  // The paper itself, for the reference pane beside a note.
+  app.get(
+    '/api/arxiv/pdf',
+    asyncHandler(async (req, res) => {
+      const bytes = await fetchArxivPdf(req.query.id, {
+        fetchImpl: arxivFetch,
+        cacheDir
+      });
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      res.type('application/pdf').send(bytes);
     })
   );
 
@@ -757,7 +774,9 @@ export async function createApp({
       const { workspace, config } = await meetingsState(req.body?.root);
       const meeting = await conferenceMeeting(req.body?.url);
       const days =
-        req.body?.days && typeof req.body.days === 'object' ? req.body.days : {};
+        req.body?.days && typeof req.body.days === 'object'
+          ? req.body.days
+          : {};
       const file = conferenceScoresFile(workspace, meeting);
       const saved = file ? await readCacheFile(file) : null;
       const scores = Object.assign(
@@ -1011,9 +1030,10 @@ export async function createApp({
         });
     // A feed dated for a day not yet announced carries no papers; the view
     // and the ranking both use the newest listing that exists instead.
-    const [latest] = day || news.papers.length
-      ? []
-      : await newsHistory(categories, { cacheDir });
+    const [latest] =
+      day || news.papers.length
+        ? []
+        : await newsHistory(categories, { cacheDir });
     if (latest) news = await readNewsDay(categories, latest, { cacheDir });
     return withoutRepeats(categories, news, { cacheDir });
   }

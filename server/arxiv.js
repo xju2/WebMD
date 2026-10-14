@@ -1,3 +1,5 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { WorkspaceError } from './workspace.js';
 
 const ARXIV_API_URL = 'https://export.arxiv.org/api/query';
@@ -173,4 +175,46 @@ export function resetArxivCache() {
   cache.clear();
   inFlight.clear();
   nextRequestAt = 0;
+}
+
+/**
+ * The paper's PDF as bytes. Kept in `cacheDir` when there is one (outside the
+ * workspace, like Indico attachments), so reopening a paper costs no request.
+ */
+export async function fetchArxivPdf(id, { fetchImpl = fetch, cacheDir } = {}) {
+  if (!isArxivId(id)) {
+    throw new WorkspaceError(400, `"${id}" is not an arXiv identifier.`);
+  }
+  const key = id.trim().toLowerCase();
+  const file =
+    cacheDir &&
+    path.join(cacheDir, 'arxiv-pdf', `${key.replace('/', '_')}.pdf`);
+  if (file) {
+    try {
+      return await readFile(file);
+    } catch {
+      // Not cached yet.
+    }
+  }
+  let response;
+  try {
+    response = await fetchImpl(`https://arxiv.org/pdf/${key}`);
+  } catch (error) {
+    throw new WorkspaceError(502, `Could not reach arXiv: ${error.message}.`);
+  }
+  if (!response?.ok) {
+    throw new WorkspaceError(
+      response?.status === 404 ? 404 : 502,
+      `arXiv has no PDF for ${key} (${response?.status}).`
+    );
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (!bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+    throw new WorkspaceError(502, `arXiv did not return a PDF for ${key}.`);
+  }
+  if (file) {
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, bytes);
+  }
+  return bytes;
 }
