@@ -95,6 +95,7 @@ export async function fetchArxivNews(
             categories,
             published: feed.published,
             papers: feed.papers,
+            feed: feed.meta,
             fetchedAt: checkedAt
           },
       etag: feed.etag || cached?.etag || '',
@@ -283,11 +284,11 @@ export function announceCutoff(day) {
 const splitTried = new Set();
 
 /**
- * arXiv sometimes skips a day's rebuild and the next feed carries both days
- * (the Oct 13 papers arrived inside the Oct 14 listing). Files each paper
- * under the announcement day its submission time belongs to, so every day
- * with an announcement keeps its own listing. The feed is capped at 2000
- * items, so a merged one can already have lost its oldest papers.
+ * A feed can carry two days' papers (the Oct 13 papers arrived inside the
+ * Oct 14 listing; the cause is unknown, `feed` is kept to trace it). Files
+ * each paper under the announcement day its submission time belongs to, so
+ * every day with an announcement keeps its own listing. The feed is capped at
+ * 2000 items, so a merged one can already have lost its oldest papers.
  */
 export async function splitMergedDays(
   categories,
@@ -379,7 +380,17 @@ async function requestFeed(key, fetchImpl, etag) {
       : 'no response';
     throw new WorkspaceError(502, `The arXiv feed failed with ${status}.`);
   }
-  return { ...freshness, ...parseArxivRss(await response.text()) };
+  const rss = parseArxivRss(await response.text());
+  // Kept with each day, so a short or merged feed can be traced to arXiv.
+  const header = (name) => response.headers?.get(name) || '';
+  const meta = {
+    built: rss.built,
+    items: rss.papers.length,
+    cacheControl: header('cache-control'),
+    age: header('age'),
+    date: header('date')
+  };
+  return { ...freshness, ...rss, meta };
 }
 
 /** How long arXiv says this copy stands: max-age less what the CDN held it. */
@@ -428,7 +439,8 @@ export function parseArxivRss(xml) {
   const papers = [...channel.matchAll(/<item>([\s\S]*?)<\/item>/gi)]
     .map((match) => parseItem(match[1]))
     .filter(Boolean);
-  return { published, papers };
+  const built = tag(channel.split(/<item>/i)[0], 'lastBuildDate');
+  return { published, built, papers };
 }
 
 function parseItem(item) {
