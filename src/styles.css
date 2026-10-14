@@ -2766,6 +2766,11 @@ input[type='radio'] {
   background: var(--surface);
 }
 
+.news-note-select {
+  width: 180px;
+  min-width: 0;
+}
+
 .news-notes-toggle.active {
   border-color: var(--accent);
   background: var(--accent-soft);
@@ -4978,6 +4983,7 @@ input[type='radio'] {
 
 @media (max-width: 760px) {
   .news-notes-toggle,
+  .news-note-select,
   .news-beside {
     display: none;
   }

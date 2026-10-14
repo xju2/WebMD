@@ -2615,6 +2615,13 @@
     viewMode = 'news';
   }
 
+  async function chooseNewsNote(event) {
+    const path = event.currentTarget.value;
+    if (path === todayNotePath()) await openDailyNote();
+    else await openFile(path);
+    viewMode = 'news';
+  }
+
   async function toggleNewsNotes() {
     newsNotes = !newsNotes;
     try {
@@ -7550,6 +7557,22 @@
                 >
                   Notes
                 </button>
+                {#if newsBeside}
+                  <select
+                    aria-label="Note to write in"
+                    class="news-note-select"
+                    value={selectedPath}
+                    on:change={chooseNewsNote}
+                  >
+                    {#if !markdownFiles.some((file) => file.path === todayNotePath())}
+                      <option value={todayNotePath()}>Today’s note (new)</option
+                      >
+                    {/if}
+                    {#each markdownFiles as file}
+                      <option value={file.path}>{file.path}</option>
+                    {/each}
+                  </select>
+                {/if}
                 <button
                   aria-label="Refresh"
                   class="primary"
