@@ -7557,11 +7557,6 @@
                 >
                   Notes
                 </button>
-                    {#each markdownFiles as file}
-                      <option value={file.path}>{file.path}</option>
-                    {/each}
-                  </select>
-                {/if}
                 <button
                   aria-label="Refresh"
                   class="primary"
