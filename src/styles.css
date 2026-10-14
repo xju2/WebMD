@@ -4985,7 +4985,6 @@ input[type='radio'] {
 
 @media (max-width: 760px) {
   .news-notes-toggle,
-  .news-toolbar .view-toggle,
   .news-beside {
     display: none;
   }

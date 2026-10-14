@@ -7573,24 +7573,6 @@
                 >
                   Notes
                 </button>
-                {#if newsBeside}
-                  <div class="view-toggle" aria-label="Note view">
-                    <button
-                      class:active={!newsPreview}
-                      type="button"
-                      on:click={() => setViewMode('edit')}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      class:active={newsPreview}
-                      type="button"
-                      on:click={() => setViewMode('preview')}
-                    >
-                      Preview
-                    </button>
-                  </div>
-                {/if}
                 <button
                   aria-label="Refresh"
                   class="primary"
