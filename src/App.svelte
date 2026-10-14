@@ -2004,7 +2004,7 @@
       KeyD: () => workspaceRoots.length && openTodayNote(),
       Period: () => openNewerDailyNote(),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
-      KeyV: () => selectedPath && setViewMode('preview'),
+      KeyP: () => selectedPath && setViewMode('preview'),
       KeyT: () => workspaceRoots.length && showTasks(),
       // Not KeyR: Chrome reserves Cmd/Ctrl+Shift+R for a hard reload.
       Backslash: () => toggleReferencePane()
@@ -7035,7 +7035,7 @@
                 <code>{shortcutKey}+Shift+T</code> tasks
                 <code>/</code> filter tasks (on the Tasks board)
                 <code>{shortcutKey}+Shift+E</code> edit
-                <code>{shortcutKey}+Shift+V</code> preview
+                <code>{shortcutKey}+Shift+P</code> preview
                 <code>{shortcutKey}+Shift+\</code> reference note
                 <code>{shortcutKey}+Shift+&lt;</code> older day
                 <code>{shortcutKey}+Shift+&gt;</code> newer day
