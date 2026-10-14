@@ -1718,6 +1718,14 @@
     await restoreReferencePane(root);
   }
 
+  // A note picked from the Files panel while writing beside the arXiv list
+  // opens in that column, not over the list.
+  function noteViewMode(root) {
+    return viewMode === 'news' && newsNotes
+      ? 'news'
+      : readWorkspaceViewMode(root);
+  }
+
   async function openFile(
     path,
     { historyMode = 'push', rememberNavigation = true } = {}
@@ -1732,7 +1740,7 @@
     selectedFileKind = fileKind;
     selectedFileCreated = '';
     if (fileKind === 'markdown')
-      setViewMode(readWorkspaceViewMode(root), { remember: false });
+      setViewMode(noteViewMode(root), { remember: false });
     diffFiles = [];
     diffStatus = '';
     error = '';
@@ -1808,7 +1816,7 @@
 
     selectedPath = path;
     selectedFileKind = 'markdown';
-    setViewMode(readWorkspaceViewMode(root), { remember: false });
+    setViewMode(noteViewMode(root), { remember: false });
     diffFiles = [];
     diffStatus = '';
     clearInlineEdit();
@@ -2612,7 +2620,6 @@
   async function openNewsNotes() {
     if (selectedIsMarkdown) return;
     await openDailyNote();
-    viewMode = 'news';
   }
 
   async function chooseNewsNote(event) {
