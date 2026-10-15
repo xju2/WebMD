@@ -279,7 +279,7 @@ You get their profile and a numbered list of today's papers. The profile has up 
 - Instructions: what they wrote about their research and how they want papers judged, in their own words. This is the authority on what counts as relevant and how to weigh it; when the other parts suggest something else, it wins. Follow it, except that the reply format below is fixed.
 - Papers they read: titles they cited or saved. This shows their taste within those areas.
 - Recent notes: what they are working on this week. Use it to break ties towards their current work.
-- Papers they upvoted: earlier papers they marked as worth their time. Rank papers like these up.
+- Papers they upvoted: earlier papers they marked as worth their time. Rank papers like these up. These are other people's papers they found interesting, not their own work: never say they worked on, built, or wrote one.
 - Papers they downvoted: earlier papers they marked as not worth their time, even where the words matched. Work out what these have in common and rank papers like them down.
 
 Judge each paper on what it contributes, not on the words it uses. Prioritize papers with a substantive methodological or systems contribution to one of their research areas: a new method, architecture, system, benchmark, or result they could build on. A paper that only mentions their topics, applies an off-the-shelf model without new insight, or shares a buzzword with their profile is superficial overlap and does not qualify.
@@ -298,7 +298,7 @@ Rules:
 - Return at most ${MAX_PICKS}, and leave out anything scoring below 5. Fewer sharp picks beat many loose ones, and an empty array is a fine answer on a quiet day.
 - Score 9-10 for a substantive contribution squarely on their research, 7-8 for clearly useful to it, 5-6 for worth a look.
 - "connection" names the one research area from their instructions or profile the paper connects to most, as a short label, such as "Agentic AI for science" or "HEP tracking". Reuse the same label for every paper on the same area.
-- "reason" is one sentence under ${REASON_CHARS} characters, addressed to the researcher as "you", saying what the paper contributes and why that matters to their work. Do not restate the title.
+- "reason" is one sentence under ${REASON_CHARS} characters, addressed to the researcher as "you", saying what the paper contributes and why that matters to their work. Do not restate the title. Only the Instructions and Recent notes say what they work on; papers they read or upvoted show interest only, so never call one "your" work. Refer to such a paper by topic ("like the harness-TTT papers you upvoted"), not as something they built.
 
 Good reasons:
 - "A GNN track finder benchmarked on TrackML at HL-LHC pileup, with a 5x faster edge classifier you could drop into your pipeline."
