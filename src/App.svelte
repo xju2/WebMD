@@ -787,12 +787,10 @@
     (newsRanking?.order ?? []).map((id, index) => [id, index])
   );
   $: pickById = new Map(
-    newsFilter.sort === 'arxiv'
-      ? []
-      : (newsRanking?.picks ?? []).map((pick) => [pick.id, pick])
+    (newsRanking?.picks ?? []).map((pick) => [pick.id, pick])
   );
   $: rankedPapers =
-    newsFilter.sort === 'arxiv' || !newsRanking
+    !newsRanking
       ? visiblePapers
       : [...visiblePapers].sort(
           (left, right) =>
@@ -806,8 +804,7 @@
   // A failed ranking keeps the Top picks heading, so Re-rank can try again.
   $: newsRankFailed =
     !!newsRanking &&
-    !['ai', 'none'].includes(newsRanking.method) &&
-    newsFilter.sort !== 'arxiv';
+    !['ai', 'none'].includes(newsRanking.method);
   $: morePicks = pickedPapers.filter((paper) => !topPickIds.has(paper.id));
   $: otherPapers = pickById.size
     ? rankedPapers.filter((paper) => !pickById.has(paper.id))
@@ -2595,8 +2592,7 @@
   function readNewsFilter() {
     const empty = {
       query: '',
-      categories: [],
-      sort: 'rank'
+      categories: []
     };
     try {
       const stored = JSON.parse(localStorage.getItem(NEWS_FILTER_KEY) || '{}');
@@ -2604,8 +2600,7 @@
         query: typeof stored.query === 'string' ? stored.query : '',
         categories: Array.isArray(stored.categories)
           ? stored.categories.filter((item) => typeof item === 'string')
-          : [],
-        sort: stored.sort === 'arxiv' ? 'arxiv' : 'rank'
+          : []
       };
     } catch {
       return empty;
@@ -7496,30 +7491,6 @@
                 <span>
                   {visiblePapers.length} papers
                 </span>
-                <div
-                  class="tasks-grouping"
-                  role="group"
-                  aria-label="Order papers"
-                >
-                  <button
-                    type="button"
-                    class:active={newsFilter.sort !== 'arxiv'}
-                    aria-pressed={newsFilter.sort !== 'arxiv'}
-                    title="AI picks first, then by how closely each paper matches your notes"
-                    on:click={() => setNewsFilter({ sort: 'rank' })}
-                  >
-                    For you
-                  </button>
-                  <button
-                    type="button"
-                    class:active={newsFilter.sort === 'arxiv'}
-                    aria-pressed={newsFilter.sort === 'arxiv'}
-                    title="The order arXiv lists them in"
-                    on:click={() => setNewsFilter({ sort: 'arxiv' })}
-                  >
-                    arXiv
-                  </button>
-                </div>
                 <select
                   aria-label="Category"
                   class="news-category-select"
