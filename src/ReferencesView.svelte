@@ -18,10 +18,11 @@
   let author = '';
   let open = new Set();
 
+  // BibTeX writes "Last, First"; read as "First Last" so names are not mistaken for a list.
   const authorsOf = (entry) =>
     (entry.author || '')
       .split(/\s+and\s+/)
-      .map((name) => name.trim())
+      .map((name) => name.trim().replace(/^([^,]+),\s*(.+)$/, '$2 $1'))
       .filter(Boolean);
 
   $: if (active && root !== loadedRoot) load(root);

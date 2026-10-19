@@ -6432,3 +6432,7 @@ input[type='radio'] {
   border-radius: 6px;
   font-size: 12px;
 }
+
+.references-author:not(:last-of-type)::after {
+  content: ',';
+}
