@@ -6422,3 +6422,13 @@ input[type='radio'] {
 .references-filter {
   margin: 8px 16px 0;
 }
+
+.references-bibtex {
+  margin: 4px 0;
+  padding: 8px;
+  overflow-x: auto;
+  user-select: text;
+  background: rgba(127, 127, 127, 0.12);
+  border-radius: 6px;
+  font-size: 12px;
+}

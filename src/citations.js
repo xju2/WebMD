@@ -73,7 +73,8 @@ export function parseBibtex(source = '') {
         year: cleanBibtex(fields.year),
         doi: cleanBibtex(fields.doi),
         url: cleanBibtex(fields.url),
-        arxiv: cleanBibtex(fields.eprint)
+        arxiv: cleanBibtex(fields.eprint),
+        raw: text.slice(match.index, end + 1)
       });
     }
     start.lastIndex = end + 1;

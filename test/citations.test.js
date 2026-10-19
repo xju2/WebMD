@@ -38,7 +38,8 @@ test('parses BibTeX fields with nested braces', () => {
     year: '2026',
     doi: '10.1234/example.1',
     url: '',
-    arxiv: ''
+    arxiv: '',
+    raw: BIBTEX.slice(BIBTEX.indexOf('@article'))
   });
 });
 

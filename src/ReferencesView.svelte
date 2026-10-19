@@ -16,6 +16,7 @@
   let error = '';
   let copied = '';
   let author = '';
+  let open = new Set();
 
   const authorsOf = (entry) =>
     (entry.author || '')
@@ -79,9 +80,14 @@
     }
   }
 
-  async function copyCite(key) {
+  function toggle(key) {
+    open.has(key) ? open.delete(key) : open.add(key);
+    open = open;
+  }
+
+  async function copyCite(key, text = `[@${key}]`) {
     try {
-      await navigator.clipboard.writeText(`[@${key}]`);
+      await navigator.clipboard.writeText(text);
       copied = key;
       setTimeout(() => (copied = copied === key ? '' : copied), 1500);
     } catch {
@@ -141,12 +147,24 @@
           <button type="button" on:click={() => copyCite(entry.key)}>
             {copied === entry.key ? 'Copied' : `[@${entry.key}]`}
           </button>
+          <button type="button" on:click={() => toggle(entry.key)}>
+            {open.has(entry.key) ? 'Hide BibTeX' : 'BibTeX'}
+          </button>
           {#if citationUrl(entry)}
             <a href={citationUrl(entry)} target="_blank" rel="noreferrer"
               >Open</a
             >
           {/if}
         </span>
+        {#if open.has(entry.key)}
+          <pre class="references-bibtex">{entry.raw}</pre>
+          <button
+            type="button"
+            on:click={() => copyCite(entry.key + '.bib', entry.raw)}
+          >
+            {copied === entry.key + '.bib' ? 'Copied' : 'Copy entry'}
+          </button>
+        {/if}
       </li>
     {:else}
       <li class="references-empty">
