@@ -2,7 +2,7 @@
   // The References destination: every entry of references.bib, filtered as you
   // type. "Ask AI" is a button, not a timer: it sends the query and a keyword
   // shortlist to the model and shows its picks, each with a reason.
-  import { citationLabel, citationUrl } from './citations.js';
+  import { citationUrl } from './citations.js';
   import { ICONS } from './icons.js';
 
   export let root = '0';
@@ -15,15 +15,25 @@
   let busy = false;
   let error = '';
   let copied = '';
+  let author = '';
+
+  const authorsOf = (entry) =>
+    (entry.author || '')
+      .split(/\s+and\s+/)
+      .map((name) => name.trim())
+      .filter(Boolean);
 
   $: if (active && root !== loadedRoot) load(root);
   $: words = query.toLowerCase().split(/\s+/).filter(Boolean);
   $: byKey = new Map(entries.map((entry) => [entry.key, entry]));
   $: shown = picks
     ? picks.flatMap((pick) =>
-        byKey.has(pick.key) ? [{ ...byKey.get(pick.key), reason: pick.reason }] : []
+        byKey.has(pick.key)
+          ? [{ ...byKey.get(pick.key), reason: pick.reason }]
+          : []
       )
     : entries.filter((entry) => {
+        if (author && !authorsOf(entry).includes(author)) return false;
         const haystack =
           `${entry.key} ${entry.title} ${entry.author} ${entry.year} ${entry.fields?.abstract ?? ''}`.toLowerCase();
         return words.every((word) => haystack.includes(word));
@@ -101,25 +111,48 @@
       </button>
     </form>
   </header>
+  {#if author}
+    <p class="references-filter">
+      Author: <strong>{author}</strong>
+      <button type="button" on:click={() => (author = '')}>Clear</button>
+    </p>
+  {/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <ul class="references-list">
     {#each shown as entry (entry.key)}
       <li>
         <strong>{entry.title || entry.key}</strong>
-        <span class="references-meta">{citationLabel(entry)}</span>
+        <span class="references-meta">
+          {#each authorsOf(entry).slice(0, 6) as name}
+            <button
+              class="references-author"
+              type="button"
+              on:click={() => {
+                author = name;
+                picks = null;
+              }}>{name}</button
+            >
+          {/each}
+          {#if authorsOf(entry).length > 6}and {authorsOf(entry).length - 6} more{/if}
+          {entry.year}
+        </span>
         {#if entry.reason}<em>{entry.reason}</em>{/if}
         <span class="references-actions">
           <button type="button" on:click={() => copyCite(entry.key)}>
             {copied === entry.key ? 'Copied' : `[@${entry.key}]`}
           </button>
           {#if citationUrl(entry)}
-            <a href={citationUrl(entry)} target="_blank" rel="noreferrer">Open</a>
+            <a href={citationUrl(entry)} target="_blank" rel="noreferrer"
+              >Open</a
+            >
           {/if}
         </span>
       </li>
     {:else}
       <li class="references-empty">
-        {entries.length ? 'No entry matches.' : 'references.bib has no entries.'}
+        {entries.length
+          ? 'No entry matches.'
+          : 'references.bib has no entries.'}
       </li>
     {/each}
   </ul>

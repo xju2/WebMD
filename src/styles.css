@@ -6408,3 +6408,17 @@ input[type='radio'] {
   gap: 12px;
   align-items: center;
 }
+
+.references-author {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+
+.references-filter {
+  margin: 8px 16px 0;
+}
