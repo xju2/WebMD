@@ -60,6 +60,10 @@ test('recognises supported citation links', () => {
     kind: 'doi',
     id: '10.1234/example.1'
   });
+  assert.deepEqual(citationSource('arXiv:2610.18454'), {
+    kind: 'arxiv',
+    id: '2610.18454'
+  });
   assert.deepEqual(citationSource('https://arxiv.org/abs/2608.00146'), {
     kind: 'arxiv',
     id: '2608.00146'

@@ -5,6 +5,8 @@ const ARXIV_URL = new RegExp(
   String.raw`^(?:https?://)?(?:www\.)?arxiv\.org\/(?:abs|pdf|html)\/(${ARXIV_ID})(?:\.pdf)?\/?(?:[?#]\S*)?$`,
   'i'
 );
+// The identifier on its own, as arXiv prints it: `arXiv:2511.15684`.
+const ARXIV_REF = new RegExp(String.raw`^arxiv:\s*(${ARXIV_ID})$`, 'i');
 const DOI_URL =
   /^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)(10\.\d{4,9}\/\S+)$/i;
 const INSPIRE_URL =
@@ -25,7 +27,7 @@ export function citationPasteSource(text, { beforeCursor = '' } = {}) {
 
 export function citationSource(value) {
   const text = String(value ?? '').trim();
-  let match = ARXIV_URL.exec(text);
+  let match = ARXIV_URL.exec(text) || ARXIV_REF.exec(text);
   // A version suffix points at one revision of a paper, but every catalogue
   // records the paper itself, so the id we look up drops the `v2`.
   if (match) return { kind: 'arxiv', id: match[1].replace(/v\d+$/, '') };
