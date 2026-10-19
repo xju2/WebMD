@@ -1435,9 +1435,10 @@ test('asks the model to pick references and drops keys it invented', async () =>
       body: JSON.stringify({ root: '0', query: 'graph jets' })
     });
     assert.equal(response.status, 200);
-    assert.deepEqual((await response.json()).matches, [
-      { key: 'A:2020', reason: 'graphs' }
-    ]);
+    const body = await response.json();
+    assert.deepEqual(body.matches, [{ key: 'A:2020', reason: 'graphs' }]);
+    assert.equal(body.reviewed, 2);
+    assert.equal(body.usage.model, 'llama-test');
   } finally {
     server.close();
   }

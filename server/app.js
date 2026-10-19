@@ -203,12 +203,18 @@ export async function createApp({
       const entries = await workspaces.get(req.body?.root).references();
       const candidates = shortlistReferences(entries, query);
       if (!candidates.length) return res.json({ matches: [] });
+      let usage;
       const reply = await runAiCompletion({
         messages: buildReferenceSearchMessages(query, candidates),
         env: aiEnv,
-        fetchImpl: aiFetch
+        fetchImpl: aiFetch,
+        onUsage: (value) => (usage = value)
       });
-      res.json({ matches: parseReferenceMatches(reply, candidates) });
+      res.json({
+        matches: parseReferenceMatches(reply, candidates),
+        reviewed: candidates.length,
+        usage
+      });
     })
   );
 

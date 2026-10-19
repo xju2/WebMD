@@ -16,6 +16,9 @@
   let entries = [];
   let query = '';
   let picks = null;
+  let usage = null;
+  let reviewed = 0;
+  let history = [];
   let busy = false;
   let error = '';
   let copied = '';
@@ -83,8 +86,47 @@
     return body;
   }
 
+  const HISTORY_LIMIT = 10;
+  const historyKey = (value) => `webmd:reference-searches:${value}`;
+
+  function saveHistory() {
+    try {
+      localStorage.setItem(historyKey(root), JSON.stringify(history));
+    } catch {
+      // Storage may be blocked; the list still works this session.
+    }
+  }
+
+  // "claude-sonnet-5-5 read 150 entries · 3,210 in / 120 out tokens · about $0.0123"
+  function usageSummary(value, count) {
+    if (!value?.model) return '';
+    const n = (x) => Number(x).toLocaleString('en-US');
+    return [
+      `${value.model} read ${n(count)} entries`,
+      value.inputTokens != null &&
+        `${n(value.inputTokens)} in / ${n(value.outputTokens)} out tokens`,
+      value.cost != null &&
+        `about $${value.cost.toFixed(value.cost < 0.01 ? 4 : 2)}`
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  function restore(item) {
+    query = item.query;
+    picks = item.matches;
+    usage = item.usage;
+    reviewed = item.reviewed;
+    error = '';
+  }
+
   async function load(nextRoot) {
     loadedRoot = nextRoot;
+    try {
+      history = JSON.parse(localStorage.getItem(historyKey(nextRoot))) || [];
+    } catch {
+      history = [];
+    }
     picks = null;
     error = '';
     try {
@@ -108,6 +150,19 @@
         body: JSON.stringify({ root, query: query.trim() })
       });
       picks = body.matches;
+      usage = body.usage ?? null;
+      reviewed = body.reviewed;
+      history = [
+        {
+          query: query.trim(),
+          matches: body.matches,
+          usage,
+          reviewed,
+          at: Date.now()
+        },
+        ...history.filter((item) => item.query !== query.trim())
+      ].slice(0, HISTORY_LIMIT);
+      saveHistory();
     } catch (err) {
       error = err.message;
     } finally {
@@ -175,11 +230,28 @@
         <button type="button" on:click={() => (author = '')}>Clear</button>
       </p>
     {/if}
+    {#if history.length}
+      <div class="references-history" aria-label="Recent AI searches">
+        {#each history as item (item.query)}
+          <button
+            class:active={picks && item.query === query}
+            type="button"
+            title={usageSummary(item.usage, item.reviewed) ||
+              'Show this search again without asking'}
+            on:click={() => restore(item)}>{item.query}</button
+          >
+        {/each}
+      </div>
+    {/if}
     {#if picks}
       <p class="references-hint">
         {picks.length
           ? `AI picked ${picks.length} of ${entries.length}`
           : 'AI found nothing relevant'}
+        {#if usageSummary(usage, reviewed)}· {usageSummary(
+            usage,
+            reviewed
+          )}{/if}
       </p>
     {/if}
     <ul class="references-list">
