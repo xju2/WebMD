@@ -40,6 +40,7 @@
   } from './meetings.js';
   import { parseFrontmatter } from './frontmatter.js';
   import ConferenceView from './ConferenceView.svelte';
+  import ReferencesView from './ReferencesView.svelte';
   import {
     LAYOUT_KEY,
     RAIL_WIDTH,
@@ -182,7 +183,8 @@
     'news',
     'x',
     'meetings',
-    'conference'
+    'conference',
+    'references'
   ]);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const NEWS_NOTES_KEY = 'webmd:news-notes';
@@ -701,7 +703,8 @@
     viewMode === 'news' ||
     viewMode === 'x' ||
     viewMode === 'meetings' ||
-    viewMode === 'conference';
+    viewMode === 'conference' ||
+    viewMode === 'references';
   // The rail's workspace views bring their own toolbars, so the file actions
   // above them (Upload, Delete, Reference, Edit/Preview, Diff) step aside.
   $: documentControls = !WORKSPACE_VIEWS.has(viewMode);
@@ -714,9 +717,11 @@
           ? 'Meetings'
           : viewMode === 'conference'
             ? 'Conference'
-            : viewMode === 'tasks'
-              ? 'Tasks'
-              : selectedPath || 'Workspace Home';
+            : viewMode === 'references'
+              ? 'References'
+              : viewMode === 'tasks'
+                ? 'Tasks'
+                : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -2291,6 +2296,19 @@
     if (remember) rememberViewNavigation('conference');
     viewMode = 'conference';
     conferenceVisited = true;
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+  }
+
+  let referencesVisited = false;
+
+  async function showReferences({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('references');
+    viewMode = 'references';
+    referencesVisited = true;
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -4887,6 +4905,8 @@
       await showMeetings({ remember: false });
     else if (target.view === 'conference')
       await showConference({ remember: false });
+    else if (target.view === 'references')
+      await showReferences({ remember: false });
     else
       await openFile(target.path, {
         historyMode: 'replace',
@@ -6313,6 +6333,17 @@
       {@render icon('conference')}
     </button>
     <button
+      aria-label="Open references"
+      class:active={viewMode === 'references'}
+      class="global-action references-launcher"
+      data-tooltip="References"
+      disabled={!workspaceRoots.length}
+      type="button"
+      on:click={() => showReferences()}
+    >
+      {@render icon('references')}
+    </button>
+    <button
       aria-controls="ai-panel"
       aria-expanded={aiShown}
       aria-label={aiShown ? 'Hide AI assistant' : 'Show AI assistant'}
@@ -7693,6 +7724,12 @@
             active={viewMode === 'conference'}
             onOpenNote={openMeetingNote}
             onFilesChanged={() => loadTree(selectedRoot)}
+            root={selectedRoot}
+          />
+        {/if}
+        {#if referencesVisited}
+          <ReferencesView
+            active={viewMode === 'references'}
             root={selectedRoot}
           />
         {/if}

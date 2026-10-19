@@ -38,6 +38,8 @@ export const ICONS = {
     'M9 9.5h6',
     'M9 12h3.5'
   ],
+  // A book on a shelf.
+  references: ['M5 4.5h4v15H5z', 'M11 4.5h4v15h-4z', 'M17 6.5l3.5 1-3.5 12-3.5-1z'],
   // A timetable: days across, parallel tracks down.
   conference: [
     'M4 5.5h16v14H4z',

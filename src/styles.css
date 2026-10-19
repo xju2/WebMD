@@ -6366,3 +6366,45 @@ input[type='radio'] {
   text-decoration-color: var(--border-control);
   text-underline-offset: 3px;
 }
+
+/* References: the bibliography, filtered as you type. */
+.references-pane {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.references-pane[hidden] {
+  display: none;
+}
+
+.references-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 16px 24px;
+}
+
+.references-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+}
+
+.references-meta,
+.references-empty {
+  opacity: 0.7;
+}
+
+.references-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}

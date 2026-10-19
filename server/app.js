@@ -5,6 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
 import { fetchArxivMetadata, fetchArxivPdf, isArxivId } from './arxiv.js';
+import {
+  buildReferenceSearchMessages,
+  parseReferenceMatches,
+  shortlistReferences
+} from './reference-search.js';
 import { fetchCitationBibtex, upgradeArxivCitationKeys } from './citations.js';
 import { fetchIndicoTitle, indicoSites, isIndicoUrl } from './indico.js';
 import {
@@ -187,6 +192,23 @@ export async function createApp({
     '/api/workspace/references',
     asyncHandler(async (req, res) => {
       res.json({ entries: await workspaces.get(req.query.root).references() });
+    })
+  );
+
+  app.post(
+    '/api/workspace/references/search',
+    asyncHandler(async (req, res) => {
+      const query = String(req.body?.query ?? '').trim();
+      if (!query) throw new WorkspaceError(400, 'A search is required.');
+      const entries = await workspaces.get(req.body?.root).references();
+      const candidates = shortlistReferences(entries, query);
+      if (!candidates.length) return res.json({ matches: [] });
+      const reply = await runAiCompletion({
+        messages: buildReferenceSearchMessages(query, candidates),
+        env: aiEnv,
+        fetchImpl: aiFetch
+      });
+      res.json({ matches: parseReferenceMatches(reply, candidates) });
     })
   );
 

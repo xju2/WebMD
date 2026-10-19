@@ -1406,3 +1406,39 @@ test('serves an arXiv PDF once and from the cache after', async () => {
     server.close();
   }
 });
+
+test('asks the model to pick references and drops keys it invented', async () => {
+  const root = await tempRoot();
+  await fs.writeFile(
+    path.join(root, 'references.bib'),
+    '@article{A:2020, title={Jet tagging with graphs}, author={Doe, J}, year={2020}}\n@article{B:2021, title={Gardening}, author={Roe, R}, year={2021}}\n'
+  );
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      aiFetch: async () =>
+        new Response(
+          JSON.stringify({
+            message: {
+              content:
+                '{"matches":[{"key":"A:2020","reason":"graphs"},{"key":"Nope","reason":"x"}]}'
+            }
+          }) + '\n'
+        )
+    })
+  );
+  try {
+    const response = await fetch(`${url}/api/workspace/references/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ root: '0', query: 'graph jets' })
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).matches, [
+      { key: 'A:2020', reason: 'graphs' }
+    ]);
+  } finally {
+    server.close();
+  }
+});
