@@ -574,7 +574,11 @@
     workspaceRoots.find((root) => root.id === selectedRoot)?.name ||
     'Workspace';
   $: selectedIsMarkdown = selectedFileKind === 'markdown';
-  $: newsBeside = viewMode === 'news' && newsNotes && selectedIsMarkdown;
+  // The arXiv list and the references share one Notes toggle and note column.
+  $: newsBeside =
+    (viewMode === 'news' || viewMode === 'references') &&
+    newsNotes &&
+    selectedIsMarkdown;
   $: previewShown = viewMode === 'preview' || (newsBeside && newsPreview);
   $: editorShown = viewMode === 'edit' || (newsBeside && !newsPreview);
   $: if (newsBeside) requestAnimationFrame(() => editorView?.requestMeasure());
@@ -1727,8 +1731,8 @@
   // A note picked from the Files panel while writing beside the arXiv list
   // opens in that column, not over the list.
   function noteViewMode(root) {
-    return viewMode === 'news' && newsNotes
-      ? 'news'
+    return (viewMode === 'news' || viewMode === 'references') && newsNotes
+      ? viewMode
       : readWorkspaceViewMode(root);
   }
 
@@ -2309,6 +2313,7 @@
     if (remember) rememberViewNavigation('references');
     viewMode = 'references';
     referencesVisited = true;
+    if (newsNotes) await openNewsNotes();
     selectedText = '';
     selectedRange = null;
     clearInlineEdit();
@@ -5604,7 +5609,7 @@
   function setViewMode(mode, { remember = true } = {}) {
     // Beside the arXiv list, Edit and Preview change the note's column only.
     if (
-      viewMode === 'news' &&
+      (viewMode === 'news' || viewMode === 'references') &&
       newsNotes &&
       selectedIsMarkdown &&
       (mode === 'edit' || mode === 'preview')
@@ -7730,6 +7735,9 @@
         {#if referencesVisited}
           <ReferencesView
             active={viewMode === 'references'}
+            beside={newsBeside}
+            notesOpen={newsNotes && selectedIsMarkdown}
+            onToggleNotes={toggleNewsNotes}
             root={selectedRoot}
           />
         {/if}

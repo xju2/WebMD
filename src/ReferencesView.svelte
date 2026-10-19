@@ -7,6 +7,10 @@
 
   export let root = '0';
   export let active = false;
+  // A note is open in a column beside the list, to write while you read.
+  export let beside = false;
+  export let notesOpen = false;
+  export let onToggleNotes = () => {};
 
   let loadedRoot = null;
   let entries = [];
@@ -127,7 +131,12 @@
   }
 </script>
 
-<section class="references-pane" aria-label="References" hidden={!active}>
+<section
+  class="references-pane"
+  class:beside
+  aria-label="References"
+  hidden={!active}
+>
   <header class="tasks-toolbar">
     <h2>References <span class="news-date">{entries.length} entries</span></h2>
     <form class="references-search" on:submit|preventDefault={askAi}>
@@ -140,6 +149,16 @@
         type="search"
         on:input={() => (picks = null)}
       />
+      <button
+        aria-pressed={notesOpen}
+        class="news-notes-toggle"
+        class:active={notesOpen}
+        type="button"
+        title="Show a note beside the list, to write while you read"
+        on:click={onToggleNotes}
+      >
+        Notes
+      </button>
       <button class="primary" type="submit" disabled={busy || !query.trim()}>
         <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
           {#each ICONS.sparkles as d}<path {d} />{/each}
