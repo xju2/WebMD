@@ -12,7 +12,11 @@ export function shortlistReferences(entries, query, limit = MAX_CANDIDATES) {
   return entries
     .map((entry, index) => {
       const haystack = text(entry);
-      return { entry, index, hits: words.filter((w) => haystack.includes(w)).length };
+      return {
+        entry,
+        index,
+        hits: words.filter((w) => haystack.includes(w)).length
+      };
     })
     .sort((a, b) => b.hits - a.hits || a.index - b.index)
     .slice(0, limit)
@@ -32,14 +36,22 @@ export function buildReferenceSearchMessages(query, candidates) {
       role: 'system',
       content: `You search a researcher's bibliography. Reply with JSON only: {"matches":[{"key":"<citation key>","reason":"<one short sentence>"}]}, best first, at most ${MAX_MATCHES}, only keys from the list. Use {"matches":[]} when nothing fits.`
     },
-    { role: 'user', content: `Looking for: ${query}\n\nEntries (key | year | title | authors):\n${list}` }
+    {
+      role: 'user',
+      content: `Looking for: ${query}\n\nEntries (key | year | title | authors):\n${list}`
+    }
   ];
 }
 
 export function parseReferenceMatches(reply, candidates) {
   let parsed;
   try {
-    parsed = JSON.parse(String(reply).slice(String(reply).indexOf('{')));
+    parsed = JSON.parse(
+      String(reply).slice(
+        String(reply).indexOf('{'),
+        String(reply).lastIndexOf('}') + 1
+      )
+    );
   } catch {
     throw new WorkspaceError(502, 'The model did not return a usable answer.');
   }

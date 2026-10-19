@@ -18,12 +18,42 @@
   let author = '';
   let open = new Set();
 
+  const ACCENTS = { '`': '̀', "'": '́', '^': '̂', '~': '̃', '"': '̈' };
+  const GREEK = {
+    alpha: 'α',
+    beta: 'β',
+    gamma: 'γ',
+    delta: 'δ',
+    mu: 'μ',
+    nu: 'ν',
+    pi: 'π',
+    sigma: 'σ',
+    tau: 'τ',
+    omega: 'ω',
+    Lambda: 'Λ',
+    Delta: 'Δ'
+  };
+
+  // BibTeX keeps LaTeX in titles and names (Sol\`ene, Ly$\alpha$); show it as text.
+  const plain = (text = '') =>
+    text
+      .replace(/\\[ij]\b/g, (m) => m[1])
+      .replace(
+        /\\([`'^~"])\s*(\w)/g,
+        (_, mark, letter) => letter + ACCENTS[mark]
+      )
+      .replace(/\\([A-Za-z]+)/g, (m, name) => GREEK[name] ?? m)
+      .replace(/[$\\]/g, '')
+      .normalize('NFC');
+
   // BibTeX writes "Last, First"; read as "First Last" so names are not mistaken for a list.
   const authorsOf = (entry) =>
     (entry.author || '')
       .split(/\s+and\s+/)
       .map((name) => name.trim().replace(/^([^,]+),\s*(.+)$/, '$2 $1'))
-      .filter(Boolean);
+      .filter((name) => name && name !== 'others')
+      .map(plain);
+  const etAl = (entry) => /\band\s+others\b/.test(entry.author || '');
 
   $: if (active && root !== loadedRoot) load(root);
   $: words = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -100,7 +130,7 @@
 <section class="references-pane" aria-label="References" hidden={!active}>
   <header class="tasks-toolbar">
     <h2>References <span class="news-date">{entries.length} entries</span></h2>
-    <form class="conference-open" on:submit|preventDefault={askAi}>
+    <form class="references-search" on:submit|preventDefault={askAi}>
       <input
         bind:value={query}
         aria-label="Search references"
@@ -118,61 +148,79 @@
       </button>
     </form>
   </header>
-  {#if author}
-    <p class="references-filter">
-      Author: <strong>{author}</strong>
-      <button type="button" on:click={() => (author = '')}>Clear</button>
-    </p>
-  {/if}
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <ul class="references-list">
-    {#each shown as entry (entry.key)}
-      <li>
-        <strong>{entry.title || entry.key}</strong>
-        <span class="references-meta">
-          {#each authorsOf(entry).slice(0, 6) as name}
+  <div class="references-body">
+    {#if error}<p class="references-error" role="alert">{error}</p>{/if}
+    {#if author}
+      <p class="references-filter">
+        Author <strong>{author}</strong>
+        <button type="button" on:click={() => (author = '')}>Clear</button>
+      </p>
+    {/if}
+    {#if picks}
+      <p class="references-hint">
+        {picks.length
+          ? `AI picked ${picks.length} of ${entries.length}`
+          : 'AI found nothing relevant'}
+      </p>
+    {/if}
+    <ul class="references-list">
+      {#each shown as entry (entry.key)}
+        <li class="references-card">
+          <h3>{plain(entry.title) || entry.key}</h3>
+          <p class="references-meta">
+            {#each authorsOf(entry).slice(0, 6) as name}
+              <button
+                class="references-author"
+                type="button"
+                on:click={() => {
+                  author = name;
+                  picks = null;
+                }}>{name}</button
+              >
+            {/each}
+            {#if authorsOf(entry).length > 6 || etAl(entry)}<span>et al.</span
+              >{/if}
+            {#if entry.year}<span class="references-year">{entry.year}</span
+              >{/if}
+          </p>
+          {#if entry.reason}<p class="references-reason">{entry.reason}</p>{/if}
+          <div class="references-actions">
             <button
-              class="references-author"
+              class="references-key"
               type="button"
-              on:click={() => {
-                author = name;
-                picks = null;
-              }}>{name}</button
+              title="Copy citation"
+              on:click={() => copyCite(entry.key)}
             >
-          {/each}
-          {#if authorsOf(entry).length > 6}and {authorsOf(entry).length - 6} more{/if}
-          {entry.year}
-        </span>
-        {#if entry.reason}<em>{entry.reason}</em>{/if}
-        <span class="references-actions">
-          <button type="button" on:click={() => copyCite(entry.key)}>
-            {copied === entry.key ? 'Copied' : `[@${entry.key}]`}
-          </button>
-          <button type="button" on:click={() => toggle(entry.key)}>
-            {open.has(entry.key) ? 'Hide BibTeX' : 'BibTeX'}
-          </button>
-          {#if citationUrl(entry)}
-            <a href={citationUrl(entry)} target="_blank" rel="noreferrer"
-              >Open</a
-            >
+              {copied === entry.key ? 'Copied' : `[@${entry.key}]`}
+            </button>
+            <button type="button" on:click={() => toggle(entry.key)}>
+              {open.has(entry.key) ? 'Hide BibTeX' : 'BibTeX'}
+            </button>
+            {#if citationUrl(entry)}
+              <a href={citationUrl(entry)} target="_blank" rel="noreferrer"
+                >Open ↗</a
+              >
+            {/if}
+          </div>
+          {#if open.has(entry.key)}
+            <div class="references-bibtex">
+              <button
+                type="button"
+                on:click={() => copyCite(entry.key + '.bib', entry.raw)}
+              >
+                {copied === entry.key + '.bib' ? 'Copied' : 'Copy entry'}
+              </button>
+              <pre>{entry.raw}</pre>
+            </div>
           {/if}
-        </span>
-        {#if open.has(entry.key)}
-          <pre class="references-bibtex">{entry.raw}</pre>
-          <button
-            type="button"
-            on:click={() => copyCite(entry.key + '.bib', entry.raw)}
-          >
-            {copied === entry.key + '.bib' ? 'Copied' : 'Copy entry'}
-          </button>
-        {/if}
-      </li>
-    {:else}
-      <li class="references-empty">
-        {entries.length
-          ? 'No entry matches.'
-          : 'references.bib has no entries.'}
-      </li>
-    {/each}
-  </ul>
+        </li>
+      {:else}
+        <li class="references-empty">
+          {entries.length
+            ? 'No entry matches.'
+            : 'references.bib has no entries.'}
+        </li>
+      {/each}
+    </ul>
+  </div>
 </section>

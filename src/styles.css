@@ -6377,36 +6377,129 @@ input[type='radio'] {
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--surface-muted);
 }
 
 .references-pane[hidden] {
   display: none;
 }
 
-.references-list {
-  list-style: none;
-  margin: 0;
-  padding: 8px 16px 24px;
+.references-search {
+  display: flex;
+  flex: 1 1 280px;
+  gap: 8px;
+  max-width: 520px;
+  min-width: 0;
 }
 
-.references-list li {
+.references-search input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-height);
+  padding: 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.references-search button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.references-search button.primary:disabled {
+  border-color: var(--border-control);
+  background: var(--surface);
+  color: var(--ink-disabled);
+}
+
+.references-body {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 16px 24px 32px;
+}
+
+.references-error {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid #f0c2be;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.references-filter,
+.references-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
+}
+
+.references-filter button,
+.references-actions button,
+.references-bibtex button {
+  height: var(--control-height-sm);
+  padding: 0 10px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.references-filter button:hover,
+.references-actions button:hover,
+.references-bibtex button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.references-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.references-meta,
-.references-empty {
-  opacity: 0.7;
-}
-
-.references-actions {
+.references-card {
   display: flex;
-  gap: 12px;
-  align-items: center;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.references-card h3 {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.references-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.35em;
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.88rem;
 }
 
 .references-author {
@@ -6415,24 +6508,86 @@ input[type='radio'] {
   background: none;
   color: inherit;
   font: inherit;
-  text-decoration: underline dotted;
   cursor: pointer;
 }
 
-.references-filter {
-  margin: 8px 16px 0;
-}
-
-.references-bibtex {
-  margin: 4px 0;
-  padding: 8px;
-  overflow-x: auto;
-  user-select: text;
-  background: rgba(127, 127, 127, 0.12);
-  border-radius: 6px;
-  font-size: 12px;
+.references-author:hover {
+  color: var(--accent-ink);
+  text-decoration: underline;
 }
 
 .references-author:not(:last-of-type)::after {
   content: ',';
+}
+
+.references-year {
+  color: var(--ink-subtle);
+}
+
+.references-year::before {
+  content: '· ';
+}
+
+.references-reason {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 0.88rem;
+}
+
+.references-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.references-actions a {
+  color: var(--accent-ink);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.references-actions a:hover {
+  text-decoration: underline;
+}
+
+.references-actions .references-key {
+  border-color: var(--accent-soft-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: var(--code-font);
+}
+
+.references-bibtex {
+  position: relative;
+}
+
+.references-bibtex button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}
+
+.references-bibtex pre {
+  margin: 0;
+  padding: 12px;
+  overflow-x: auto;
+  user-select: text;
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-sm);
+  background: var(--code-surface);
+  color: var(--code-ink);
+  font-family: var(--code-font);
+  font-size: 0.8rem;
+}
+
+.references-empty {
+  padding: 32px 0;
+  color: var(--ink-muted);
+  text-align: center;
 }
