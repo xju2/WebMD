@@ -1999,6 +1999,18 @@
       return;
     }
 
+    // Same platform-modifier rule as above; Cmd/Ctrl+B has no editor binding.
+    if (
+      event.code === 'KeyB' &&
+      !event.shiftKey &&
+      !event.altKey &&
+      (shortcutKey === 'Cmd' ? event.metaKey : event.ctrlKey)
+    ) {
+      event.preventDefault();
+      toggleLayoutPanel('files');
+      return;
+    }
+
     if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey)
       return;
 
@@ -2009,7 +2021,10 @@
       // through the dashboard.
       KeyD: () => workspaceRoots.length && openTodayNote(),
       Period: () => openNewerDailyNote(),
+      KeyA: () => toggleLayoutPanel('ai'),
       KeyE: () => selectedPath && selectedIsMarkdown && setViewMode('edit'),
+      KeyF: () => !paletteOpen && openPalette(),
+      KeyG: () => showGraph(),
       KeyP: () => selectedPath && setViewMode('preview'),
       KeyT: () => workspaceRoots.length && showTasks(),
       // Not KeyR: Chrome reserves Cmd/Ctrl+Shift+R for a hard reload.
@@ -7062,6 +7077,10 @@
               <dt>Shortcuts</dt>
               <dd>
                 <code>{shortcutKey}+K</code> quick open
+                <code>{shortcutKey}+B</code> files panel
+                <code>{shortcutKey}+Shift+A</code> AI panel
+                <code>{shortcutKey}+Shift+F</code> search notes
+                <code>{shortcutKey}+Shift+G</code> graph
                 <code>{shortcutKey}+Shift+D</code> today’s note
                 <code>{shortcutKey}+Shift+T</code> tasks
                 <code>/</code> filter tasks (on the Tasks board)
