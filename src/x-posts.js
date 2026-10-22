@@ -64,18 +64,40 @@ export function collectGithubRepos(content = '') {
   return [...repos.values()];
 }
 
+/**
+ * Notes cite a paper as `- Ju et al., "Title" — [arXiv:id](link)`, so the words
+ * before the link on its line are the best name for it.
+ */
+function citationBefore(content, index) {
+  const start = content.lastIndexOf('\n', index - 1) + 1;
+  return content
+    .slice(start, index)
+    .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/, '')
+    .replace(/[\s(—–-]+$/, '');
+}
+
 /** Every arXiv paper a note links to, once each (versions merged), as `{ url, handle, label }`. */
 export function collectArxivPapers(content = '') {
   const papers = new Map();
-  for (const [, text, linked, bare] of content.matchAll(LINK)) {
+  for (const match of content.matchAll(LINK)) {
+    const [, text, linked, bare] = match;
     const id = arxivPasteId(linked ?? bare)?.replace(/v\d+$/, '');
-    if (!id || papers.has(id)) continue;
+    if (!id) continue;
+    const handle = `arXiv:${id}`;
     const label = text?.trim();
-    papers.set(id, {
-      url: `https://arxiv.org/abs/${id}`,
-      handle: `arXiv:${id}`,
-      label: label && !/^arxiv:/i.test(label) ? label : `arXiv:${id}`
-    });
+    const named =
+      (label && !/^arxiv:/i.test(label) ? label : '') ||
+      citationBefore(content, match.index);
+    const listed = papers.get(id);
+    if (listed) {
+      if (listed.label === handle && named) listed.label = named;
+    } else {
+      papers.set(id, {
+        url: `https://arxiv.org/abs/${id}`,
+        handle,
+        label: named || handle
+      });
+    }
   }
   return [...papers.values()];
 }

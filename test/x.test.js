@@ -166,3 +166,11 @@ test('lists each arXiv paper once across URL forms and versions', async () => {
     ['arXiv:2511.15684']
   );
 });
+
+test('names an arXiv paper from the citation before its link', async () => {
+  const { collectArxivPapers } = await import('../src/x-posts.js');
+  const [paper] = collectArxivPapers(
+    '- Baruah et al., "SParTA" — [arXiv:2610.27106](https://arxiv.org/abs/2610.27106)\n'
+  );
+  assert.equal(paper.label, 'Baruah et al., "SParTA"');
+});

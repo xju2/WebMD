@@ -229,7 +229,10 @@ function listXPosts(corpus) {
             path: file.path,
             modified: file.mtimeMs
           });
-        } else if (listed.label === `${listed.handle} on X`) {
+        } else if (
+          listed.label === listed.handle ||
+          listed.label === `${listed.handle} on X`
+        ) {
           listed.label = post.label;
         }
       }
