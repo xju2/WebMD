@@ -364,6 +364,24 @@
   let xGithub = [];
   let xArxiv = [];
   let xKind = 'posts';
+  let githubInfo = {};
+  // Descriptions arrive one repo at a time, so the list shows at once and
+  // fills in; the server caches, and this asks once per repo per page load.
+  $: if (xKind === 'github') loadGithubDescriptions(xGithub);
+  async function loadGithubDescriptions(repos) {
+    for (const { handle } of repos) {
+      if (handle in githubInfo) continue;
+      githubInfo[handle] = '';
+      try {
+        const { description } = await requestJson(
+          `/api/github/description?name=${encodeURIComponent(handle)}`
+        );
+        githubInfo[handle] = description;
+      } catch {
+        // No description is a fine answer.
+      }
+    }
+  }
   let xStatus = '';
   let xQuery = '';
   let newsRankStatus = '';

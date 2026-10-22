@@ -36,6 +36,7 @@ import {
   setRecordingField,
   transcriptForModel
 } from './transcripts.js';
+import { fetchGithubDescription, isGithubRepoName } from './github.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import { externalUrl, openInChrome, OpenUrlError } from './open-url.js';
 import { fetchRemoteImage } from './remote-images.js';
@@ -1023,6 +1024,23 @@ export async function createApp({
         throw new WorkspaceError(400, 'An X post link is required.');
       }
       res.json(await fetchXPost(url.trim(), { fetchImpl: xFetch }));
+    })
+  );
+
+  app.get(
+    '/api/github/description',
+    asyncHandler(async (req, res) => {
+      if (!isGithubRepoName(req.query.name)) {
+        throw new WorkspaceError(
+          400,
+          'A repository name owner/repo is required.'
+        );
+      }
+      res.json({
+        description: await fetchGithubDescription(req.query.name, {
+          fetchImpl: xFetch
+        })
+      });
     })
   );
 
