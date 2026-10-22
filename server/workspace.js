@@ -14,7 +14,7 @@ import {
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
 import { collectTasks } from '../src/tasks.js';
-import { collectXPosts } from '../src/x-posts.js';
+import { collectGithubRepos, collectXPosts } from '../src/x-posts.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
@@ -211,25 +211,28 @@ function listTasks(corpus, { includeDone = false, limit = TASK_LIMIT } = {}) {
 // several notes is listed once, under the note edited most recently, but with
 // the first real label any note gives it rather than the bare `handle on X`.
 function listXPosts(corpus) {
-  const posts = new Map();
   const notes = corpus
     .filter((file) => file.fileKind === 'markdown')
     .sort((left, right) => right.mtimeMs - left.mtimeMs);
-  for (const file of notes) {
-    for (const post of collectXPosts(file.content)) {
-      const listed = posts.get(post.url);
-      if (!listed) {
-        posts.set(post.url, {
-          ...post,
-          path: file.path,
-          modified: file.mtimeMs
-        });
-      } else if (listed.label === `${listed.handle} on X`) {
-        listed.label = post.label;
+  const list = (collect) => {
+    const found = new Map();
+    for (const file of notes) {
+      for (const post of collect(file.content)) {
+        const listed = found.get(post.url);
+        if (!listed) {
+          found.set(post.url, {
+            ...post,
+            path: file.path,
+            modified: file.mtimeMs
+          });
+        } else if (listed.label === `${listed.handle} on X`) {
+          listed.label = post.label;
+        }
       }
     }
-  }
-  return { posts: [...posts.values()] };
+    return [...found.values()];
+  };
+  return { posts: list(collectXPosts), github: list(collectGithubRepos) };
 }
 
 function buildWorkspaceGraph(corpus, references = []) {

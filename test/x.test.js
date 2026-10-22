@@ -146,3 +146,12 @@ test('reports a post neither endpoint will hand over as a 404', async () => {
 test('rejects a link that is not an X post', async () => {
   await assert.rejects(fetchXPost('https://x.com/pvncher'), { status: 400 });
 });
+
+test('lists each GitHub repo once, whatever page of it a note links to', async () => {
+  const { collectGithubRepos } = await import('../src/x-posts.js');
+  const urls = collectGithubRepos(
+    'See [PR](https://github.com/a/b/pull/3), https://github.com/a/b.git, ' +
+      'https://github.com/settings/profile and https://github.com/c'
+  ).map((repo) => repo.handle);
+  assert.deepEqual(urls, ['a/b']);
+});

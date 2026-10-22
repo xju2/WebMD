@@ -361,6 +361,8 @@
   let newsRanking = null;
   // X posts linked from the workspace's notes, newest note first.
   let xPosts = [];
+  let xGithub = [];
+  let xKind = 'posts';
   let xStatus = '';
   let xQuery = '';
   let newsRankStatus = '';
@@ -774,7 +776,9 @@
     clipped: newsClipped
   }).length;
   $: xWords = xQuery.toLowerCase().split(/\s+/).filter(Boolean);
-  $: visibleXPosts = xPosts.filter((post) => {
+  $: xItems = xKind === 'github' ? xGithub : xPosts;
+  $: xNoun = xKind === 'github' ? 'GitHub repos' : 'posts';
+  $: visibleXPosts = xItems.filter((post) => {
     const text = `${post.label} ${post.handle} ${post.path}`.toLowerCase();
     return xWords.every((word) => text.includes(word));
   });
@@ -798,22 +802,20 @@
   $: pickById = new Map(
     (newsRanking?.picks ?? []).map((pick) => [pick.id, pick])
   );
-  $: rankedPapers =
-    !newsRanking
-      ? visiblePapers
-      : [...visiblePapers].sort(
-          (left, right) =>
-            (rankIndex.get(left.id) ?? rankIndex.size) -
-            (rankIndex.get(right.id) ?? rankIndex.size)
-        );
+  $: rankedPapers = !newsRanking
+    ? visiblePapers
+    : [...visiblePapers].sort(
+        (left, right) =>
+          (rankIndex.get(left.id) ?? rankIndex.size) -
+          (rankIndex.get(right.id) ?? rankIndex.size)
+      );
   $: pickedPapers = rankedPapers.filter((paper) => pickById.has(paper.id));
   // The five strongest of today's picks, whichever of them the filter shows.
   $: topPickIds = new Set([...pickById.keys()].slice(0, 5));
   $: topPapers = pickedPapers.filter((paper) => topPickIds.has(paper.id));
   // A failed ranking keeps the Top picks heading, so Re-rank can try again.
   $: newsRankFailed =
-    !!newsRanking &&
-    !['ai', 'none'].includes(newsRanking.method);
+    !!newsRanking && !['ai', 'none'].includes(newsRanking.method);
   $: morePicks = pickedPapers.filter((paper) => !topPickIds.has(paper.id));
   $: otherPapers = pickById.size
     ? rankedPapers.filter((paper) => !pickById.has(paper.id))
@@ -2278,17 +2280,19 @@
     clearInlineEdit();
     error = '';
     const root = selectedRoot;
-    xStatus = 'Loading X posts...';
+    xStatus = 'Loading links...';
     try {
       const result = await requestJson(
         `/api/workspace/x-posts?root=${encodeURIComponent(root)}`
       );
       if (root !== selectedRoot) return;
       xPosts = result.posts;
+      xGithub = result.github;
       xStatus = '';
     } catch (err) {
       if (root !== selectedRoot) return;
       xPosts = [];
+      xGithub = [];
       xStatus = err.message;
     }
   }
@@ -6320,10 +6324,10 @@
       {@render icon('news')}
     </button>
     <button
-      aria-label="Open X posts"
+      aria-label="Open links in your notes"
       class:active={viewMode === 'x'}
       class="global-action x-launcher"
-      data-tooltip="X posts in your notes"
+      data-tooltip="X posts and GitHub repos in your notes"
       disabled={!workspaceRoots.length}
       type="button"
       on:click={() => showXPosts()}
@@ -7680,18 +7684,22 @@
           </section>
         {/if}
         {#if viewMode === 'x'}
-          <section class="news-pane" aria-label="X posts">
+          <section class="news-pane" aria-label="Links in your notes">
             <header class="tasks-toolbar news-toolbar">
               <h2>X</h2>
               <div class="tasks-summary">
-                <span>{visibleXPosts.length} posts</span>
+                <select aria-label="Kind of link" bind:value={xKind}>
+                  <option value="posts">X posts</option>
+                  <option value="github">GitHub repos</option>
+                </select>
+                <span>{visibleXPosts.length} {xNoun}</span>
                 <div class="search-field news-filter">
                   {@render icon('search')}
                   <input
                     class="tasks-filter"
                     type="search"
-                    placeholder="Filter posts"
-                    aria-label="Filter posts"
+                    placeholder="Filter {xNoun}"
+                    aria-label="Filter {xNoun}"
                     title="Every word must appear in the label, handle, or note"
                     bind:value={xQuery}
                   />
@@ -7713,7 +7721,9 @@
                     >
                   </h4>
                   <p class="news-meta">
-                    <span class="news-id">@{post.handle}</span>
+                    <span class="news-id"
+                      >{xKind === 'github' ? '' : '@'}{post.handle}</span
+                    >
                     <button
                       class="x-note"
                       title="Open the note that links to this post"
@@ -7725,9 +7735,9 @@
               {:else}
                 {#if !xStatus}
                   <li class="preview-empty">
-                    {xPosts.length
-                      ? 'No post matches this filter.'
-                      : 'No note links to an X post yet. Paste one into a note and it shows up here.'}
+                    {xItems.length
+                      ? `No ${xNoun} match this filter.`
+                      : `No note links to ${xKind === 'github' ? 'a GitHub repo' : 'an X post'} yet. Paste one into a note and it shows up here.`}
                   </li>
                 {/if}
               {/each}

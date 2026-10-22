@@ -20,3 +20,46 @@ export function collectXPosts(content = '') {
   }
   return [...posts.values()];
 }
+
+// Not accounts: github.com/<these>/<anything> is a site page, not a repository.
+const GITHUB_RESERVED = new Set([
+  'about',
+  'collections',
+  'explore',
+  'features',
+  'issues',
+  'login',
+  'marketplace',
+  'notifications',
+  'orgs',
+  'pricing',
+  'pulls',
+  'search',
+  'settings',
+  'sponsors',
+  'topics'
+]);
+
+/**
+ * Every repository a note links to, once each, as `{ url, handle, label }`.
+ * Issue, PR and file links collapse into their repository.
+ */
+export function collectGithubRepos(content = '') {
+  const repos = new Map();
+  for (const [, , linked, bare] of content.matchAll(LINK)) {
+    let parsed;
+    try {
+      parsed = new URL(linked ?? bare);
+    } catch {
+      continue;
+    }
+    if (parsed.hostname.replace(/^www\./, '') !== 'github.com') continue;
+    const [owner, name] = parsed.pathname.split('/').filter(Boolean);
+    const repo = name?.match(/^[\w.-]+/)?.[0].replace(/\.git$/, '');
+    if (!repo || GITHUB_RESERVED.has(owner.toLowerCase())) continue;
+    const handle = `${owner}/${repo}`;
+    const url = `https://github.com/${handle}`;
+    if (!repos.has(url)) repos.set(url, { url, handle, label: handle });
+  }
+  return [...repos.values()];
+}
