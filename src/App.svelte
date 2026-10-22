@@ -365,6 +365,23 @@
   let xArxiv = [];
   let xKind = 'posts';
   let githubInfo = {};
+  let arxivTitles = {};
+  // A paper cited as a bare link has no title in the note; arXiv has one.
+  $: if (xKind === 'arxiv') loadArxivTitles(xArxiv);
+  async function loadArxivTitles(papers) {
+    for (const { handle, label } of papers) {
+      if (label !== handle || handle in arxivTitles) continue;
+      arxivTitles[handle] = '';
+      try {
+        const { title } = await requestJson(
+          `/api/arxiv?id=${encodeURIComponent(handle.slice(6))}`
+        );
+        arxivTitles[handle] = title;
+      } catch {
+        // The number stays; that is the old behaviour.
+      }
+    }
+  }
   // Descriptions arrive one repo at a time, so the list shows at once and
   // fills in; the server caches, and this asks once per repo per page load.
   $: if (xKind === 'github') loadGithubDescriptions(xGithub);
@@ -799,7 +816,8 @@
   $: xNoun =
     { github: 'GitHub repos', arxiv: 'arXiv papers' }[xKind] ?? 'posts';
   $: visibleXPosts = xItems.filter((post) => {
-    const text = `${post.label} ${post.handle} ${post.path}`.toLowerCase();
+    const text =
+      `${arxivTitles[post.handle] || post.label} ${post.handle} ${post.path}`.toLowerCase();
     return xWords.every((word) => text.includes(word));
   });
   // A weekend's empty listing is not kept, but it is still today.
@@ -7740,7 +7758,8 @@
                       class="news-title"
                       href={post.url}
                       rel="noreferrer"
-                      target="_blank">{post.label}</a
+                      target="_blank"
+                      >{arxivTitles[post.handle] || post.label}</a
                     >
                   </h4>
                   <p class="news-meta">
