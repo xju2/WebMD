@@ -7792,6 +7792,13 @@
                       type="button"
                       on:click={() => openFile(post.path)}>{post.path}</button
                     >
+                    <span title="When that note was last edited"
+                      >{new Date(post.modified).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}</span
+                    >
                   </p>
                 </li>
               {:else}
