@@ -155,3 +155,14 @@ test('lists each GitHub repo once, whatever page of it a note links to', async (
   ).map((repo) => repo.handle);
   assert.deepEqual(urls, ['a/b']);
 });
+
+test('lists each arXiv paper once across URL forms and versions', async () => {
+  const { collectArxivPapers } = await import('../src/x-posts.js');
+  const papers = collectArxivPapers(
+    '"Title" — [arXiv:2511.15684](https://arxiv.org/abs/2511.15684v2) and https://arxiv.org/pdf/2511.15684.pdf'
+  );
+  assert.deepEqual(
+    papers.map((paper) => paper.handle),
+    ['arXiv:2511.15684']
+  );
+});

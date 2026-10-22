@@ -14,7 +14,11 @@ import {
 import { parseFrontmatter, parseMetadataQuery } from '../src/frontmatter.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
 import { collectTasks } from '../src/tasks.js';
-import { collectGithubRepos, collectXPosts } from '../src/x-posts.js';
+import {
+  collectArxivPapers,
+  collectGithubRepos,
+  collectXPosts
+} from '../src/x-posts.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
 
 const execFileAsync = promisify(execFile);
@@ -232,7 +236,11 @@ function listXPosts(corpus) {
     }
     return [...found.values()];
   };
-  return { posts: list(collectXPosts), github: list(collectGithubRepos) };
+  return {
+    posts: list(collectXPosts),
+    github: list(collectGithubRepos),
+    arxiv: list(collectArxivPapers)
+  };
 }
 
 function buildWorkspaceGraph(corpus, references = []) {

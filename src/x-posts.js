@@ -1,4 +1,4 @@
-import { xPostReference } from './editor.js';
+import { arxivPasteId, xPostReference } from './editor.js';
 
 // A Markdown link keeps its label; a bare URL (or `<url>`) has none.
 const LINK =
@@ -62,4 +62,20 @@ export function collectGithubRepos(content = '') {
     if (!repos.has(url)) repos.set(url, { url, handle, label: handle });
   }
   return [...repos.values()];
+}
+
+/** Every arXiv paper a note links to, once each (versions merged), as `{ url, handle, label }`. */
+export function collectArxivPapers(content = '') {
+  const papers = new Map();
+  for (const [, text, linked, bare] of content.matchAll(LINK)) {
+    const id = arxivPasteId(linked ?? bare)?.replace(/v\d+$/, '');
+    if (!id || papers.has(id)) continue;
+    const label = text?.trim();
+    papers.set(id, {
+      url: `https://arxiv.org/abs/${id}`,
+      handle: `arXiv:${id}`,
+      label: label && !/^arxiv:/i.test(label) ? label : `arXiv:${id}`
+    });
+  }
+  return [...papers.values()];
 }

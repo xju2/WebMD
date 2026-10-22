@@ -362,6 +362,7 @@
   // X posts linked from the workspace's notes, newest note first.
   let xPosts = [];
   let xGithub = [];
+  let xArxiv = [];
   let xKind = 'posts';
   let xStatus = '';
   let xQuery = '';
@@ -776,8 +777,9 @@
     clipped: newsClipped
   }).length;
   $: xWords = xQuery.toLowerCase().split(/\s+/).filter(Boolean);
-  $: xItems = xKind === 'github' ? xGithub : xPosts;
-  $: xNoun = xKind === 'github' ? 'GitHub repos' : 'posts';
+  $: xItems = { github: xGithub, arxiv: xArxiv }[xKind] ?? xPosts;
+  $: xNoun =
+    { github: 'GitHub repos', arxiv: 'arXiv papers' }[xKind] ?? 'posts';
   $: visibleXPosts = xItems.filter((post) => {
     const text = `${post.label} ${post.handle} ${post.path}`.toLowerCase();
     return xWords.every((word) => text.includes(word));
@@ -2288,11 +2290,13 @@
       if (root !== selectedRoot) return;
       xPosts = result.posts;
       xGithub = result.github;
+      xArxiv = result.arxiv;
       xStatus = '';
     } catch (err) {
       if (root !== selectedRoot) return;
       xPosts = [];
       xGithub = [];
+      xArxiv = [];
       xStatus = err.message;
     }
   }
@@ -6327,7 +6331,7 @@
       aria-label="Open links in your notes"
       class:active={viewMode === 'x'}
       class="global-action x-launcher"
-      data-tooltip="X posts and GitHub repos in your notes"
+      data-tooltip="X posts, GitHub repos and arXiv papers in your notes"
       disabled={!workspaceRoots.length}
       type="button"
       on:click={() => showXPosts()}
@@ -7691,6 +7695,7 @@
                 <select aria-label="Kind of link" bind:value={xKind}>
                   <option value="posts">X posts</option>
                   <option value="github">GitHub repos</option>
+                  <option value="arxiv">arXiv papers</option>
                 </select>
                 <span>{visibleXPosts.length} {xNoun}</span>
                 <div class="search-field news-filter">
@@ -7722,7 +7727,7 @@
                   </h4>
                   <p class="news-meta">
                     <span class="news-id"
-                      >{xKind === 'github' ? '' : '@'}{post.handle}</span
+                      >{xKind === 'posts' ? '@' : ''}{post.handle}</span
                     >
                     <button
                       class="x-note"
@@ -7737,7 +7742,7 @@
                   <li class="preview-empty">
                     {xItems.length
                       ? `No ${xNoun} match this filter.`
-                      : `No note links to ${xKind === 'github' ? 'a GitHub repo' : 'an X post'} yet. Paste one into a note and it shows up here.`}
+                      : `No note links to ${{ github: 'a GitHub repo', arxiv: 'an arXiv paper' }[xKind] ?? 'an X post'} yet. Paste one into a note and it shows up here.`}
                   </li>
                 {/if}
               {/each}
