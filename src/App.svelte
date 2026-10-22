@@ -188,6 +188,7 @@
   ]);
   const NEWS_FILTER_KEY = 'webmd:news-filter';
   const NEWS_NOTES_KEY = 'webmd:news-notes';
+  const X_KIND_KEY = 'webmd:links-kind';
   // The preview's outline: off until asked for, then remembered. It docks
   // beside the note only while the reading column keeps CENTER_MIN next to it.
   const PREVIEW_TOC_KEY = 'webmd:preview-toc';
@@ -363,7 +364,22 @@
   let xPosts = [];
   let xGithub = [];
   let xArxiv = [];
-  let xKind = 'posts';
+  let xKind = readXKind();
+  function readXKind() {
+    try {
+      const kind = localStorage.getItem(X_KIND_KEY);
+      return ['posts', 'github', 'arxiv'].includes(kind) ? kind : 'posts';
+    } catch {
+      return 'posts';
+    }
+  }
+  function rememberXKind() {
+    try {
+      localStorage.setItem(X_KIND_KEY, xKind);
+    } catch {
+      // Ignore storage failures; the choice still holds this session.
+    }
+  }
   let githubInfo = {};
   let arxivTitles = {};
   // A paper cited as a bare link has no title in the note; arXiv has one.
@@ -7728,7 +7744,11 @@
             <header class="tasks-toolbar news-toolbar">
               <h2>X</h2>
               <div class="tasks-summary">
-                <select aria-label="Kind of link" bind:value={xKind}>
+                <select
+                  aria-label="Kind of link"
+                  bind:value={xKind}
+                  on:change={rememberXKind}
+                >
                   <option value="posts">X posts</option>
                   <option value="github">GitHub repos</option>
                   <option value="arxiv">arXiv papers</option>
