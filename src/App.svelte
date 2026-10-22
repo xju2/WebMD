@@ -364,6 +364,29 @@
   let xPosts = [];
   let xGithub = [];
   let xArxiv = [];
+  let xCopied = false;
+  let xCopiedTimer;
+  // What is listed, as Markdown bullets, ready to paste into a note.
+  async function copyXList() {
+    const text = visibleXPosts
+      .map((post) => {
+        const label = (arxivTitles[post.handle] || post.label).replace(
+          /[[\]]/g,
+          '\\$&'
+        );
+        return `- [${label}](${post.url})`;
+      })
+      .join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      xCopied = true;
+      clearTimeout(xCopiedTimer);
+      xCopiedTimer = setTimeout(() => (xCopied = false), 1400);
+      error = '';
+    } catch {
+      error = 'Could not copy the list to the clipboard.';
+    }
+  }
   let xKind = readXKind();
   function readXKind() {
     try {
@@ -7754,6 +7777,15 @@
                   <option value="arxiv">arXiv papers</option>
                 </select>
                 <span>{visibleXPosts.length} {xNoun}</span>
+                <button
+                  class="news-clipped-toggle"
+                  disabled={!visibleXPosts.length}
+                  title="Copy what is listed as a Markdown list of links"
+                  type="button"
+                  on:click={copyXList}
+                >
+                  {xCopied ? 'Copied' : 'Copy list'}
+                </button>
                 <div class="search-field news-filter">
                   {@render icon('search')}
                   <input
