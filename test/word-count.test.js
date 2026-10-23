@@ -15,3 +15,8 @@ test('counts prose, not frontmatter, comments, link targets or marks', () => {
   assert.equal(wordCount(note), 2 + 4);
   assert.equal(wordCount(), 0);
 });
+
+test('skips fenced code, including a fence left open', () => {
+  assert.equal(wordCount('one\n```js\nconst a = 1;\n```\ntwo'), 2);
+  assert.equal(wordCount('one\n```\nnever closed here'), 1);
+});
