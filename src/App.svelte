@@ -56,6 +56,7 @@
   } from './layout.js';
   import { chatContext } from './ai-context.js';
   import { saveStatusView } from './save-status.js';
+  import { wordCount } from './word-count.js';
   import {
     arxivCitation,
     indicoLabel,
@@ -8462,7 +8463,7 @@
         </span>
       {/if}
       <span class="statusbar-selection"
-        >{#if selectedIsMarkdown}Words: {content.match(/\S+/g)?.length ?? 0} ·
+        >{#if selectedIsMarkdown}Words: {wordCount(content)} ·
         {/if}Selected text: {selectedText.length}</span
       >
     </footer>
