@@ -7824,6 +7824,11 @@
                       type="button"
                       on:click={() => openFile(post.path)}>{post.path}</button
                     >
+                    {#if post.notes > 1}
+                      <span title="Notes that link to this">
+                        +{post.notes - 1} more
+                      </span>
+                    {/if}
                     <span title="When that note was last edited"
                       >{new Date(post.modified).toLocaleDateString(undefined, {
                         month: 'short',

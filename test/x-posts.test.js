@@ -40,7 +40,7 @@ test('listXPosts puts the newest note first and keeps a real label', async () =>
 
   const { posts } = await (await createWorkspace(dir)).listXPosts();
   assert.deepEqual(
-    posts.map(({ label, path }) => [label, path]),
-    [['Ann on X: hi', '/new.md']]
+    posts.map(({ label, path, notes }) => [label, path, notes]),
+    [['Ann on X: hi', '/new.md', 2]]
   );
 });

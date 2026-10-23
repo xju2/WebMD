@@ -227,9 +227,13 @@ function listXPosts(corpus) {
           found.set(post.url, {
             ...post,
             path: file.path,
-            modified: file.mtimeMs
+            modified: file.mtimeMs,
+            notes: 1
           });
-        } else if (
+          continue;
+        }
+        listed.notes += 1;
+        if (
           listed.label === listed.handle ||
           listed.label === `${listed.handle} on X`
         ) {
