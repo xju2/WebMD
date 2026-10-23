@@ -8462,7 +8462,8 @@
         </span>
       {/if}
       <span class="statusbar-selection"
-        >Selected text: {selectedText.length}</span
+        >{#if selectedIsMarkdown}Words: {content.match(/\S+/g)?.length ?? 0} ·
+        {/if}Selected text: {selectedText.length}</span
       >
     </footer>
   </section>
