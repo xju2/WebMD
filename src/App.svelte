@@ -856,7 +856,7 @@
     { github: 'GitHub repos', arxiv: 'arXiv papers' }[xKind] ?? 'posts';
   $: visibleXPosts = xItems.filter((post) => {
     const text =
-      `${arxivTitles[post.handle] || post.label} ${post.handle} ${post.path}`.toLowerCase();
+      `${arxivTitles[post.handle] || post.label} ${post.handle} ${post.path} ${githubInfo[post.handle] ?? ''}`.toLowerCase();
     return xWords.every((word) => text.includes(word));
   });
   // A weekend's empty listing is not kept, but it is still today.
@@ -7793,7 +7793,7 @@
                     type="search"
                     placeholder="Filter {xNoun}"
                     aria-label="Filter {xNoun}"
-                    title="Every word must appear in the label, handle, or note"
+                    title="Every word must appear in the label, handle, description, or note"
                     bind:value={xQuery}
                   />
                 </div>
