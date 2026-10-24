@@ -480,13 +480,35 @@ beside the open one under its own name; a name already taken gets ` 2`.
 local copy, so a clipped page reads offline. An image that cannot be fetched
 keeps its link, and the note says how many were kept.
 
-## X posts
+## Links in your notes
 
-The X button in the left bar lists every X (Twitter) post your notes link to,
-newest note first. A post shows the label its link carries, which a pasted X
-link fills in with the author and their words, and the note it came from;
-the note opens on click. A post linked from several notes is listed once.
-**Filter** keeps posts whose label, handle, or note contain every word typed.
+The X button in the left bar lists what your notes link to, newest note first.
+A dropdown in the toolbar picks the kind, and WebMD remembers the last one
+you used:
+
+- **X posts**: each post shows the label its link carries, which a pasted X
+  link fills in with the author and their words.
+- **GitHub repos**: every link into a repository (an issue, a pull request, a
+  file, a `.git` URL) collapses into `owner/repo`. Each repo shows its
+  one-line description from GitHub. The server asks the GitHub API once per
+  repo and caches the answer until it restarts, and a refusal or rate limit
+  (60 an hour without a token) just leaves the description out.
+- **arXiv papers**: a paper is listed once however it is linked (`abs`, `pdf`,
+  `arXiv:id`, any version). Its title is the citation before the link on the
+  same line (`- Ju et al., "Title" — [arXiv:id](…)`). A paper with nothing
+  before its link gets its title from arXiv.
+
+Every row shows the note it came from (it opens on click), that note's last
+edit date, and `+N more` when other notes link the same item. **Filter** keeps
+rows whose label, handle, description, or note contain every word typed, and
+**Copy list** puts what is listed on the clipboard as `- [label](url)` lines.
+
+## Word count
+
+The status bar shows `Words: N` for the open Markdown note. It counts prose
+only: frontmatter, HTML comments, fenced code blocks, link targets, bare URLs,
+and stray Markdown marks are left out. Indented code and inline code still
+count.
 
 ## Meetings
 
