@@ -356,6 +356,7 @@
   let newsExpanded = new Set();
   let newsNoteClipped = new Set();
   let newsClipping = new Set();
+  let newsFiling = new Set();
   // Not kept with the filter: tomorrow's listing should not open empty.
   let newsOnlyClipped = false;
   // arXiv id -> 1 or -1, as `.webmd/news-votes.json` holds them.
@@ -2699,9 +2700,21 @@
       });
       if (root === selectedRoot)
         bibliography = metadata.entries ?? bibliography;
+      return true;
     } catch {
       // No catalogue has it yet; the next clip or paste can try again.
+      return false;
     }
+  }
+
+  /** Files a paper that today's note links to but the bibliography lacks. */
+  async function fileMissingReference(paper) {
+    newsFiling = new Set(newsFiling).add(paper.id);
+    if (!(await fileClippedReference(selectedRoot, paper)))
+      error = `Could not add ${paper.id} to references.bib.`;
+    const filing = new Set(newsFiling);
+    filing.delete(paper.id);
+    newsFiling = filing;
   }
 
   function toggleNewsAbstract(id) {
@@ -5872,6 +5885,17 @@
           on:click={() => copyCiteKey(citeKey)}
         >
           {copiedCode === citeKey ? 'Copied' : `@${citeKey}`}
+        </button>
+      {:else if clipped}
+        <!-- Linked from today's note but missing from the bibliography. -->
+        <button
+          class="news-cite"
+          disabled={newsFiling.has(paper.id)}
+          title="Add this clipped paper to references.bib"
+          type="button"
+          on:click={() => fileMissingReference(paper)}
+        >
+          {newsFiling.has(paper.id) ? 'Adding…' : '+ references.bib'}
         </button>
       {/if}
       {#each paper.categories as category}
