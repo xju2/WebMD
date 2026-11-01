@@ -4008,6 +4008,20 @@
     markdownHelpOpen = true;
   }
 
+  function downloadNote() {
+    closeViewMenu();
+    // The editor text, so unsaved edits come along.
+    const blob = new Blob([editorView.state.doc.toString()], {
+      type: 'text/markdown'
+    });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = selectedPath.split('/').pop();
+    link.click();
+    // Safari can drop the download if the URL is revoked in the same tick.
+    setTimeout(() => URL.revokeObjectURL(link.href));
+  }
+
   async function chooseDelete() {
     closeViewMenu();
     await deleteSelectedFile();
@@ -6992,6 +7006,15 @@
                   on:click={downloadNoteImages}
                 >
                   Download images
+                </button>
+                <button
+                  disabled={!selectedIsMarkdown}
+                  role="menuitem"
+                  title="Save this note as a .md file on this computer"
+                  type="button"
+                  on:click={downloadNote}
+                >
+                  Download note
                 </button>
                 <button
                   class="view-menu-danger"
