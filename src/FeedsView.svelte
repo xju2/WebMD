@@ -104,13 +104,25 @@
     labelError = '';
     try {
       let remaining = items.filter((item) => !item.hfs).length;
+      let retries = 0;
       while (remaining && loadedRoot === forRoot) {
         labelStatus = `Labeling ${remaining} items…`;
-        const body = await requestJson('/api/feeds/label', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ root: forRoot })
-        });
+        let body;
+        try {
+          body = await requestJson('/api/feeds/label', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ root: forRoot })
+          });
+        } catch (err) {
+          // A dropped connection ("Load failed": a server restart, a phone
+          // waking up) is worth a few more tries; an error the server sent is not.
+          if (!(err instanceof TypeError) || retries >= 3) throw err;
+          retries += 1;
+          await new Promise((resolve) => setTimeout(resolve, 3000 * retries));
+          continue;
+        }
+        retries = 0;
         if (loadedRoot !== forRoot) break;
         items = items.map((item) =>
           body.labels[item.url] ? { ...item, hfs: body.labels[item.url] } : item
@@ -118,7 +130,7 @@
         remaining = body.remaining;
       }
     } catch (err) {
-      labelError = `Labeling stopped: ${err.message}`;
+      labelError = `Labeling stopped: ${err.message}. Press Refresh to continue.`;
     } finally {
       labeling = false;
       labelStatus = '';
