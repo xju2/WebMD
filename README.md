@@ -71,6 +71,8 @@ then switch to the workspace again or reload the page.
   [Prompt presets](docs/features.md#prompt-presets).
 - `.webmd/news.md`: a description of your research, used to rank arXiv News.
   See [Ranking](docs/features.md#ranking).
+- `.webmd/feeds.json`: the sources and Google News topics of the Feeds view.
+  See [Feeds](docs/features.md#feeds).
 
 The sandbox has a `.webmd/` folder of its own to copy from. Its
 `settings.json` looks like this:
@@ -176,7 +178,7 @@ Every key is optional.
 ## Features
 
 The sandbox tour covers the basics. [docs/features.md](docs/features.md) has
-the details on tasks, daily notes, citations, meetings, arXiv news, prompt
+the details on tasks, daily notes, citations, meetings, arXiv news, feeds, prompt
 presets, and the rest.
 
 ## Scripts

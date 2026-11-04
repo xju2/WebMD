@@ -27,6 +27,12 @@ export const ICONS = {
     'M4 6.2c2.3-1.4 5.4-1.4 8 0v12.6c-2.6-1.4-5.7-1.4-8 0z',
     'M20 6.2c-2.3-1.4-5.4-1.4-8 0v12.6c2.6-1.4 5.7-1.4 8 0z'
   ],
+  // The RSS mark: a dot and two arcs.
+  feeds: [
+    'M5.5 18.5h.01',
+    'M5 12a7 7 0 0 1 7 7',
+    'M5 5.5A13.5 13.5 0 0 1 18.5 19'
+  ],
   // The X mark: one thick stroke crossed by a thin one.
   x: ['M5 4.5h3.5l10.5 15h-3.5z', 'M18.5 4.5 13.2 10.5', 'M5.5 19.5l5.3-6'],
   // A lectern screen: a talk being given, which is what an Indico meeting is.
@@ -39,7 +45,11 @@ export const ICONS = {
     'M9 12h3.5'
   ],
   // A book on a shelf.
-  references: ['M5 4.5h4v15H5z', 'M11 4.5h4v15h-4z', 'M17 6.5l3.5 1-3.5 12-3.5-1z'],
+  references: [
+    'M5 4.5h4v15H5z',
+    'M11 4.5h4v15h-4z',
+    'M17 6.5l3.5 1-3.5 12-3.5-1z'
+  ],
   // A timetable: days across, parallel tracks down.
   conference: [
     'M4 5.5h16v14H4z',

@@ -53,6 +53,16 @@ import {
   writeCacheFile
 } from './news.js';
 import {
+  buildLabelMessages,
+  fetchFeeds,
+  LABEL_BATCH,
+  parseFeedLabels,
+  readFeedLabels,
+  readFeedsConfig,
+  saveFeedLabels,
+  startFeedsConfig
+} from './feeds.js';
+import {
   applyNewsVote,
   buildInterestProfile,
   buildRankMessages,
@@ -117,6 +127,7 @@ export async function createApp({
   xFetch = fetch,
   imageFetch = fetch,
   newsFetch = fetch,
+  feedsFetch = fetch,
   // Where day-scoped fetches and model answers outlive a restart. Outside the
   // workspaces so autocommit never picks them up; unset keeps them in memory.
   cacheDir,
@@ -1309,6 +1320,82 @@ export async function createApp({
       usage
     };
   }
+
+  // The Feeds view: RSS and Atom feeds, listing pages, Hacker News, and a
+  // Google News search per topic, from the workspace's .webmd/feeds.json.
+  // Fetched when the view asks, never on a timer.
+  async function feedsListing(workspace, { refresh = false } = {}) {
+    const config = await readFeedsConfig(workspace);
+    const feeds = await fetchFeeds(config, {
+      fetchImpl: feedsFetch,
+      refresh,
+      cacheDir
+    });
+    return { ...feeds, warning: config.warning };
+  }
+
+  app.get(
+    '/api/feeds',
+    asyncHandler(async (req, res) => {
+      const feeds = await feedsListing(workspaces.get(req.query.root), {
+        refresh: req.query.refresh === '1'
+      });
+      const labels = await readFeedLabels(
+        feeds.items.map((item) => item.url),
+        { cacheDir }
+      );
+      res.json({
+        ...feeds,
+        items: feeds.items.map((item) =>
+          labels[item.url] ? { ...item, hfs: labels[item.url] } : item
+        )
+      });
+    })
+  );
+
+  // Labels the newest unlabeled items, one batch per call, so the view shows
+  // labels as they come and a long first week costs no single long request.
+  app.post(
+    '/api/feeds/label',
+    asyncHandler(async (req, res) => {
+      const { items } = await feedsListing(workspaces.get(req.body?.root));
+      const known = await readFeedLabels(
+        items.map((item) => item.url),
+        { cacheDir }
+      );
+      const unlabeled = items.filter((item) => !known[item.url]);
+      const batch = unlabeled.slice(0, LABEL_BATCH);
+      if (!batch.length) return res.json({ labels: {}, remaining: 0 });
+      let usage;
+      const reply = await runAiCompletion({
+        messages: buildLabelMessages(batch),
+        env: aiEnv,
+        fetchImpl: aiFetch,
+        onUsage: (value) => (usage = value)
+      });
+      const labels = parseFeedLabels(reply, batch);
+      if (!Object.keys(labels).length)
+        throw new WorkspaceError(
+          502,
+          `The model labeled none of the items. It replied: ${JSON.stringify(String(reply).replace(/\s+/g, ' ').trim().slice(0, 200))}`
+        );
+      await saveFeedLabels(labels, { cacheDir });
+      res.json({
+        labels,
+        remaining: unlabeled.length - Object.keys(labels).length,
+        usage
+      });
+    })
+  );
+
+  app.post(
+    '/api/feeds/sources',
+    asyncHandler(async (req, res) => {
+      res.json({
+        path: await startFeedsConfig(workspaces.get(req.body?.root))
+      });
+    })
+  );
 
   app.get(
     '/api/ai/presets',

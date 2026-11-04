@@ -6641,3 +6641,63 @@ input[type='radio'] {
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
+
+/* Feeds: Hype, Facts and Signal as quiet chips that turn solid once the
+   model scores them 50 or more. */
+.feeds-labels {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.feeds-labels button {
+  height: var(--control-height-sm);
+  font-size: 0.82rem;
+}
+
+.feeds-labels button span {
+  color: var(--ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.feeds-labels button.active {
+  border-color: var(--accent-soft-strong);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.feeds-score {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  color: var(--ink-subtle);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.feeds-score.strong.feeds-label-signal {
+  background: #eaf4e4;
+  color: #36561a;
+  font-weight: 600;
+}
+
+.feeds-score.strong.feeds-label-facts {
+  background: #e8f1f8;
+  color: #1e4f7a;
+  font-weight: 600;
+}
+
+.feeds-score.strong.feeds-label-hype {
+  background: #fdf3e4;
+  color: #7a4f10;
+  font-weight: 600;
+}
+
+.feeds-failed {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}

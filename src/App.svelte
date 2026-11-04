@@ -41,6 +41,7 @@
   import { parseFrontmatter } from './frontmatter.js';
   import ConferenceView from './ConferenceView.svelte';
   import ReferencesView from './ReferencesView.svelte';
+  import FeedsView from './FeedsView.svelte';
   import {
     LAYOUT_KEY,
     RAIL_WIDTH,
@@ -182,6 +183,7 @@
   const WORKSPACE_VIEWS = new Set([
     'tasks',
     'news',
+    'feeds',
     'x',
     'meetings',
     'conference',
@@ -784,6 +786,7 @@
     viewMode === 'graph' ||
     viewMode === 'tasks' ||
     viewMode === 'news' ||
+    viewMode === 'feeds' ||
     viewMode === 'x' ||
     viewMode === 'meetings' ||
     viewMode === 'conference' ||
@@ -794,17 +797,19 @@
   $: toolbarTitle =
     viewMode === 'news'
       ? 'arXiv News'
-      : viewMode === 'x'
-        ? 'X'
-        : viewMode === 'meetings'
-          ? 'Meetings'
-          : viewMode === 'conference'
-            ? 'Conference'
-            : viewMode === 'references'
-              ? 'References'
-              : viewMode === 'tasks'
-                ? 'Tasks'
-                : selectedPath || 'Workspace Home';
+      : viewMode === 'feeds'
+        ? 'Feeds'
+        : viewMode === 'x'
+          ? 'X'
+          : viewMode === 'meetings'
+            ? 'Meetings'
+            : viewMode === 'conference'
+              ? 'Conference'
+              : viewMode === 'references'
+                ? 'References'
+                : viewMode === 'tasks'
+                  ? 'Tasks'
+                  : selectedPath || 'Workspace Home';
   // A path reads as its folder, quietly, then the file name.
   $: toolbarFolder =
     documentControls && selectedPath && selectedPath.includes('/')
@@ -2404,6 +2409,28 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
+  }
+
+  let feedsVisited = false;
+
+  async function showFeeds({ remember = true } = {}) {
+    if (selectedPath && hasUnsavedChanges()) await saveNow();
+    if (remember) rememberViewNavigation('feeds');
+    viewMode = 'feeds';
+    feedsVisited = true;
+    selectedText = '';
+    selectedRange = null;
+    clearInlineEdit();
+    error = '';
+  }
+
+  /** The sources file, opened in the editor; a new one shows up in the tree. */
+  async function openFeedsSources(path) {
+    const root = selectedRoot;
+    await loadTree(root);
+    if (root !== selectedRoot) return;
+    await openFile(path);
+    setViewMode('edit', { remember: false });
   }
 
   let referencesVisited = false;
@@ -5031,6 +5058,7 @@
     // the view rather than the note that happened to be selected underneath it.
     if (target.view === 'tasks') await showTasks({ remember: false });
     else if (target.view === 'news') await showNews({ remember: false });
+    else if (target.view === 'feeds') await showFeeds({ remember: false });
     else if (target.view === 'x') await showXPosts({ remember: false });
     else if (target.view === 'meetings')
       await showMeetings({ remember: false });
@@ -6440,6 +6468,17 @@
       on:click={() => showNews()}
     >
       {@render icon('news')}
+    </button>
+    <button
+      aria-label="Open feeds"
+      class:active={viewMode === 'feeds'}
+      class="global-action feeds-launcher"
+      data-tooltip="Feeds: blogs, releases, Hacker News and Google News topics"
+      disabled={!workspaceRoots.length}
+      type="button"
+      on:click={() => showFeeds()}
+    >
+      {@render icon('feeds')}
     </button>
     <button
       aria-label="Open links in your notes"
@@ -7912,6 +7951,13 @@
             active={viewMode === 'conference'}
             onOpenNote={openMeetingNote}
             onFilesChanged={() => loadTree(selectedRoot)}
+            root={selectedRoot}
+          />
+        {/if}
+        {#if feedsVisited}
+          <FeedsView
+            active={viewMode === 'feeds'}
+            onOpenFile={openFeedsSources}
             root={selectedRoot}
           />
         {/if}

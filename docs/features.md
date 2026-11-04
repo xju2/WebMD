@@ -468,6 +468,49 @@ score, with a note saying so. **arXiv** switches back to arXiv's own order.
 arXiv publishes no listing on Saturday or Sunday, so the view is empty on
 weekends; Friday's is in the day menu.
 
+## Feeds
+
+The RSS button in the left bar opens what your sources published in the last
+week, newest first, grouped by day. It sits beside arXiv News and changes
+nothing there. **Sources** opens `.webmd/feeds.json`, starting it from the
+default list the first time:
+
+```json
+{
+  "topics": ["LLM inference HPC", "Claude Code"],
+  "sources": [
+    { "kind": "feed", "name": "Simon Willison", "url": "https://simonwillison.net/atom/everything/" },
+    { "kind": "page", "name": "Anthropic News", "url": "https://www.anthropic.com/news" },
+    { "kind": "page", "name": "Anthropic Engineering", "url": "https://www.anthropic.com/engineering", "links": "/research/" },
+    { "kind": "hn", "name": "Hacker News" }
+  ]
+}
+```
+
+- **feed**: any RSS or Atom feed, GitHub `releases.atom` included.
+- **page**: a listing page with no feed (Anthropic News, Hugging Face Papers,
+  ARC Prize). Its article links are the ones below the page's own path, or
+  below `links`, and each new article is opened once for its title, summary
+  and date. Undated links found on the first visit are taken as already read,
+  so only posts that appear later show up.
+- **hn**: the Hacker News front page.
+- **topics**: one Google News search per topic over the last week.
+
+The default list started from
+[disler/pi-durable-news-agent](https://github.com/disler/pi-durable-news-agent).
+A source is fetched at most every 15 minutes, only when the view opens or you
+press **Refresh**, and what it showed is kept for a month in the cache folder,
+so a feed that lists only its last ten posts still adds up to a week. A source
+that fails (Reddit answers servers with 403 or 429) keeps its last items, and
+the note above the list says which failed and why.
+
+Every item is labeled **Hype**, **Facts** and **Signal**, each scored 0 to 100
+by the AI from its title, source and summary. An item can score high on more
+than one. A label counts from 50, and the buttons in the toolbar keep only
+items with that label. Labels are asked for in batches of 60 after the list
+loads, fill in as they arrive, and are kept per link, so an item is labeled
+once.
+
 ## Uploads and web images
 
 **Upload** in the Files panel's ... menu saves files into the workspace

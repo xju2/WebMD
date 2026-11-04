@@ -9,6 +9,7 @@ import { createApp, createWorkspaceRegistry } from '../server/app.js';
 import { resetArxivCache } from '../server/arxiv.js';
 import { resetIndicoCache } from '../server/indico.js';
 import { resetXCache } from '../server/x.js';
+import { resetFeedsCache } from '../server/feeds.js';
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(tmpdir(), 'webmd-'));
@@ -1439,6 +1440,68 @@ test('asks the model to pick references and drops keys it invented', async () =>
     assert.deepEqual(body.matches, [{ key: 'A:2020', reason: 'graphs' }]);
     assert.equal(body.reviewed, 2);
     assert.equal(body.usage.model, 'llama-test');
+  } finally {
+    server.close();
+  }
+});
+
+test('lists feeds from .webmd/feeds.json and labels them in batches', async () => {
+  resetFeedsCache();
+  const root = await tempRoot();
+  const published = new Date().toUTCString();
+  const rss = `<rss><channel><item><title>Release 2.0 is out</title><link>https://blog.example/2</link><pubDate>${published}</pubDate></item></channel></rss>`;
+
+  const { server, url } = await listen(
+    await createApp({
+      workspaceRoots: [root],
+      aiEnv: { AI_PROVIDER: 'ollama', AI_MODEL: 'llama-test' },
+      feedsFetch: async () => new Response(rss),
+      aiFetch: async (_url, options) => {
+        assert.match(
+          JSON.parse(options.body).messages[1].content,
+          /\[Blog\] Release 2\.0 is out/
+        );
+        const reply = JSON.stringify({
+          message: { content: '[{"i":1,"hype":5,"facts":70,"signal":90}]' }
+        });
+        return new Response(`${reply}\n`);
+      }
+    })
+  );
+
+  try {
+    const started = await fetch(`${url}/api/feeds/sources`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    assert.deepEqual(await started.json(), { path: '/.webmd/feeds.json' });
+    await fs.writeFile(
+      path.join(root, '.webmd', 'feeds.json'),
+      JSON.stringify({
+        sources: [{ name: 'Blog', url: 'https://blog.example/feed' }]
+      })
+    );
+
+    const listed = await (await fetch(`${url}/api/feeds`)).json();
+    assert.deepEqual(
+      listed.items.map((item) => [item.source, item.title, item.hfs]),
+      [['Blog', 'Release 2.0 is out', undefined]]
+    );
+
+    const labeled = await fetch(`${url}/api/feeds/label`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const body = await labeled.json();
+    assert.deepEqual(body.labels, {
+      'https://blog.example/2': { hype: 5, facts: 70, signal: 90 }
+    });
+    assert.equal(body.remaining, 0);
+
+    const again = await (await fetch(`${url}/api/feeds`)).json();
+    assert.deepEqual(again.items[0].hfs, { hype: 5, facts: 70, signal: 90 });
   } finally {
     server.close();
   }
