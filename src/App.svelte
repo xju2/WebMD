@@ -8870,7 +8870,7 @@
             chatStreaming ||
             inlineEditLoading ||
             !canInlineEdit}
-          title={canInlineEdit
+          data-tooltip={canInlineEdit
             ? 'Preview edit for selected text'
             : 'Select text in the editor'}
           type="button"
@@ -8886,8 +8886,8 @@
         <button
           aria-label="Send"
           class="ai-send-button"
+          data-tooltip="Send"
           disabled={!chatPrompt.trim() || chatStreaming || inlineEditLoading}
-          title="Send"
           type="submit"
         >
           <svg aria-hidden="true" viewBox="0 0 24 24">

@@ -225,8 +225,10 @@ body.resizing-panels {
 }
 
 /* Tooltips name the button on hover and on keyboard focus. The button's
-   aria-label already carries the same words, so this is for sighted users. */
-.global-action[data-tooltip]::after {
+   aria-label already carries the same words, so this is for sighted users.
+   The browser's own title tooltip waits far longer. */
+.global-action[data-tooltip]::after,
+.ai-form-actions [data-tooltip]::after {
   position: absolute;
   top: 50%;
   left: calc(100% + 8px);
@@ -256,6 +258,30 @@ body.resizing-panels {
 }
 
 .global-action[data-tooltip]:focus-visible::after {
+  transition-delay: 0ms;
+}
+
+/* The AI buttons sit at the panel's bottom right, so theirs opens above. */
+.ai-form-actions [data-tooltip] {
+  position: relative;
+}
+
+.ai-form-actions [data-tooltip]::after {
+  top: auto;
+  right: 0;
+  bottom: calc(100% + 8px);
+  left: auto;
+  transform: translateY(2px);
+}
+
+.ai-form-actions [data-tooltip]:hover::after,
+.ai-form-actions [data-tooltip]:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+  transition-delay: 250ms;
+}
+
+.ai-form-actions [data-tooltip]:focus-visible::after {
   transition-delay: 0ms;
 }
 
