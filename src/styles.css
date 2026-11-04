@@ -250,15 +250,28 @@ body.resizing-panels {
   white-space: nowrap;
 }
 
+/* A flash, not a hold: the name shows at 250ms and is gone by 1s, so the
+   pointer resting on the rail does not leave a label over the sidebar. */
 .global-action[data-tooltip]:hover::after,
 .global-action[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translate(0, -50%);
-  transition-delay: 250ms;
+  animation: rail-tooltip-flash 1s ease forwards;
 }
 
-.global-action[data-tooltip]:focus-visible::after {
-  transition-delay: 0ms;
+@keyframes rail-tooltip-flash {
+  0%,
+  25% {
+    opacity: 0;
+    transform: translate(-2px, -50%);
+  }
+  35%,
+  85% {
+    opacity: 1;
+    transform: translate(0, -50%);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(0, -50%);
+  }
 }
 
 /* The AI buttons sit at the panel's bottom right, so theirs opens above. */
