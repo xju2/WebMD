@@ -6759,6 +6759,11 @@ input[type='radio'] {
 
 /* The source menu is as wide as its longest name ("Google News: machine
    learning high energy physics"), which a phone cannot fit. */
+.feeds-pane .tasks-summary {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .feeds-pane .tasks-summary select {
   min-width: 0;
   max-width: 100%;

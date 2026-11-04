@@ -87,31 +87,6 @@ export const DEFAULT_FEED_SOURCES = [
     kind: 'feed',
     name: 'r/ClaudeAI',
     url: 'https://www.reddit.com/r/ClaudeAI/new/.rss'
-  },
-  {
-    kind: 'feed',
-    name: 'Claude Code releases',
-    url: 'https://github.com/anthropics/claude-code/releases.atom'
-  },
-  {
-    kind: 'feed',
-    name: 'Codex CLI releases',
-    url: 'https://github.com/openai/codex/releases.atom'
-  },
-  {
-    kind: 'feed',
-    name: 'Gemini CLI releases',
-    url: 'https://github.com/google-gemini/gemini-cli/releases.atom'
-  },
-  {
-    kind: 'feed',
-    name: 'pi releases',
-    url: 'https://github.com/earendil-works/pi/releases.atom'
-  },
-  {
-    kind: 'feed',
-    name: 'SWE-bench releases',
-    url: 'https://github.com/SWE-bench/SWE-bench/releases.atom'
   }
 ];
 
