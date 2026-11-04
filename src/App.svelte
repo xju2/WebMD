@@ -1120,6 +1120,21 @@
     // Captured before anything is awaited: the request carries exactly the
     // context the panel was showing when Send was pressed.
     const context = aiContext.payload;
+    const history = chatMessages.map(({ role, text }) => ({ role, text }));
+    // The editor range the reply can later replace, if the selection is there.
+    const range = canInlineEdit
+      ? { from: selectedRange.from, to: selectedRange.to }
+      : null;
+    const target =
+      range &&
+      editorView.state.sliceDoc(range.from, range.to) === context.selectedText
+        ? {
+            root: selectedRoot,
+            path: selectedPath,
+            range,
+            original: context.selectedText
+          }
+        : null;
     chatPrompt = '';
     chatStatus = 'Thinking...';
     chatStreaming = true;
@@ -1129,7 +1144,7 @@
       ...chatMessages,
       // A preset with nothing typed would otherwise open an empty user bubble.
       { role: 'user', text: prompt || label },
-      { role: 'assistant', text: '' }
+      { role: 'assistant', text: '', target }
     ];
 
     try {
@@ -1144,7 +1159,8 @@
             path: context.path,
             selectedText: context.selectedText,
             presetId,
-            prompt
+            prompt,
+            history
           })
         });
       } catch (err) {
@@ -1163,6 +1179,8 @@
       chatStatus = '';
     } catch (err) {
       if (err.name !== 'AbortError') {
+        // An error text must never be offered as a replacement.
+        chatMessages.at(-1).target = null;
         appendAssistantText(`\n\n${err.message}`);
         chatStatus = 'AI request failed';
       }
@@ -1198,6 +1216,7 @@
     const next = [...chatMessages];
     const index = next.length - 1;
     next[index] = {
+      ...next[index],
       role: 'assistant',
       text: `${next[index]?.text || ''}${text}`
     };
@@ -1344,6 +1363,45 @@
         buildReplacementDiffFile(original, replacement, 'AI edit preview')
       ]
     };
+  }
+
+  let copiedReply = null;
+  let copiedReplyTimer;
+  async function copyReply(message) {
+    try {
+      await navigator.clipboard.writeText(message.text);
+      copiedReply = message;
+      clearTimeout(copiedReplyTimer);
+      copiedReplyTimer = setTimeout(() => (copiedReply = null), 1400);
+      error = '';
+    } catch {
+      error = 'Could not copy the reply to the clipboard.';
+    }
+  }
+
+  /** Shows a chat reply as the same reviewable diff the pencil drafts. */
+  function previewReplyEdit(message) {
+    const { target } = message;
+    if (target.root !== selectedRoot || target.path !== selectedPath) {
+      error = `Open ${target.path} to replace the selection there.`;
+      return;
+    }
+    const replacement = message.text.trim();
+    clearInlineEdit();
+    setViewMode('edit');
+    inlineEditPreview = {
+      ...target,
+      replacement,
+      streaming: false,
+      diffFiles: [
+        buildReplacementDiffFile(
+          target.original,
+          replacement,
+          'AI edit preview'
+        )
+      ]
+    };
+    inlineEditStatus = 'Review edit';
   }
 
   function acceptInlineEdit() {
@@ -8679,6 +8737,22 @@
                 </div>
               {/if}
             </div>
+            {#if message.role === 'assistant' && message.text && !(chatStreaming && message === chatMessages.at(-1))}
+              <div class="ai-reply-actions">
+                <button type="button" on:click={() => copyReply(message)}>
+                  {copiedReply === message ? 'Copied' : 'Copy'}
+                </button>
+                {#if message.target}
+                  <button
+                    title={`Preview the reply in place of the selection in ${message.target.path}`}
+                    type="button"
+                    on:click={() => previewReplyEdit(message)}
+                  >
+                    Replace selection
+                  </button>
+                {/if}
+              </div>
+            {/if}
           </article>
         {/each}
       {:else}

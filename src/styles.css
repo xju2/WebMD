@@ -957,6 +957,26 @@ body.resizing-panels .resize-handle::after {
   white-space: pre-wrap;
 }
 
+.ai-reply-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.ai-reply-actions button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: var(--surface);
+  color: var(--ink-subtle);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.ai-reply-actions button:hover {
+  color: var(--ink);
+}
+
 /* Assistant replies reuse the preview renderer, so they arrive as blocks. */
 .ai-markdown {
   padding: 4px 12px 8px;

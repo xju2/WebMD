@@ -9,7 +9,10 @@ const MAX_PROVIDER_ERROR_CHARS = 400;
 const DEFAULT_EDIT_SYSTEM =
   'You are WebMD, an AI editor inside a remote Markdown workspace. Return only the replacement Markdown for the selected text. Do not include explanations, labels, quotes, or code fences.';
 const DEFAULT_CHAT_SYSTEM =
-  'You are WebMD, an AI assistant inside a remote Markdown workspace. Answer with concise, useful Markdown. Do not claim to edit files unless the user asks for an explicit edit flow.';
+  'You are WebMD, an AI assistant inside a remote Markdown workspace. Answer with concise, useful Markdown. You cannot edit files yourself: when asked to rewrite or reformat the selection, reply with only the replacement Markdown, which the user can apply with Replace selection.';
+// Earlier turns sent back with each question, so a follow-up like "yes,
+// please" still knows what it answers.
+const MAX_HISTORY_MESSAGES = 10;
 
 export async function* streamAiChat({
   prompt,
@@ -17,6 +20,7 @@ export async function* streamAiChat({
   selectedText = '',
   path = '',
   documentText = '',
+  history = [],
   env = process.env,
   fetchImpl = fetch
 }) {
@@ -30,7 +34,8 @@ export async function* streamAiChat({
     system,
     selectedText,
     path,
-    documentText
+    documentText,
+    history
   });
   yield* streamAiProvider(config, messages, fetchImpl);
 }
@@ -156,7 +161,14 @@ function aiConfig(env) {
   };
 }
 
-function chatMessages({ prompt, system, selectedText, path, documentText }) {
+function chatMessages({
+  prompt,
+  system,
+  selectedText,
+  path,
+  documentText,
+  history
+}) {
   const context = selectedText?.trim()
     ? // Text selected outside a note (an arXiv abstract, an earlier reply)
       // has no document to name, so it is not attributed to one.
@@ -172,11 +184,29 @@ function chatMessages({ prompt, system, selectedText, path, documentText }) {
       role: 'developer',
       content: system || DEFAULT_CHAT_SYSTEM
     },
+    ...chatHistory(history),
     {
       role: 'user',
       content: `${context}\n\nUser request:\n${prompt.trim()}`
     }
   ];
+}
+
+// The client sends this, so only plain user and assistant turns get through.
+function chatHistory(history) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter(
+      (message) =>
+        ['user', 'assistant'].includes(message?.role) &&
+        typeof message.text === 'string' &&
+        message.text.trim()
+    )
+    .slice(-MAX_HISTORY_MESSAGES)
+    .map((message) => ({
+      role: message.role,
+      content: trimContext(message.text)
+    }));
 }
 
 function editMessages({

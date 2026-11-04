@@ -1459,6 +1459,7 @@ export async function createApp({
             selectedText: req.body.selectedText,
             path: req.body.path,
             documentText: document.content,
+            history: req.body.history,
             env: aiEnv,
             fetchImpl: aiFetch
           })
