@@ -57,6 +57,7 @@ import {
   fetchFeeds,
   LABEL_BATCH,
   parseFeedLabels,
+  readFeedArticle,
   readFeedLabels,
   readFeedsConfig,
   saveFeedLabels,
@@ -1385,6 +1386,26 @@ export async function createApp({
         remaining: unlabeled.length - Object.keys(labels).length,
         usage
       });
+    })
+  );
+
+  // An item's article as text, to read without leaving WebMD. Only links the
+  // listing holds are fetched, so this cannot be pointed at any address.
+  app.get(
+    '/api/feeds/article',
+    asyncHandler(async (req, res) => {
+      const { items } = await feedsListing(workspaces.get(req.query.root));
+      const url = String(req.query.url ?? '');
+      if (!items.some((item) => item.url === url))
+        throw new WorkspaceError(404, 'That link is not in your feeds.');
+      try {
+        res.json(await readFeedArticle(url, { fetchImpl: feedsFetch }));
+      } catch (error) {
+        throw new WorkspaceError(
+          502,
+          `Could not read the article: ${error.message}`
+        );
+      }
     })
   );
 

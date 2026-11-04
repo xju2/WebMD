@@ -511,6 +511,19 @@ items with that label. Labels are asked for in batches of 60 after the list
 loads, fill in as they arrive, and are kept per link, so an item is labeled
 once.
 
+**More** reads the article inside WebMD: its headings, paragraphs, lists,
+quotes and code, taken from the page's `<article>` or `<main>`. A Google News
+item is first resolved to the article it stands for. A page that only renders
+in the browser, sits behind a paywall, or turns servers away (OpenAI's site
+answers 403) shows its summary instead, with **Open the original**. Only links
+in your feeds are read this way.
+
+**Clip** adds `[Title](link) — Source` to the `## Reading` section of today's
+note, the same place arXiv News clips papers to, starting the note from the
+daily template if there is none yet. A Google News item is clipped with the
+article's own link when it can be found. Items already linked from today's
+note show as **Clipped**.
+
 ## Uploads and web images
 
 **Upload** in the Files panel's ... menu saves files into the workspace

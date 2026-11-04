@@ -369,11 +369,12 @@ async function fetchSource(source, state, fetchImpl) {
   return source.topic ? items.map(splitPublisher) : items;
 }
 
-async function fetchText(url, fetchImpl) {
+async function fetchText(url, fetchImpl, { headers, ...options } = {}) {
   let response;
   try {
     response = await fetchImpl(url, {
-      headers: { 'User-Agent': USER_AGENT },
+      ...options,
+      headers: { 'User-Agent': USER_AGENT, ...headers },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     });
   } catch (error) {
@@ -559,6 +560,199 @@ export function articleMeta(html) {
   };
 }
 
+/* ---------- Reading an article in WebMD ---------- */
+
+const MAX_ARTICLE_BLOCKS = 300;
+// A tag's attributes, where a quoted value may hold `>` ("[&>a]:hidden").
+const ATTRS = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+const MIN_ARTICLE_WORDS = 60;
+const MAX_ARTICLES = 100;
+// url → Promise of { url, title, blocks }
+const articles = new Map();
+
+/**
+ * An item's article as text blocks, `{ url, title, blocks: [{ tag, text }] }`,
+ * where `url` is the article's own address (a Google News link resolved). A
+ * page that renders in the browser or sits behind a paywall comes back with
+ * no blocks, and the view offers the original instead.
+ */
+export function readFeedArticle(url, { fetchImpl = fetch } = {}) {
+  if (!articles.has(url)) {
+    const reading = (async () => {
+      const target = isGoogleNewsUrl(url)
+        ? await resolveGoogleNews(url, fetchImpl)
+        : url;
+      const html = await fetchText(target, fetchImpl);
+      return {
+        url: target,
+        title: articleMeta(html).title,
+        blocks: articleBlocks(html)
+      };
+    })();
+    articles.set(url, reading);
+    reading.catch(() => articles.delete(url));
+    for (const kept of articles.keys()) {
+      if (articles.size <= MAX_ARTICLES) break;
+      articles.delete(kept);
+    }
+  }
+  return articles.get(url);
+}
+
+/**
+ * The readable part of a page, in order: headings, paragraphs, list items,
+ * quotes and code, from its `<article>` or `<main>` when it has one. Navigation,
+ * scripts and asides are dropped first, and one-word paragraphs ("Share") with
+ * them.
+ */
+export function articleBlocks(html) {
+  const page = String(html)
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(
+      new RegExp(
+        `<(script|style|noscript|svg|nav|header|footer|aside|form|button|figure|iframe)\\b${ATTRS}>[\\s\\S]*?<\\/\\1>`,
+        'gi'
+      ),
+      ' '
+    );
+  // A page can hold several <article>s (an author bio, related posts): the
+  // one with the most text is the story, and <main> competes with them.
+  const regions = ['article', 'main'].flatMap((name) =>
+    [
+      ...page.matchAll(
+        new RegExp(`<${name}\\b${ATTRS}>([\\s\\S]*?)<\\/${name}>`, 'gi')
+      )
+    ].map((match) => textBlocks(match[1]))
+  );
+  const best = regions.reduce(
+    (most, blocks) => (wordCount(blocks) > wordCount(most) ? blocks : most),
+    []
+  );
+  const blocks = wordCount(best) >= MIN_ARTICLE_WORDS ? best : textBlocks(page);
+  // A few stray lines are the page's chrome, not an article it failed to render.
+  return wordCount(blocks) < MIN_ARTICLE_WORDS ? [] : blocks;
+}
+
+function textBlocks(region) {
+  const blocks = [];
+  const seen = new Set();
+  for (const match of region.matchAll(
+    new RegExp(
+      `<(h[1-4]|p|li|blockquote|pre)\\b${ATTRS}>([\\s\\S]*?)<\\/\\1>`,
+      'gi'
+    )
+  )) {
+    const tag = match[1].toLowerCase();
+    const text =
+      tag === 'pre'
+        ? decodeEntities(match[2].replace(/<[^>]+>/g, '')).trim()
+        : plainText(match[2]);
+    if (!text || seen.has(text)) continue;
+    if ((tag === 'p' || tag === 'li') && !/\S\s+\S/.test(text)) continue;
+    seen.add(text);
+    blocks.push({ tag: tag[0] === 'h' ? 'h' : tag, text });
+    if (blocks.length >= MAX_ARTICLE_BLOCKS) break;
+  }
+  return blocks;
+}
+
+function wordCount(blocks) {
+  return blocks.reduce(
+    (total, block) => total + block.text.split(/\s+/).length,
+    0
+  );
+}
+
+export function isGoogleNewsUrl(url) {
+  return /^https:\/\/news\.google\.com\/rss\/articles\//.test(url);
+}
+
+/**
+ * The article a Google News link stands for. The link opens a page that
+ * redirects in the browser, so this asks the same endpoint that page does,
+ * with the signature and time the page carries. Undocumented, so a failure
+ * leaves the Google link in place.
+ */
+export async function resolveGoogleNews(url, fetchImpl = fetch) {
+  const id = /\/articles\/([^?/]+)/.exec(url)?.[1];
+  const page = await fetchText(
+    `https://news.google.com/rss/articles/${id}`,
+    fetchImpl
+  );
+  const ts = /data-n-a-ts="([^"]+)"/.exec(page)?.[1];
+  const sg = /data-n-a-sg="([^"]+)"/.exec(page)?.[1];
+  if (!id || !ts || !sg)
+    throw new Error('Google News did not say where the article is.');
+  const request = [
+    [
+      [
+        'Fbv4je',
+        JSON.stringify([
+          'garturlreq',
+          [
+            [
+              'X',
+              'X',
+              ['X', 'X'],
+              null,
+              null,
+              1,
+              1,
+              'US:en',
+              null,
+              1,
+              null,
+              null,
+              null,
+              null,
+              null,
+              0,
+              1
+            ],
+            'X',
+            'X',
+            1,
+            [1, 1, 1],
+            1,
+            1,
+            null,
+            0,
+            0,
+            null,
+            0
+          ],
+          id,
+          Number(ts),
+          sg
+        ]),
+        null,
+        'generic'
+      ]
+    ]
+  ];
+  const reply = await fetchText(
+    'https://news.google.com/_/DotsSplashUi/data/batchexecute',
+    fetchImpl,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'
+      },
+      body: `f.req=${encodeURIComponent(JSON.stringify(request))}`
+    }
+  );
+  let target;
+  try {
+    const rows = JSON.parse(reply.slice(reply.indexOf('[')));
+    target = JSON.parse(rows.find((row) => row[1] === 'Fbv4je')[2])[1];
+  } catch {
+    // Handled below with the same message as a missing address.
+  }
+  if (!isWebUrl(target))
+    throw new Error('Google News did not say where the article is.');
+  return target;
+}
+
 /* ---------- Hype, Facts and Signal ---------- */
 
 export const LABEL_BATCH = 60;
@@ -742,6 +936,7 @@ async function mapLimit(values, limit, task) {
 
 /** Test seam: the module-level caches outlive a single test. */
 export function resetFeedsCache() {
+  articles.clear();
   sourceCache.clear();
   inFlight.clear();
   labelCache = null;

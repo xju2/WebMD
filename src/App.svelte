@@ -2422,6 +2422,7 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
+    await loadFeedsClipped(selectedRoot);
   }
 
   /** The sources file, opened in the editor; a new one shows up in the tree. */
@@ -2633,69 +2634,13 @@
 
   /**
    * Adds the paper to today's note under `## Reading`, as the same citation a
-   * pasted arXiv link becomes. An existing note is changed through the
-   * collaborative update path, so an editor that has it open sees the line
-   * arrive; a missing one is created from the daily template first.
+   * pasted arXiv link becomes.
    */
   async function clipPaper(paper) {
     const root = selectedRoot;
-    const date = zonedNow();
-    const path = todayNotePath(date);
-    const line = arxivCitation(paper);
     newsClipping = new Set(newsClipping).add(paper.id);
     try {
-      for (let attempt = 0; ; attempt += 1) {
-        let file = null;
-        try {
-          file = await requestJson(
-            `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
-          );
-        } catch (err) {
-          if (err.status !== 404) throw err;
-        }
-
-        if (!file) {
-          const template = await loadDailyNoteTemplate(root);
-          const base = buildDailyNoteContent(
-            date,
-            path,
-            template,
-            await loadDailyNoteQuote(root, template, date)
-          );
-          const clip = newsClipChange(base, line);
-          const content =
-            base.slice(0, clip.from) + clip.insert + base.slice(clip.to);
-          await requestJson('/api/workspace/save', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ root, path, content })
-          });
-          if (root === selectedRoot) await loadTree(root);
-          break;
-        }
-
-        const changes = ChangeSet.of(
-          newsClipChange(file.content, line),
-          file.content.length
-        );
-        try {
-          await requestJson('/api/workspace/updates', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              root,
-              path,
-              version: file.version,
-              updates: [{ clientID: 'news-clip', changes: changes.toJSON() }]
-            })
-          });
-          break;
-        } catch (err) {
-          // Someone typed into the note between the load and the update.
-          if (err.status !== 409 || attempt >= 2) throw err;
-        }
-      }
-      rememberEditedFile(path, root);
+      await clipToToday(root, arxivCitation(paper));
       newsNoteClipped = new Set(newsNoteClipped).add(paper.id.toLowerCase());
       await fileClippedReference(root, paper);
     } catch (err) {
@@ -2705,6 +2650,94 @@
       clipping.delete(paper.id);
       newsClipping = clipping;
     }
+  }
+
+  /**
+   * One more bullet under `## Reading` in today's note. An existing note is
+   * changed through the collaborative update path, so an editor that has it
+   * open sees the line arrive; a missing one is created from the daily
+   * template first.
+   */
+  async function clipToToday(root, line) {
+    const date = zonedNow();
+    const path = todayNotePath(date);
+    for (let attempt = 0; ; attempt += 1) {
+      let file = null;
+      try {
+        file = await requestJson(
+          `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(path)}`
+        );
+      } catch (err) {
+        if (err.status !== 404) throw err;
+      }
+
+      if (!file) {
+        const template = await loadDailyNoteTemplate(root);
+        const base = buildDailyNoteContent(
+          date,
+          path,
+          template,
+          await loadDailyNoteQuote(root, template, date)
+        );
+        const clip = newsClipChange(base, line);
+        const content =
+          base.slice(0, clip.from) + clip.insert + base.slice(clip.to);
+        await requestJson('/api/workspace/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ root, path, content })
+        });
+        if (root === selectedRoot) await loadTree(root);
+        break;
+      }
+
+      const changes = ChangeSet.of(
+        newsClipChange(file.content, line),
+        file.content.length
+      );
+      try {
+        await requestJson('/api/workspace/updates', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            root,
+            path,
+            version: file.version,
+            updates: [{ clientID: 'news-clip', changes: changes.toJSON() }]
+          })
+        });
+        break;
+      } catch (err) {
+        // Someone typed into the note between the load and the update.
+        if (err.status !== 409 || attempt >= 2) throw err;
+      }
+    }
+    rememberEditedFile(path, root);
+  }
+
+  // The links in today's note, so a feed item clipped earlier shows as clipped.
+  let feedsClipped = new Set();
+
+  async function loadFeedsClipped(root) {
+    try {
+      const file = await requestJson(
+        `/api/workspace/load?root=${encodeURIComponent(root)}&path=${encodeURIComponent(todayNotePath())}`
+      );
+      if (root === selectedRoot)
+        feedsClipped = new Set(file.content.match(/https?:\/\/[^\s)>\]]+/g));
+    } catch {
+      // No note yet today means nothing is clipped from it.
+      if (root === selectedRoot) feedsClipped = new Set();
+    }
+  }
+
+  /** A feed item as `[Title](url) — Source` under `## Reading` in today's note. */
+  async function clipFeedItem(item, url) {
+    const root = selectedRoot;
+    const title = item.title.replace(/[[\]]/g, '');
+    const from = item.publisher || item.source;
+    await clipToToday(root, `[${title}](${url}) — ${from}`);
+    if (root === selectedRoot) feedsClipped = new Set(feedsClipped).add(url);
   }
 
   /**
@@ -7957,6 +7990,8 @@
         {#if feedsVisited}
           <FeedsView
             active={viewMode === 'feeds'}
+            clipped={feedsClipped}
+            onClip={clipFeedItem}
             onOpenFile={openFeedsSources}
             root={selectedRoot}
           />

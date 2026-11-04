@@ -8,6 +8,9 @@
   export let active = false;
   // Opens a workspace file in the editor, after the server has started it.
   export let onOpenFile = async () => {};
+  // The links in today's note, and how an item is added to it.
+  export let clipped = new Set();
+  export let onClip = async () => {};
 
   const LABELS = ['signal', 'facts', 'hype'];
   const LABEL_NAMES = { signal: 'Signal', facts: 'Facts', hype: 'Hype' };
@@ -26,6 +29,10 @@
   let source = '';
   let query = '';
   let showSources = false;
+  // url → { loading, error, url, blocks }: articles read in WebMD.
+  let articles = new Map();
+  let expanded = new Set();
+  let clipping = new Set();
 
   function readFilter() {
     try {
@@ -115,6 +122,58 @@
     } finally {
       labeling = false;
       labelStatus = '';
+    }
+  }
+
+  /** The article behind an item, fetched once and kept for the session. */
+  async function readArticle(item) {
+    const known = articles.get(item.url);
+    if (known && !known.error) return known.loading ?? known;
+    const loading = requestJson(
+      `/api/feeds/article?root=${encodeURIComponent(root)}&url=${encodeURIComponent(item.url)}`
+    ).then(
+      (article) => {
+        articles = new Map(articles).set(item.url, article);
+        return article;
+      },
+      (err) => {
+        articles = new Map(articles).set(item.url, { error: err.message });
+        return null;
+      }
+    );
+    articles = new Map(articles).set(item.url, { loading });
+    return loading;
+  }
+
+  function toggleMore(item) {
+    const next = new Set(expanded);
+    if (next.has(item.url)) next.delete(item.url);
+    else {
+      next.add(item.url);
+      readArticle(item);
+    }
+    expanded = next;
+  }
+
+  const isClipped = (item, clippedUrls, read) =>
+    clippedUrls.has(item.url) ||
+    (read.get(item.url)?.url && clippedUrls.has(read.get(item.url).url));
+
+  // A Google News item is clipped with its article's own link when that can
+  // be found; otherwise with Google's.
+  async function clip(item) {
+    clipping = new Set(clipping).add(item.url);
+    try {
+      const article = /^https:\/\/news\.google\.com\//.test(item.url)
+        ? await readArticle(item)
+        : null;
+      await onClip(item, article?.url || item.url);
+    } catch (err) {
+      status = `Could not clip: ${err.message}`;
+    } finally {
+      const next = new Set(clipping);
+      next.delete(item.url);
+      clipping = next;
     }
   }
 
@@ -297,7 +356,76 @@
               {/each}
             {/if}
           </p>
-          {#if item.excerpt}<div class="news-abstract">{item.excerpt}</div>{/if}
+          {#if expanded.has(item.url)}
+            {@const article = articles.get(item.url)}
+            <div class="feeds-article">
+              {#if !article || article.loading}
+                <p class="feeds-article-note">Reading the article…</p>
+              {:else if article.error || !article.blocks.length}
+                <p class="feeds-article-note">
+                  {article.error ||
+                    'This page cannot be read here: it renders in the browser or sits behind a paywall.'}
+                </p>
+                {#if item.excerpt}<p>{item.excerpt}</p>{/if}
+              {:else}
+                {#each article.blocks as block}
+                  {#if block.tag === 'h'}<h5>{block.text}</h5>
+                  {:else if block.tag === 'li'}<p class="feeds-article-li">
+                      {block.text}
+                    </p>
+                  {:else if block.tag === 'pre'}<pre>{block.text}</pre>
+                  {:else if block.tag === 'blockquote'}<blockquote>
+                      {block.text}
+                    </blockquote>
+                  {:else}<p>{block.text}</p>{/if}
+                {/each}
+              {/if}
+              {#if article?.url || !article?.loading}
+                <a
+                  class="feeds-article-original"
+                  href={article?.url || item.url}
+                  rel="noreferrer"
+                  target="_blank">Open the original ↗</a
+                >
+              {/if}
+            </div>
+          {:else if item.excerpt}
+            <div class="news-abstract">{item.excerpt}</div>
+          {/if}
+          <div class="news-paper-foot">
+            <button
+              aria-expanded={expanded.has(item.url)}
+              class="news-more"
+              type="button"
+              title="Read the article here"
+              on:click={() => toggleMore(item)}
+            >
+              {expanded.has(item.url) ? 'Less' : 'More'}
+            </button>
+            <div class="news-actions">
+              {#if isClipped(item, clipped, articles)}
+                <button class="news-clip clipped" disabled type="button">
+                  <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
+                    {#each ICONS.check as d}<path {d} />{/each}
+                  </svg>
+                  Clipped
+                </button>
+              {:else}
+                <button
+                  class="news-clip"
+                  disabled={clipping.has(item.url)}
+                  title="Add to the Reading section of today’s note"
+                  type="button"
+                  on:click={() => clip(item)}
+                >
+                  <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
+                    {#each ICONS.clip as d}<path {d} />{/each}
+                  </svg>
+                  {clipping.has(item.url) ? 'Clipping…' : 'Clip'}
+                </button>
+              {/if}
+            </div>
+          </div>
         </li>
       {/each}
     </ol>

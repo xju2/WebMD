@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  articleBlocks,
   articleMeta,
   DEFAULT_FEED_SOURCES,
   fetchFeeds,
@@ -12,6 +13,7 @@ import {
   parseFeedLabels,
   parseFeed,
   parseHackerNews,
+  readFeedArticle,
   readFeedsConfig,
   resetFeedsCache,
   topicSources
@@ -265,5 +267,80 @@ test('undated links on a page’s first visit are a baseline, later ones are new
   assert.deepEqual(
     later.items.map((item) => item.url),
     ['https://arc.example/blog/second-post-here']
+  );
+});
+
+test('articleBlocks reads the article and drops the page around it', () => {
+  const words = 'word '.repeat(70);
+  const html = `<nav><p>Home and more links</p></nav>
+    <article><header><h1>Title</h1></header>
+      <h2>Why it matters</h2>
+      <p>${words}</p>
+      <p>Share</p>
+      <ul><li>First point here</li></ul>
+      <pre><code>x &lt; 1</code></pre>
+      <script>var p = "<p>no</p>";</script>
+    </article>
+    <footer><p>Copyright and so on</p></footer>`;
+  assert.deepEqual(articleBlocks(html), [
+    { tag: 'h', text: 'Why it matters' },
+    { tag: 'p', text: words.trim() },
+    { tag: 'li', text: 'First point here' },
+    { tag: 'pre', text: 'x < 1' }
+  ]);
+  assert.deepEqual(articleBlocks('<p>Just a few words here.</p>'), []);
+});
+
+test('readFeedArticle resolves a Google News link to the article', async () => {
+  resetFeedsCache();
+  const words = 'news '.repeat(70);
+  const asked = [];
+  const fetchImpl = async (url, options) => {
+    asked.push(options?.method === 'POST' ? `POST ${url}` : url);
+    if (url.includes('/rss/articles/'))
+      return new Response(
+        '<div data-n-a-ts="1793776074" data-n-a-sg="SIG"></div>'
+      );
+    if (url.includes('batchexecute')) {
+      assert.match(
+        decodeURIComponent(options.body),
+        /\\"CBMabc\\",1793776074,\\"SIG\\"/
+      );
+      return new Response(
+        `)]}'\n\n[["wrb.fr","Fbv4je","[\\"garturlres\\",\\"https://site.example/story\\",1]",null,null,null,"generic"]]`
+      );
+    }
+    return new Response(
+      `<meta property="og:title" content="Story"><main><p>${words}</p></main>`
+    );
+  };
+  const article = await readFeedArticle(
+    'https://news.google.com/rss/articles/CBMabc?oc=5',
+    { fetchImpl }
+  );
+  assert.equal(article.url, 'https://site.example/story');
+  assert.equal(article.title, 'Story');
+  assert.equal(article.blocks.length, 1);
+  assert.equal(asked.at(-1), 'https://site.example/story');
+});
+
+test('articleBlocks picks the article with the most text', () => {
+  const story = 'story '.repeat(80);
+  const html = `<main><article class="author-bio"><p>About the author of this post</p></article>
+    <div><h1 class="[&>a]:hidden">Headline</h1><p>${story}</p></div>
+    <article class="post-card"><p>A related post you may like</p></article></main>`;
+  assert.deepEqual(
+    articleBlocks(html).map((block) => block.text),
+    [
+      'About the author of this post',
+      'Headline',
+      story.trim(),
+      'A related post you may like'
+    ]
+  );
+  const lone = `<article><p>Short bio here</p></article><article><p>${story}</p></article>`;
+  assert.deepEqual(
+    articleBlocks(lone).map((block) => block.text),
+    [story.trim()]
   );
 });

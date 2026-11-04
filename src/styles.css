@@ -6701,3 +6701,58 @@ input[type='radio'] {
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* An article read in place: the card's text column, at reading size. */
+.feeds-article {
+  margin-top: 10px;
+  color: var(--ink);
+  font-size: 0.97rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.feeds-article p,
+.feeds-article blockquote {
+  margin: 0 0 0.8em;
+}
+
+.feeds-article h5 {
+  margin: 1.2em 0 0.4em;
+  color: var(--ink-strong);
+  font-size: 1rem;
+}
+
+.feeds-article .feeds-article-li {
+  padding-left: 1.2em;
+  text-indent: -0.8em;
+}
+
+.feeds-article .feeds-article-li::before {
+  content: '• ';
+}
+
+.feeds-article blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--ink-muted);
+}
+
+.feeds-article pre {
+  overflow-x: auto;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: var(--surface-hover);
+  font-size: 0.85rem;
+  white-space: pre;
+}
+
+.feeds-article .feeds-article-note {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.feeds-article-original {
+  color: var(--accent);
+  font-size: 0.86rem;
+  font-weight: 550;
+}
