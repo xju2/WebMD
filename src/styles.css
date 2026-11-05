@@ -228,7 +228,8 @@ body.resizing-panels {
    aria-label already carries the same words, so this is for sighted users.
    The browser's own title tooltip waits far longer. */
 .global-action[data-tooltip]::after,
-.ai-form-actions [data-tooltip]::after {
+.ai-form-actions [data-tooltip]::after,
+.news-actions [data-tooltip]::after {
   position: absolute;
   top: 50%;
   left: calc(100% + 8px);
@@ -274,12 +275,15 @@ body.resizing-panels {
   }
 }
 
-/* The AI buttons sit at the panel's bottom right, so theirs opens above. */
-.ai-form-actions [data-tooltip] {
+/* The AI buttons sit at the panel's bottom right, so theirs opens above;
+   so do the Feeds item buttons at a card's right edge. */
+.ai-form-actions [data-tooltip],
+.news-actions [data-tooltip] {
   position: relative;
 }
 
-.ai-form-actions [data-tooltip]::after {
+.ai-form-actions [data-tooltip]::after,
+.news-actions [data-tooltip]::after {
   top: auto;
   right: 0;
   bottom: calc(100% + 8px);
@@ -288,13 +292,16 @@ body.resizing-panels {
 }
 
 .ai-form-actions [data-tooltip]:hover::after,
-.ai-form-actions [data-tooltip]:focus-visible::after {
+.ai-form-actions [data-tooltip]:focus-visible::after,
+.news-actions [data-tooltip]:hover::after,
+.news-actions [data-tooltip]:focus-visible::after {
   opacity: 1;
   transform: translateY(0);
   transition-delay: 250ms;
 }
 
-.ai-form-actions [data-tooltip]:focus-visible::after {
+.ai-form-actions [data-tooltip]:focus-visible::after,
+.news-actions [data-tooltip]:focus-visible::after {
   transition-delay: 0ms;
 }
 

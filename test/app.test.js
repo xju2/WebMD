@@ -1503,6 +1503,16 @@ test('lists feeds from .webmd/feeds.json and labels them in batches', async () =
     const again = await (await fetch(`${url}/api/feeds`)).json();
     assert.deepEqual(again.items[0].hfs, { hype: 5, facts: 70, signal: 90 });
 
+    const removed = await fetch(`${url}/api/feeds/remove`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://blog.example/2' })
+    });
+    assert.equal(removed.status, 200);
+    const after = await (await fetch(`${url}/api/feeds`)).json();
+    assert.deepEqual(after.items, []);
+    assert.equal(after.sources[0].count, 0);
+
     // Only links the listing holds are read.
     const outside = await fetch(
       `${url}/api/feeds/article?url=${encodeURIComponent('http://127.0.0.1:22/')}`

@@ -189,6 +189,28 @@
     }
   }
 
+  // Gone from the list at once; the server keeps it gone on every device.
+  async function remove(item) {
+    const before = items;
+    items = items.filter((entry) => entry.url !== item.url);
+    sources = sources.map((entry) =>
+      entry.name === item.source ? { ...entry, count: entry.count - 1 } : entry
+    );
+    try {
+      await requestJson('/api/feeds/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root, url: item.url })
+      });
+    } catch (err) {
+      items = before;
+      sources = sources.map((entry) =>
+        entry.name === item.source ? { ...entry, count: entry.count + 1 } : entry
+      );
+      status = `Could not remove: ${err.message}`;
+    }
+  }
+
   async function openSources() {
     try {
       const { path } = await requestJson('/api/feeds/sources', {
@@ -436,6 +458,17 @@
                   {clipping.has(item.url) ? 'Clipping…' : 'Clip'}
                 </button>
               {/if}
+              <button
+                aria-label="Remove"
+                class="news-vote"
+                data-tooltip="Remove: read, or not interested"
+                type="button"
+                on:click={() => remove(item)}
+              >
+                <svg aria-hidden="true" class="icon" viewBox="0 0 24 24">
+                  {#each ICONS.close as d}<path {d} />{/each}
+                </svg>
+              </button>
             </div>
           </div>
         </li>

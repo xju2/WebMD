@@ -59,6 +59,8 @@ import {
   parseFeedLabels,
   readFeedArticle,
   readFeedLabels,
+  readRemovedFeedItems,
+  removeFeedItem,
   readFeedsConfig,
   saveFeedLabels,
   startFeedsConfig
@@ -1332,7 +1334,18 @@ export async function createApp({
       refresh,
       cacheDir
     });
-    return { ...feeds, warning: config.warning };
+    // Removed items leave every route, so they are neither labeled nor read.
+    const removed = await readRemovedFeedItems({ cacheDir });
+    const items = feeds.items.filter((item) => !removed.has(item.url));
+    const sources = feeds.sources.map((source) => ({
+      ...source,
+      count:
+        source.count -
+        feeds.items.filter(
+          (item) => item.source === source.name && removed.has(item.url)
+        ).length
+    }));
+    return { items, sources, warning: config.warning };
   }
 
   app.get(
@@ -1406,6 +1419,17 @@ export async function createApp({
           `Could not read the article: ${error.message}`
         );
       }
+    })
+  );
+
+  app.post(
+    '/api/feeds/remove',
+    asyncHandler(async (req, res) => {
+      const url = String(req.body?.url ?? '');
+      if (!/^https?:\/\//.test(url))
+        throw new WorkspaceError(400, 'Name the link to remove.');
+      await removeFeedItem(url, { cacheDir });
+      res.json({ ok: true });
     })
   );
 

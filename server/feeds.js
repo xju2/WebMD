@@ -127,6 +127,8 @@ const sourceCache = new Map();
 const inFlight = new Map();
 // url → { hype, facts, signal, at }
 let labelCache = null;
+// url → when it was removed from the Feeds view
+let removedCache = null;
 
 /**
  * The workspace's sources and topics, or the defaults when it has no
@@ -763,6 +765,33 @@ async function loadLabels(cacheDir) {
 
 const scoresOf = ({ hype, facts, signal }) => ({ hype, facts, signal });
 
+/* ---------- Removed items ---------- */
+
+/** Links removed from the view: read, or not worth reading. */
+export async function readRemovedFeedItems({ cacheDir } = {}) {
+  return new Set(Object.keys(await loadRemoved(cacheDir)));
+}
+
+export async function removeFeedItem(url, { cacheDir, now = Date.now } = {}) {
+  const removed = await loadRemoved(cacheDir);
+  const at = now();
+  removed[url] = at;
+  // Items leave the listing after KEEP_DAYS, so older removals do nothing.
+  const oldest = at - (KEEP_DAYS + 7) * DAY_MS;
+  for (const [key, when] of Object.entries(removed))
+    if (!(when >= oldest)) delete removed[key];
+  if (cacheDir)
+    await writeCacheFile(path.join(cacheDir, 'feeds', 'removed.json'), removed);
+}
+
+async function loadRemoved(cacheDir) {
+  removedCache ??=
+    (cacheDir &&
+      (await readCacheFile(path.join(cacheDir, 'feeds', 'removed.json')))) ||
+    {};
+  return removedCache;
+}
+
 export function buildLabelMessages(items) {
   const list = items
     .map((item, index) => {
@@ -915,4 +944,5 @@ export function resetFeedsCache() {
   sourceCache.clear();
   inFlight.clear();
   labelCache = null;
+  removedCache = null;
 }
