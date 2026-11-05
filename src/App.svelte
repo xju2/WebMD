@@ -62,6 +62,7 @@
     arxivCitation,
     indicoLabel,
     indicoReference,
+    jiraTicket,
     xPostLabel,
     xPostReference,
     mathPasteText,
@@ -86,6 +87,7 @@
   import { layoutGraph } from './graph.js';
   import { highlightCodeBlock, languageLabel } from './highlight.js';
   import { renderMarkdown } from './markdown.js';
+  import { collectJiraTickets } from './x-posts.js';
   import {
     filterPapers,
     bibArxivKeys,
@@ -368,16 +370,14 @@
   let xPosts = [];
   let xGithub = [];
   let xArxiv = [];
+  let xJira = [];
   let xCopied = false;
   let xCopiedTimer;
   // What is listed, as Markdown bullets, ready to paste into a note.
   async function copyXList() {
     const text = visibleXPosts
       .map((post) => {
-        const label = (arxivTitles[post.handle] || post.label).replace(
-          /[[\]]/g,
-          '\\$&'
-        );
+        const label = linkTitle(post).replace(/[[\]]/g, '\\$&');
         return `- [${label}](${post.url})`;
       })
       .join('\n');
@@ -395,7 +395,9 @@
   function readXKind() {
     try {
       const kind = localStorage.getItem(X_KIND_KEY);
-      return ['posts', 'github', 'arxiv'].includes(kind) ? kind : 'posts';
+      return ['posts', 'github', 'arxiv', 'jira'].includes(kind)
+        ? kind
+        : 'posts';
     } catch {
       return 'posts';
     }
@@ -408,6 +410,70 @@
     }
   }
   let githubInfo = {};
+  // Jira tickets by canonical link: a ticket, or null once asked and not found.
+  let jiraTickets = {};
+  // Unknown until the server first answers; false stops asking a Jira-less server.
+  let jiraConfigured = null;
+  let jiraMine = [];
+  let jiraMineStatus = '';
+  async function loadJiraTickets(urls) {
+    if (jiraConfigured === false) return;
+    const wanted = [...new Set(urls)].filter((url) => !(url in jiraTickets));
+    if (!wanted.length) return;
+    for (const url of wanted) jiraTickets[url] = null;
+    try {
+      const result = await requestJson('/api/jira/tickets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: wanted.slice(0, 200) })
+      });
+      jiraConfigured = result.configured;
+      jiraTickets = { ...jiraTickets, ...result.tickets };
+    } catch {
+      // A badge is a nicety; the link still works without one.
+    }
+  }
+  async function loadJiraMine() {
+    jiraMineStatus = 'Loading Jira tickets...';
+    try {
+      const result = await requestJson('/api/jira/mine');
+      jiraConfigured = result.configured;
+      jiraMine = result.tickets;
+      for (const ticket of jiraMine) jiraTickets[ticket.url] = ticket;
+      jiraMineStatus = '';
+    } catch (err) {
+      jiraMineStatus = err.message;
+    }
+  }
+  const jiraUrls = (text) =>
+    collectJiraTickets(text).map((ticket) => ticket.url);
+  const jiraCard = (ticket) =>
+    [
+      `${ticket.key}: ${ticket.summary}`,
+      `${ticket.status}${ticket.assignee ? ` · ${ticket.assignee}` : ' · unassigned'}`,
+      ticket.due ? `Due ${ticket.due}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n');
+  // A ticket linked by its bare key reads better under Jira's own summary.
+  function linkTitle(post) {
+    const summary =
+      post.label === post.handle ? jiraTickets[post.url]?.summary : '';
+    return arxivTitles[post.handle] || summary || post.label;
+  }
+  $: if (xKind === 'jira') loadJiraTickets(xJira.map((ticket) => ticket.url));
+  $: if (renderedBlocks.length) loadJiraTickets(jiraUrls(content));
+  $: if (referenceContent) loadJiraTickets(jiraUrls(referenceContent));
+  $: loadJiraTickets(workspaceTasks.flatMap((task) => jiraUrls(task.text)));
+  $: visibleJiraMine = jiraMine.filter((ticket) => {
+    const text =
+      `${ticket.key} ${ticket.summary} ${ticket.status}`.toLowerCase();
+    return taskFilter
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean)
+      .every((word) => text.includes(word));
+  });
   let arxivTitles = {};
   // A paper cited as a bare link has no title in the note; arXiv has one.
   $: if (xKind === 'arxiv') loadArxivTitles(xArxiv);
@@ -858,12 +924,14 @@
     clipped: newsClipped
   }).length;
   $: xWords = xQuery.toLowerCase().split(/\s+/).filter(Boolean);
-  $: xItems = { github: xGithub, arxiv: xArxiv }[xKind] ?? xPosts;
+  $: xItems = { github: xGithub, arxiv: xArxiv, jira: xJira }[xKind] ?? xPosts;
   $: xNoun =
-    { github: 'GitHub repos', arxiv: 'arXiv papers' }[xKind] ?? 'posts';
+    { github: 'GitHub repos', arxiv: 'arXiv papers', jira: 'Jira tickets' }[
+      xKind
+    ] ?? 'posts';
   $: visibleXPosts = xItems.filter((post) => {
     const text =
-      `${arxivTitles[post.handle] || post.label} ${post.handle} ${post.path} ${githubInfo[post.handle] ?? ''}`.toLowerCase();
+      `${linkTitle(post)} ${post.handle} ${post.path} ${githubInfo[post.handle] ?? ''} ${jiraTickets[post.url]?.status ?? ''}`.toLowerCase();
     return xWords.every((word) => text.includes(word));
   });
   // A weekend's empty listing is not kept, but it is still today.
@@ -2393,6 +2461,7 @@
     selectedRange = null;
     clearInlineEdit();
     error = '';
+    if (jiraConfigured !== false) loadJiraMine();
     await loadTasks(selectedRoot);
   }
 
@@ -2431,12 +2500,14 @@
       xPosts = result.posts;
       xGithub = result.github;
       xArxiv = result.arxiv;
+      xJira = result.jira;
       xStatus = '';
     } catch (err) {
       if (root !== selectedRoot) return;
       xPosts = [];
       xGithub = [];
       xArxiv = [];
+      xJira = [];
       xStatus = err.message;
     }
   }
@@ -3119,6 +3190,7 @@
         } else {
           upgradeIndicoLink(source, insert, range);
           upgradeXLink(source, insert, range);
+          upgradeJiraLink(source, insert, range, beforeCursor);
         }
         return true;
       }
@@ -3247,6 +3319,29 @@
       return;
     }
     replacePastedLink(placeholder, `[${label}](${source.trim()})`, range);
+  }
+
+  /**
+   * A ticket pasted onto an empty task line becomes the task itself:
+   * `- [ ] [KEY](link) summary 📅 due`. Elsewhere the key alone stays.
+   */
+  async function upgradeJiraLink(source, placeholder, range, beforeCursor) {
+    if (!/^\s*[-*+] \[ \] ?$/.test(beforeCursor)) return;
+    const reference = jiraTicket(source.trim());
+    if (!reference || jiraConfigured === false) return;
+    const root = selectedRoot;
+    const path = selectedPath;
+    await loadJiraTickets([reference.url]);
+    const ticket = jiraTickets[reference.url];
+    if (!ticket?.summary) return;
+    if (root !== selectedRoot || path !== selectedPath || !selectedIsMarkdown) {
+      return;
+    }
+    replacePastedLink(
+      placeholder,
+      `${placeholder} ${ticket.summary}${ticket.due ? ` 📅 ${ticket.due}` : ''}`,
+      range
+    );
   }
 
   function textBeforeCursor(state) {
@@ -5915,7 +6010,7 @@
               {#if segment.type === 'link'}
                 <a href={segment.href} rel="noreferrer" target="_blank"
                   >{segment.text}</a
-                >
+                >{@render jiraStatus(segment.href)}
               {:else if segment.type === 'assignee'}
                 <button
                   class="task-who"
@@ -6113,6 +6208,17 @@
   </li>
 {/snippet}
 
+{#snippet jiraStatus(href)}
+  {@const ticket = jiraTickets[jiraTicket(href)?.url]}
+  {#if ticket}
+    <span
+      class="jira-status"
+      class:jira-done={ticket.done}
+      data-card={jiraCard(ticket)}>{ticket.status}</span
+    >
+  {/if}
+{/snippet}
+
 {#snippet inline(segments)}
   {#each segments as segment}
     {#if segment.type === 'code'}
@@ -6122,7 +6228,8 @@
         >{@html renderMath(segment.text, false, segment.macros)}</span
       >
     {:else if segment.type === 'link' && segment.href}
-      <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a>
+      <a href={segment.href} rel="noreferrer" target="_blank">{segment.text}</a
+      >{@render jiraStatus(segment.href)}
     {:else if segment.type === 'citation'}
       {@const entry = bibliographyByKey.get(segment.key)}
       {@const href = citationUrl(entry)}
@@ -7093,6 +7200,7 @@
                   type="button"
                   on:click={() => {
                     closeViewMenu();
+                    if (jiraConfigured !== false) loadJiraMine();
                     loadTasks(selectedRoot);
                   }}
                 >
@@ -7583,6 +7691,44 @@
             {#if tasksStatus}
               <p class="tasks-note">{tasksStatus}</p>
             {/if}
+            {#if jiraConfigured}
+              <section
+                class="jira-mine"
+                aria-label="Jira tickets assigned to you"
+              >
+                <h3>
+                  Jira · assigned to you
+                  <span class="jira-mine-count">{visibleJiraMine.length}</span>
+                </h3>
+                {#if jiraMineStatus}
+                  <p class="tasks-note">{jiraMineStatus}</p>
+                {:else if !visibleJiraMine.length}
+                  <p class="tasks-note">
+                    {jiraMine.length
+                      ? 'No assigned ticket matches this filter.'
+                      : 'No open ticket is assigned to you.'}
+                  </p>
+                {/if}
+                <ul>
+                  {#each visibleJiraMine as ticket (ticket.url)}
+                    <li>
+                      <a href={ticket.url} rel="noreferrer" target="_blank"
+                        >{ticket.key}</a
+                      >
+                      <span class="jira-mine-summary">{ticket.summary}</span>
+                      {@render jiraStatus(ticket.url)}
+                      {#if ticket.due}
+                        <span
+                          class="jira-mine-due"
+                          class:overdue={ticket.due < todayText}
+                          >📅 {ticket.due}</span
+                        >
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              </section>
+            {/if}
             {#if editingSections && taskGrouping !== 'urgency'}
               <div class="task-sections-editor">
                 <p class="tasks-note">
@@ -7953,6 +8099,7 @@
                   <option value="posts">X posts</option>
                   <option value="github">GitHub repos</option>
                   <option value="arxiv">arXiv papers</option>
+                  <option value="jira">Jira tickets</option>
                 </select>
                 <span>{visibleXPosts.length} {xNoun}</span>
                 <button
@@ -7988,14 +8135,16 @@
                       class="news-title"
                       href={post.url}
                       rel="noreferrer"
-                      target="_blank"
-                      >{arxivTitles[post.handle] || post.label}</a
+                      target="_blank">{linkTitle(post)}</a
                     >
                   </h4>
                   <p class="news-meta">
                     <span class="news-id"
                       >{xKind === 'posts' ? '@' : ''}{post.handle}</span
                     >
+                    {#if xKind === 'jira'}
+                      {@render jiraStatus(post.url)}
+                    {/if}
                     <button
                       class="x-note"
                       title="Open the note that links to this post"
@@ -8021,7 +8170,7 @@
                   <li class="preview-empty">
                     {xItems.length
                       ? `No ${xNoun} match this filter.`
-                      : `No note links to ${{ github: 'a GitHub repo', arxiv: 'an arXiv paper' }[xKind] ?? 'an X post'} yet. Paste one into a note and it shows up here.`}
+                      : `No note links to ${{ github: 'a GitHub repo', arxiv: 'an arXiv paper', jira: 'a Jira ticket' }[xKind] ?? 'an X post'} yet. Paste one into a note and it shows up here.`}
                   </li>
                 {/if}
               {/each}

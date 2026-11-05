@@ -1,4 +1,4 @@
-import { arxivPasteId, xPostReference } from './editor.js';
+import { arxivPasteId, jiraTicket, xPostReference } from './editor.js';
 
 // A Markdown link keeps its label; a bare URL (or `<url>`) has none.
 const LINK =
@@ -100,4 +100,26 @@ export function collectArxivPapers(content = '') {
     }
   }
   return [...papers.values()];
+}
+
+/** Every Jira ticket a note links to, once each, as `{ url, handle, label }`. */
+export function collectJiraTickets(content = '') {
+  const tickets = new Map();
+  for (const [, text, linked, bare] of content.matchAll(LINK)) {
+    const ticket = jiraTicket(linked ?? bare);
+    if (!ticket) continue;
+    const label = text?.trim();
+    const named = label && label !== ticket.key && label !== (linked ?? bare);
+    const listed = tickets.get(ticket.url);
+    if (listed) {
+      if (listed.label === ticket.key && named) listed.label = label;
+    } else {
+      tickets.set(ticket.url, {
+        url: ticket.url,
+        handle: ticket.key,
+        label: named ? label : ticket.key
+      });
+    }
+  }
+  return [...tickets.values()];
 }

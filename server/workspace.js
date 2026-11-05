@@ -17,6 +17,7 @@ import { collectTasks } from '../src/tasks.js';
 import {
   collectArxivPapers,
   collectGithubRepos,
+  collectJiraTickets,
   collectXPosts
 } from '../src/x-posts.js';
 import { isMediaWikiTarget, resolveWikiLinkPath } from '../src/wiki-links.js';
@@ -246,7 +247,8 @@ function listXPosts(corpus) {
   return {
     posts: list(collectXPosts),
     github: list(collectGithubRepos),
-    arxiv: list(collectArxivPapers)
+    arxiv: list(collectArxivPapers),
+    jira: list(collectJiraTickets)
   };
 }
 

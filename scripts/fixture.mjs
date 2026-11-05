@@ -577,6 +577,28 @@ async function indicoFetch(target, options = {}) {
 }
 
 const offline = async () => new Response('', { status: 503 });
+// One closed ticket a note links to, and one open ticket assigned to you.
+const jiraIssue = (key, summary, status, category, duedate = null) => ({
+  key,
+  fields: {
+    summary,
+    status: { name: status, statusCategory: { key: category } },
+    assignee: { displayName: 'Fixture User' },
+    duedate,
+    priority: { name: 'Major' }
+  }
+});
+const jiraFetch = async (_url, init) => {
+  const { jql } = JSON.parse(init.body);
+  const issues = jql.startsWith('assignee')
+    ? [jiraIssue('ATLASRECTS-9001', 'Validate the new tracking geometry', 'In Progress', 'indeterminate', '2026-01-15')]
+    : jql.includes('ATLASRECTS-7645')
+      ? [jiraIssue('ATLASRECTS-7645', 'Memory usage increase in RAWtoALL', 'Closed', 'done')]
+      : [];
+  return new Response(JSON.stringify({ issues }), {
+    headers: { 'content-type': 'application/json' }
+  });
+};
 const env = {
   AI_PROVIDER: 'ollama',
   OLLAMA_BASE_URL: 'http://127.0.0.1:1',
@@ -586,7 +608,8 @@ const env = {
   ...(process.env.ARXIV_NEWS_MAX_CANDIDATES
     ? { ARXIV_NEWS_MAX_CANDIDATES: process.env.ARXIV_NEWS_MAX_CANDIDATES }
     : {}),
-  ...(meetingsMode === 'notoken' ? {} : { INDICO_CERN_TOKEN: FIXTURE_TOKEN })
+  ...(meetingsMode === 'notoken' ? {} : { INDICO_CERN_TOKEN: FIXTURE_TOKEN }),
+  JIRA_CERN_TOKEN: 'fixture-jira-token'
 };
 const app = await createApp({
   workspaceRoots: [research, empty],
@@ -597,6 +620,7 @@ const app = await createApp({
   citationFetch: offline,
   indicoFetch,
   xFetch: offline,
+  jiraFetch,
   cacheDir,
   env
 });

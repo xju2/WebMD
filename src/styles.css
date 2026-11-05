@@ -3459,7 +3459,9 @@ input[type='radio'] {
 }
 
 .citation[data-card]:hover::after,
-.citation[data-card]:focus::after {
+.citation[data-card]:focus::after,
+.jira-status[data-card]:hover::after,
+.jira-status[data-card]:focus::after {
   background: #1f2937;
   border-radius: 6px;
   bottom: calc(100% + 6px);
@@ -3475,6 +3477,76 @@ input[type='radio'] {
   white-space: normal;
   width: max-content;
   z-index: 10;
+}
+
+.jira-status {
+  position: relative;
+  margin-left: 0.3em;
+  padding: 0 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 0.75em;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: 0.1em;
+}
+
+.jira-status.jira-done {
+  background: var(--surface-muted);
+  color: var(--ink-subtle);
+}
+
+.jira-status[data-card]:hover::after,
+.jira-status[data-card]:focus::after {
+  white-space: pre-line;
+}
+
+.jira-mine {
+  margin: 12px 16px 0;
+}
+
+.jira-mine a {
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.jira-mine .tasks-note {
+  margin: 0;
+}
+
+.jira-mine h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-subtle);
+}
+
+.jira-mine-count {
+  font-weight: 400;
+}
+
+.jira-mine ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.jira-mine li {
+  padding: 0.2rem 0;
+}
+
+.jira-mine-summary {
+  margin-left: 0.4em;
+}
+
+.jira-mine-due {
+  margin-left: 0.4em;
+  font-size: 0.85em;
+  color: var(--ink-subtle);
+}
+
+.jira-mine-due.overdue {
+  color: var(--danger);
 }
 
 .citation-missing {

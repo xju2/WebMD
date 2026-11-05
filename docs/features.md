@@ -554,10 +554,37 @@ you used:
   same line (`- Ju et al., "Title" — [arXiv:id](…)`). A paper with nothing
   before its link gets its title from arXiv.
 
+- **Jira tickets**: every ticket a note links to, once each, titled by its
+  Jira summary when the note names it only by key, with its current status.
+
 Every row shows the note it came from (it opens on click), that note's last
 edit date, and `+N more` when other notes link the same item. **Filter** keeps
 rows whose label, handle, description, or note contain every word typed, and
 **Copy list** puts what is listed on the clipboard as `- [label](url)` lines.
+
+## Jira tickets
+
+With `JIRA_CERN_TOKEN` (or `JIRA_<NAME>_TOKEN` and `JIRA_<NAME>_URL` for
+another Jira) in `~/.webmd.conf`, WebMD reads tickets from Jira. It never
+writes to Jira.
+
+- **Status beside every ticket link.** In the preview and in Tasks rows, a
+  link to a ticket gets a small status badge (`In Progress`, `Closed`, greyed
+  once done). Hover it for the summary, assignee, and due date.
+- **Your open tickets in Tasks.** Above the board, **Jira · assigned to you**
+  lists the unresolved tickets assigned to you, soonest due first, with an
+  overdue date in red. The Tasks search box filters it too. It is fetched when
+  Tasks opens and on **Refresh tasks**.
+- **Tickets in Links.** The Links view has a **Jira tickets** kind; see
+  [Links in your notes](#links-in-your-notes).
+- **Paste a ticket onto an empty task line** (`- [ ] `) and it becomes the
+  task: `- [ ] [KEY](link) Summary 📅 due`, with the due date only when Jira
+  has one. Elsewhere a pasted ticket link stays as its key.
+
+A token is bound to its Jira's base URL and sent nowhere else. Answers are
+cached for ten minutes on the server; reload the page to see a status change
+sooner. A link to a Jira without a token, or a ticket Jira will not show you,
+simply gets no badge.
 
 ## Word count
 

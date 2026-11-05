@@ -37,6 +37,7 @@ import {
   transcriptForModel
 } from './transcripts.js';
 import { fetchGithubDescription, isGithubRepoName } from './github.js';
+import { createJiraClient } from './jira.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import { externalUrl, openInChrome, OpenUrlError } from './open-url.js';
 import { fetchRemoteImage } from './remote-images.js';
@@ -131,6 +132,7 @@ export async function createApp({
   imageFetch = fetch,
   newsFetch = fetch,
   feedsFetch = fetch,
+  jiraFetch = fetch,
   // Where day-scoped fetches and model answers outlive a restart. Outside the
   // workspaces so autocommit never picks them up; unset keeps them in memory.
   cacheDir,
@@ -147,6 +149,7 @@ export async function createApp({
   // Indico tokens, each bound to one exact origin. Read once, like the rest
   // of the environment; they never leave this process.
   const sites = indicoSites(env);
+  const jira = createJiraClient({ env, fetchImpl: jiraFetch });
 
   // Per-workspace layout settings from .webmd/settings.json, read on every
   // request so an edit to the file applies on the next workspace load.
@@ -1054,6 +1057,33 @@ export async function createApp({
         description: await fetchGithubDescription(req.query.name, {
           fetchImpl: xFetch
         })
+      });
+    })
+  );
+
+  // Ticket details for the Jira links a note shows, keyed by canonical link.
+  app.post(
+    '/api/jira/tickets',
+    asyncHandler(async (req, res) => {
+      const urls = req.body?.urls;
+      if (!Array.isArray(urls) || urls.length > 200) {
+        throw new WorkspaceError(400, 'Up to 200 Jira links are required.');
+      }
+      res.json({
+        configured: jira.configured,
+        tickets: await jira.tickets(
+          urls.filter((url) => typeof url === 'string')
+        )
+      });
+    })
+  );
+
+  app.get(
+    '/api/jira/mine',
+    asyncHandler(async (req, res) => {
+      res.json({
+        configured: jira.configured,
+        tickets: jira.configured ? await jira.mine() : []
       });
     })
   );

@@ -401,6 +401,31 @@ function jiraLabel(segments, parsed) {
   return JIRA_KEY.test(selected) ? selected : null;
 }
 
+// Where a Jira's own pages start; what comes before is the install's base path.
+const JIRA_APP_SEGMENTS = new Set(['browse', 'secure', 'software', 'projects', 'issues']);
+
+/**
+ * A Jira ticket link as `{ key, url }`, `url` being the canonical
+ * `<base>/browse/KEY` however the ticket was linked, or null.
+ */
+export function jiraTicket(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const raw = parsed.pathname.split('/').filter(Boolean);
+  const key = jiraLabel(raw.map(decodeSegment), parsed);
+  if (!key) return null;
+  const cut = raw.findIndex((segment) => JIRA_APP_SEGMENTS.has(segment));
+  const base = raw.slice(0, cut < 0 ? raw.length : cut).join('/');
+  return {
+    key,
+    url: `${parsed.origin}${base ? `/${base}` : ''}/browse/${key}`
+  };
+}
+
 /**
  * An X post, as `{ url, handle, id }`. The URL says who posted but not what
  * they said, so the label starts at `@handle on X` and a lookup trades it for

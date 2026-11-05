@@ -119,6 +119,7 @@ AI_MODEL=claude-opus-4-8
 AUTO_COMMIT_MINUTES=30
 QUOTE_THEMES=stoicism,music,physics,life,programming,finance
 INDICO_CERN_TOKEN=indp_***
+JIRA_CERN_TOKEN=***
 ARXIV_NEWS_MAX_CANDIDATES=300
 AUTO_COMMIT_SUMMARY_LINES=5
 ```
@@ -166,6 +167,10 @@ Every key is optional.
   meetings. `CERN`, `FNAL`, and `GLOBAL` are known; for any other Indico, also
   set `INDICO_<NAME>_URL=https://...`. See
   [Tokens and scopes](docs/features.md#tokens-and-scopes).
+- `JIRA_<NAME>_TOKEN`: a Jira personal access token, for ticket status in
+  notes and your assigned tickets in Tasks. `CERN` (its.cern.ch/jira) is known;
+  for any other Jira, also set `JIRA_<NAME>_URL=https://...`. See
+  [Jira tickets](docs/features.md#jira-tickets).
 - `ARXIV_NEWS_CATEGORIES`: arXiv categories for the News view, defaults to
   `hep-ex,hep-ph,cs.LG,cs.AI,physics.data-an`.
 - `ARXIV_NEWS_INTERESTS`: what you care about, used to rank papers when the
