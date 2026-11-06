@@ -556,6 +556,8 @@ you used:
 
 - **Jira tickets**: every ticket a note links to, once each, titled by its
   Jira summary when the note names it only by key, with its current status.
+  A second dropdown keeps **All**, **Open**, or **Done** tickets, going by
+  Jira's own status category, so `Resolved` and `Closed` both count as done.
 
 Every row shows the note it came from (it opens on click), that note's last
 edit date, and `+N more` when other notes link the same item. **Filter** keeps

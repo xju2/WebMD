@@ -414,6 +414,8 @@
   let jiraTickets = {};
   // Unknown until the server first answers; false stops asking a Jira-less server.
   let jiraConfigured = null;
+  // Links view: all, open, or done tickets, by Jira's own status category.
+  let jiraStatusFilter = 'all';
   let jiraMine = [];
   let jiraMineStatus = '';
   async function loadJiraTickets(urls) {
@@ -937,7 +939,14 @@
   $: visibleXPosts = xItems.filter((post) => {
     const text =
       `${linkTitle(post)} ${post.handle} ${post.path} ${githubInfo[post.handle] ?? ''} ${jiraTickets[post.url]?.status ?? ''}`.toLowerCase();
-    return xWords.every((word) => text.includes(word));
+    // A ticket Jira has not answered for yet counts as open, not hidden.
+    const done = Boolean(jiraTickets[post.url]?.done);
+    return (
+      xWords.every((word) => text.includes(word)) &&
+      (xKind !== 'jira' ||
+        jiraStatusFilter === 'all' ||
+        done === (jiraStatusFilter === 'done'))
+    );
   });
   // A weekend's empty listing is not kept, but it is still today.
   $: newsDayOptions =
@@ -8114,6 +8123,16 @@
                   <option value="arxiv">arXiv papers</option>
                   <option value="jira">Jira tickets</option>
                 </select>
+                {#if xKind === 'jira'}
+                  <select
+                    aria-label="Ticket status"
+                    bind:value={jiraStatusFilter}
+                  >
+                    <option value="all">All</option>
+                    <option value="open">Open</option>
+                    <option value="done">Done</option>
+                  </select>
+                {/if}
                 <span>{visibleXPosts.length} {xNoun}</span>
                 <button
                   class="news-clipped-toggle"
