@@ -476,3 +476,25 @@ test('sends earlier chat turns before the new question', async () => {
   assert.equal(input[1].content, 'Turn it into a table.');
   assert.match(input[3].content, /yes, please/);
 });
+
+test('linked Jira ticket text goes between the context and the request', async () => {
+  const fetches = [];
+  await collect(
+    streamAiChat({
+      prompt: 'Summarize',
+      documentText: 'See CRIC-454',
+      path: '/n.md',
+      ticketText: 'CRIC-454: Add Inference',
+      env: { AI_PROVIDER: 'openai', AI_MODEL: 'm', OPENAI_API_KEY: 'k' },
+      fetchImpl: async (url, options) => {
+        fetches.push(JSON.parse(options.body));
+        return streamResponse('data: {"type":"response.completed"}\n\n');
+      }
+    })
+  );
+  const content = JSON.stringify(fetches[0].input.at(-1).content);
+  assert.match(
+    content,
+    /See CRIC-454.*Jira tickets linked above:\\nCRIC-454: Add Inference.*User request/
+  );
+});

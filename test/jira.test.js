@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createJiraClient, jiraSites } from '../server/jira.js';
+import { createJiraClient, jiraSites, ticketsForAi } from '../server/jira.js';
 import { jiraTicket } from '../src/editor.js';
 import { collectJiraTickets } from '../src/x-posts.js';
 
@@ -114,4 +114,44 @@ test('a refused token says which variable to fix', async () => {
     fetchImpl: async () => new Response('', { status: 401 })
   });
   await assert.rejects(jira.mine(), /JIRA_CERN_TOKEN/);
+});
+
+test('ticketsForAi lays out description and latest comments', async () => {
+  const issue = {
+    key: 'CRIC-454',
+    fields: {
+      summary: 'Add Inference',
+      status: { name: 'Open', statusCategory: { key: 'new' } },
+      assignee: null,
+      duedate: null,
+      priority: { name: 'Minor' },
+      description: 'Please add it.',
+      comment: {
+        comments: ['one', 'two', 'three', 'four'].map((body, i) => ({
+          body,
+          created: `2026-11-0${i + 1}T10:00:00.000+0100`,
+          author: { displayName: 'Ana' }
+        }))
+      }
+    }
+  };
+  let sent;
+  const jira = createJiraClient({
+    env: { JIRA_CERN_TOKEN: 't' },
+    fetchImpl: async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return new Response(JSON.stringify({ issues: [issue] }));
+    }
+  });
+  const text = ticketsForAi(
+    await jira.details(['https://its.cern.ch/jira/browse/CRIC-454'])
+  );
+  assert.ok(sent.fields.includes('comment'));
+  assert.match(
+    text,
+    /^CRIC-454: Add Inference\nStatus: Open · Assignee: unassigned/
+  );
+  assert.match(text, /Description:\nPlease add it\./);
+  assert.doesNotMatch(text, /\none$/m);
+  assert.match(text, /Comment by Ana on 2026-11-04:\nfour$/);
 });

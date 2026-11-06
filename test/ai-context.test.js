@@ -83,3 +83,26 @@ test('names the kind of context, never a paper', () => {
   ]);
   for (const label of labels) assert.doesNotMatch(label, /current paper/i);
 });
+
+test('linked Jira tickets are named in the context line', () => {
+  const note = chatContext({
+    notePath: '/n.md',
+    noteLength: 50,
+    jiraTickets: 2
+  });
+  assert.match(
+    note.details.join(' '),
+    /The 2 Jira tickets it links to go along/
+  );
+  const selection = chatContext({ selectedText: 'see X-1', jiraTickets: 1 });
+  assert.match(
+    selection.details[1],
+    /The 1 Jira ticket it links to goes along/
+  );
+  const empty = chatContext({
+    notePath: '/n.md',
+    noteLength: 0,
+    jiraTickets: 3
+  });
+  assert.doesNotMatch(empty.details.join(' '), /Jira/);
+});

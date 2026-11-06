@@ -58,11 +58,54 @@ function ticketFrom(issue, site) {
     done: fields.status?.statusCategory?.key === 'done',
     assignee: fields.assignee?.displayName || '',
     due: fields.duedate || '',
-    priority: fields.priority?.name || ''
+    priority: fields.priority?.name || '',
+    ...(fields.description !== undefined
+      ? {
+          description: clip(fields.description, DESCRIPTION_CHARS),
+          // The newest few; an old thread is mostly settled history.
+          comments: (fields.comment?.comments || [])
+            .slice(-COMMENTS)
+            .map((comment) => ({
+              author: comment.author?.displayName || '',
+              created: String(comment.created || '').slice(0, 10),
+              body: clip(comment.body, COMMENT_CHARS)
+            }))
+        }
+      : {})
   };
 }
 
-async function search(site, jql, fetchImpl, maxResults = 100) {
+const DESCRIPTION_CHARS = 2000;
+const COMMENTS = 3;
+const COMMENT_CHARS = 800;
+// Tickets read into one AI prompt, so a link-heavy note cannot crowd out the note.
+export const MAX_AI_TICKETS = 10;
+
+function clip(text, limit) {
+  const value = String(text || '').trim();
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
+}
+
+/** Tickets as plain text for an AI prompt. */
+export function ticketsForAi(tickets) {
+  return tickets
+    .map((ticket) =>
+      [
+        `${ticket.key}: ${ticket.summary}`,
+        `Status: ${ticket.status} · Assignee: ${ticket.assignee || 'unassigned'} · Priority: ${ticket.priority || 'none'}${ticket.due ? ` · Due: ${ticket.due}` : ''}`,
+        ticket.description ? `Description:\n${ticket.description}` : '',
+        ...(ticket.comments || []).map(
+          (comment) =>
+            `Comment by ${comment.author || 'someone'} on ${comment.created}:\n${comment.body}`
+        )
+      ]
+        .filter(Boolean)
+        .join('\n')
+    )
+    .join('\n\n');
+}
+
+async function search(site, jql, fetchImpl, maxResults = 100, fields = FIELDS) {
   let response;
   try {
     response = await fetchImpl(`${site.base}/rest/api/2/search`, {
@@ -75,7 +118,7 @@ async function search(site, jql, fetchImpl, maxResults = 100) {
       // An unknown or hidden key is dropped from the answer instead of failing it.
       body: JSON.stringify({
         jql,
-        fields: FIELDS,
+        fields,
         maxResults,
         validateQuery: false
       }),
@@ -155,5 +198,32 @@ export function createJiraClient({
     return lists.flat();
   }
 
-  return { configured: sites.length > 0, tickets, mine };
+  /**
+   * The tickets a text links to, with description and latest comments, for
+   * an AI prompt. Not cached: it runs once per question asked.
+   */
+  async function details(urls = []) {
+    const bySite = new Map();
+    for (const raw of urls) {
+      const ticket = jiraTicket(raw);
+      const site = ticket && siteFor(ticket.url, sites);
+      if (!site) continue;
+      if (!bySite.has(site)) bySite.set(site, new Set());
+      bySite.get(site).add(ticket.key);
+    }
+    const lists = await Promise.all(
+      [...bySite].map(([site, keys]) =>
+        search(
+          site,
+          `key in (${[...keys].join(',')})`,
+          fetchImpl,
+          MAX_AI_TICKETS,
+          [...FIELDS, 'description', 'comment']
+        )
+      )
+    );
+    return lists.flat();
+  }
+
+  return { configured: sites.length > 0, tickets, mine, details };
 }

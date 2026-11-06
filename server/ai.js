@@ -21,6 +21,7 @@ export async function* streamAiChat({
   path = '',
   documentText = '',
   history = [],
+  ticketText = '',
   env = process.env,
   fetchImpl = fetch
 }) {
@@ -35,7 +36,8 @@ export async function* streamAiChat({
     selectedText,
     path,
     documentText,
-    history
+    history,
+    ticketText
   });
   yield* streamAiProvider(config, messages, fetchImpl);
 }
@@ -167,7 +169,8 @@ function chatMessages({
   selectedText,
   path,
   documentText,
-  history
+  history,
+  ticketText = ''
 }) {
   const context = selectedText?.trim()
     ? // Text selected outside a note (an arXiv abstract, an earlier reply)
@@ -187,7 +190,7 @@ function chatMessages({
     ...chatHistory(history),
     {
       role: 'user',
-      content: `${context}\n\nUser request:\n${prompt.trim()}`
+      content: `${context}${ticketText ? `\n\nJira tickets linked above:\n${ticketText}` : ''}\n\nUser request:\n${prompt.trim()}`
     }
   ];
 }

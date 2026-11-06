@@ -7,6 +7,7 @@
 // - otherwise the server reads the note from disk and sends up to
 //   MAX_NOTE_CONTEXT_CHARS of it;
 // - an empty note sends only its path;
+// - Jira tickets the sent text links to go along, up to ten;
 // - with no note, only the question goes.
 
 export const MAX_NOTE_CONTEXT_CHARS = 12000;
@@ -25,16 +26,25 @@ const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
  * @param {string} input.selectedText
  * @param {string} input.hiddenNotePath a note that is open but not on screen,
  *   named only to explain why it is left out
+ * @param {number} input.jiraTickets tickets the sent text links to, when Jira
+ *   is configured
  */
 export function chatContext({
   notePath = '',
   noteLength = 0,
   unsaved = false,
   selectedText = '',
-  hiddenNotePath = ''
+  hiddenNotePath = '',
+  jiraTickets = 0
 } = {}) {
   const payload = { path: notePath, selectedText: selectedText || '' };
   const selection = selectedText.trim();
+  const tickets = Math.min(jiraTickets, 10);
+  const ticketLine = tickets
+    ? [
+        `The ${plural(tickets, 'Jira ticket')} it links to ${tickets === 1 ? 'goes' : 'go'} along: summary, status, description, latest comments.`
+      ]
+    : [];
 
   if (selection) {
     const chars = selection.length;
@@ -50,7 +60,8 @@ export function chatContext({
       details: [
         notePath
           ? `Only the selected text from ${notePath} is sent, not the rest of the note.`
-          : 'Only the selected text is sent.'
+          : 'Only the selected text is sent.',
+        ...ticketLine
       ],
       excerpt
     };
@@ -69,6 +80,7 @@ export function chatContext({
         `All of ${notePath} is sent (${plural(noteLength, 'character')}).`
       );
     }
+    if (noteLength) details.push(...ticketLine);
     if (unsaved) {
       details.push(
         'The AI reads the saved copy; edits still syncing are not included.'

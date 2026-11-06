@@ -581,6 +581,12 @@ writes to Jira.
   task: `- [ ] [KEY](link) Summary 📅 due`, with the due date only when Jira
   has one. Elsewhere a pasted ticket link stays as its key.
 
+- **Tickets go along to the AI.** When you ask the AI panel about a note or a
+  selection, the Jira tickets it links to (up to ten) are sent with it: summary,
+  status, assignee, description, and the three latest comments. The panel's
+  context line says how many. If Jira is unreachable, the question goes without
+  them.
+
 A token is bound to its Jira's base URL and sent nowhere else. Answers are
 cached for ten minutes on the server; reload the page to see a status change
 sooner. A link to a Jira without a token, or a ticket Jira will not show you,

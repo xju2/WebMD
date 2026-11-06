@@ -37,7 +37,8 @@ import {
   transcriptForModel
 } from './transcripts.js';
 import { fetchGithubDescription, isGithubRepoName } from './github.js';
-import { createJiraClient } from './jira.js';
+import { createJiraClient, MAX_AI_TICKETS, ticketsForAi } from './jira.js';
+import { collectJiraTickets } from '../src/x-posts.js';
 import { fetchXPost, isXPostUrl } from './x.js';
 import { externalUrl, openInChrome, OpenUrlError } from './open-url.js';
 import { fetchRemoteImage } from './remote-images.js';
@@ -150,6 +151,19 @@ export async function createApp({
   // of the environment; they never leave this process.
   const sites = indicoSites(env);
   const jira = createJiraClient({ env, fetchImpl: jiraFetch });
+  // The tickets a note or selection links to, as text for the AI. Jira being
+  // down costs the answer that context, never the answer itself.
+  async function linkedTicketText(text) {
+    const urls = collectJiraTickets(text || '')
+      .slice(0, MAX_AI_TICKETS)
+      .map((ticket) => ticket.url);
+    if (!jira.configured || !urls.length) return '';
+    try {
+      return ticketsForAi(await jira.details(urls));
+    } catch {
+      return '';
+    }
+  }
 
   // Per-workspace layout settings from .webmd/settings.json, read on every
   // request so an edit to the file applies on the next workspace load.
@@ -1503,6 +1517,9 @@ export async function createApp({
       const document = req.body.path
         ? await workspace.loadFile(req.body.path)
         : { content: '' };
+      const ticketText = await linkedTicketText(
+        req.body.selectedText?.trim() || document.content
+      );
 
       await streamSse(
         res,
@@ -1514,6 +1531,7 @@ export async function createApp({
             path: req.body.path,
             documentText: document.content,
             history: req.body.history,
+            ticketText,
             env: aiEnv,
             fetchImpl: aiFetch
           })

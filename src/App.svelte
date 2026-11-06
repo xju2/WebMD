@@ -907,7 +907,12 @@
     noteLength: lastSaved.trim() ? lastSaved.length : 0,
     unsaved: unsavedWork,
     selectedText,
-    hiddenNotePath: !aiNotePath && selectedIsMarkdown ? selectedPath : ''
+    hiddenNotePath: !aiNotePath && selectedIsMarkdown ? selectedPath : '',
+    // Counted on the saved copy the server reads, like noteLength.
+    jiraTickets: jiraConfigured
+      ? collectJiraTickets(selectedText.trim() || (aiNotePath ? lastSaved : ''))
+          .length
+      : 0
   });
   $: saveView = saveStatusView({
     status,
@@ -1018,6 +1023,14 @@
     window.addEventListener('popstate', openNavigationState);
     document.addEventListener('click', interceptWebLinks);
     document.addEventListener('visibilitychange', refreshVisibleNews);
+    // No links asked: only learns whether a Jira token is set, without calling Jira.
+    requestJson('/api/jira/tickets', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"urls":[]}'
+    })
+      .then((result) => (jiraConfigured ??= result.configured))
+      .catch(() => {});
     await loadRoots();
   });
 
