@@ -4,6 +4,10 @@ const DEFAULT_OLLAMA_URL = 'http://127.0.0.1:11434';
 const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.6';
 const DEFAULT_OLLAMA_MODEL = 'llama3.2';
+const DEFAULT_ANTHROPIC_URL = 'https://api.anthropic.com/v1';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-5-5';
+// Claude requires a cap on the reply; this is well above any note edit or chat answer.
+const ANTHROPIC_MAX_TOKENS = 8192;
 const MAX_CONTEXT_CHARS = 12000;
 const MAX_PROVIDER_ERROR_CHARS = 400;
 const DEFAULT_EDIT_SYSTEM =
@@ -13,6 +17,51 @@ const DEFAULT_CHAT_SYSTEM =
 // Earlier turns sent back with each question, so a follow-up like "yes,
 // please" still knows what it answers.
 const MAX_HISTORY_MESSAGES = 10;
+
+// Models offered per provider, first is the default. The model in use is
+// always added, so an AI_MODEL set in the conf file stays selectable.
+const MODEL_CHOICES = {
+  anthropic: [
+    ['claude-haiku-5-5', 'Claude Haiku 5.5'],
+    ['claude-sonnet-5-5', 'Claude Sonnet 5.5'],
+    ['claude-opus-5-5', 'Claude Opus 5.5'],
+    ['claude-fable-5-1', 'Claude Fable 5.1']
+  ],
+  openai: [[DEFAULT_OPENAI_MODEL, DEFAULT_OPENAI_MODEL]],
+  ollama: [[DEFAULT_OLLAMA_MODEL, DEFAULT_OLLAMA_MODEL]]
+};
+
+/** The providers and models the Workspace Home switch offers, and the ones in use. */
+export function aiProviderChoices(env) {
+  const { provider, model } = aiConfig(env);
+  const models = Object.fromEntries(
+    Object.entries(MODEL_CHOICES).map(([id, list]) => [
+      id,
+      id === provider && !list.some(([value]) => value === model)
+        ? [...list, [model, model]]
+        : list
+    ])
+  );
+  return {
+    provider,
+    model,
+    models: Object.fromEntries(
+      Object.entries(models).map(([id, list]) => [
+        id,
+        list.map(([value, label]) => ({ value, label }))
+      ])
+    ),
+    providers: [
+      { id: 'openai', label: 'OpenAI', configured: Boolean(env.OPENAI_API_KEY) },
+      {
+        id: 'anthropic',
+        label: 'Claude',
+        configured: Boolean(env.ANTHROPIC_API_KEY)
+      },
+      { id: 'ollama', label: 'Ollama', configured: true }
+    ]
+  };
+}
 
 export async function* streamAiChat({
   prompt,
@@ -147,7 +196,12 @@ export function aiCost(model, { inputTokens, outputTokens } = {}, env = {}) {
 
 function aiConfig(env) {
   const provider = (
-    env.AI_PROVIDER || (env.OPENAI_API_KEY ? 'openai' : 'ollama')
+    env.AI_PROVIDER ||
+    (env.OPENAI_API_KEY
+      ? 'openai'
+      : env.ANTHROPIC_API_KEY
+        ? 'anthropic'
+        : 'ollama')
   ).toLowerCase();
 
   return {
@@ -156,9 +210,13 @@ function aiConfig(env) {
       env.AI_MODEL ||
       (provider === 'openai'
         ? env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL
-        : env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL),
+        : provider === 'anthropic'
+          ? env.ANTHROPIC_MODEL || DEFAULT_ANTHROPIC_MODEL
+          : env.OLLAMA_MODEL || DEFAULT_OLLAMA_MODEL),
     openaiApiKey: env.OPENAI_API_KEY,
     openaiBaseUrl: env.OPENAI_BASE_URL || DEFAULT_OPENAI_URL,
+    anthropicApiKey: env.ANTHROPIC_API_KEY,
+    anthropicBaseUrl: env.ANTHROPIC_BASE_URL || DEFAULT_ANTHROPIC_URL,
     ollamaBaseUrl: env.OLLAMA_BASE_URL || DEFAULT_OLLAMA_URL
   };
 }
@@ -283,16 +341,72 @@ async function* streamOpenAI(config, messages, fetchImpl, onTokens) {
   }
 }
 
+async function* streamAnthropic(config, messages, fetchImpl, onTokens) {
+  if (!config.anthropicApiKey) {
+    throw new WorkspaceError(
+      400,
+      'ANTHROPIC_API_KEY is required for AI_PROVIDER=anthropic. Set it in the environment or ~/.webmd.conf.'
+    );
+  }
+
+  // Claude takes the system prompt apart from the turns.
+  const system = messages
+    .filter((message) => message.role === 'developer')
+    .map((message) => message.content)
+    .join('\n\n');
+  const response = await requestProvider(
+    fetchImpl,
+    `${config.anthropicBaseUrl}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        'x-api-key': config.anthropicApiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: config.model,
+        max_tokens: ANTHROPIC_MAX_TOKENS,
+        system,
+        messages: messages.filter((message) => message.role !== 'developer'),
+        stream: true
+      })
+    },
+    config
+  );
+
+  await assertProviderResponse(response, config);
+  let inputTokens;
+  for await (const event of parseSse(response.body)) {
+    if (event.type === 'error') {
+      throw new WorkspaceError(
+        502,
+        `${providerLabel(config)} failed: ${event.error?.message || 'stream error'}`
+      );
+    }
+    if (event.type === 'message_start')
+      inputTokens = event.message?.usage?.input_tokens;
+    if (event.type === 'content_block_delta' && event.delta?.text) {
+      yield event.delta.text;
+    }
+    if (event.type === 'message_delta' && event.usage)
+      onTokens?.({ inputTokens, outputTokens: event.usage.output_tokens });
+  }
+}
+
 function streamAiProvider(config, messages, fetchImpl, onTokens) {
   if (config.provider === 'openai') {
     return streamOpenAI(config, messages, fetchImpl, onTokens);
+  }
+  if (config.provider === 'anthropic') {
+    return streamAnthropic(config, messages, fetchImpl, onTokens);
   }
   if (config.provider === 'ollama') {
     return streamOllama(config, messages, fetchImpl, onTokens);
   }
   throw new WorkspaceError(
     400,
-    `Unsupported AI_PROVIDER: "${config.provider}". Use "openai" or "ollama".`
+    `Unsupported AI_PROVIDER: "${config.provider}". Use "openai", "anthropic" or "ollama".`
   );
 }
 
@@ -343,7 +457,7 @@ async function requestProvider(fetchImpl, url, options, config) {
       `Could not reach ${providerLabel(config)}: ${error.message}. ${
         config.provider === 'ollama'
           ? 'Is Ollama running?'
-          : 'Check OPENAI_BASE_URL and that the host is reachable.'
+          : `Check ${config.provider === 'anthropic' ? 'ANTHROPIC_BASE_URL' : 'OPENAI_BASE_URL'} and that the host is reachable.`
       }`
     );
   }
@@ -377,7 +491,11 @@ async function assertProviderResponse(response, config) {
 
 function providerLabel(config) {
   const base =
-    config.provider === 'openai' ? config.openaiBaseUrl : config.ollamaBaseUrl;
+    config.provider === 'openai'
+      ? config.openaiBaseUrl
+      : config.provider === 'anthropic'
+        ? config.anthropicBaseUrl
+        : config.ollamaBaseUrl;
   return `AI provider ${safeUrl(base)} (model ${config.model})`;
 }
 
@@ -394,15 +512,20 @@ function safeUrl(value) {
 }
 
 function providerHint(status, config) {
+  const anthropic = config.provider === 'anthropic';
   const openai = config.provider === 'openai';
 
   if (status === 401 || status === 403) {
-    return openai
+    return anthropic
+      ? 'The API key was rejected. Check ANTHROPIC_API_KEY in the environment or ~/.webmd.conf, and note that a duplicate entry there overrides the earlier one.'
+      : openai
       ? 'The API key was rejected. Check OPENAI_API_KEY in the environment or ~/.webmd.conf, and note that a duplicate entry there overrides the earlier one.'
       : 'The provider rejected the request.';
   }
   if (status === 404) {
-    return openai
+    return anthropic
+      ? `Check that AI_MODEL "${config.model}" is a Claude model your key can use.`
+      : openai
       ? `Check that AI_MODEL "${config.model}" exists on this provider and that OPENAI_BASE_URL points at the API root.`
       : `Check that AI_MODEL "${config.model}" is installed: ollama pull ${config.model}.`;
   }

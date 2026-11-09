@@ -46,10 +46,27 @@ export async function readWorkspaceSettings(workspace, env = {}) {
   };
 }
 
+/** The AI provider and model picked on Workspace Home, if any. */
+export async function readAiChoice(workspace) {
+  const { values } = await readSettingsFile(workspace);
+  return typeof values.aiProvider === 'string'
+    ? { provider: values.aiProvider, model: values.aiModel }
+    : null;
+}
+
+export async function writeAiChoice(workspace, provider, model) {
+  await writeSettingsKeys(workspace, { aiProvider: provider, aiModel: model });
+}
+
 /** Saves the workspace's zone, keeping every other key of the file. */
 export async function writeMeetingTimeZone(workspace, zone) {
   const resolved = validZone(zone);
   if (!resolved) throw new WorkspaceError(400, 'Not an IANA time zone.');
+  await writeSettingsKeys(workspace, { meetingTimeZone: resolved });
+  return resolved;
+}
+
+async function writeSettingsKeys(workspace, keys) {
   const { values } = await readSettingsFile(workspace);
   const absolute = await workspace.resolvePath(SETTINGS_CONFIG_PATH, {
     forWrite: true
@@ -57,9 +74,8 @@ export async function writeMeetingTimeZone(workspace, zone) {
   await fs.mkdir(absolute.replace(/\/[^/]*$/, ''), { recursive: true });
   await fs.writeFile(
     absolute,
-    `${JSON.stringify({ ...values, meetingTimeZone: resolved }, null, 2)}\n`
+    `${JSON.stringify({ ...values, ...keys }, null, 2)}\n`
   );
-  return resolved;
 }
 
 function validZone(value) {

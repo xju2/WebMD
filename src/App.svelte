@@ -1794,6 +1794,33 @@
     settingsWarning = settings.warning ?? '';
   }
 
+  // The AI provider and model picked on Workspace Home; null until loaded.
+  let aiChoices = null;
+
+  async function loadAiChoices() {
+    try {
+      aiChoices = await requestJson('/api/ai/provider');
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  /** Saves the pick; a new provider starts on its first, default model. */
+  async function changeAiChoice(provider, model) {
+    try {
+      aiChoices = await requestJson('/api/ai/provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          model: model ?? aiChoices.models[provider][0].value
+        })
+      });
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
   const timeZoneChoices = Intl.supportedValuesOf?.('timeZone') ?? [];
 
   /** Saves the workspace zone; every "today" in the app follows it. */
@@ -1822,6 +1849,7 @@
       await loadSettings(selectedRoot);
       editedPaths = readEditedFiles(selectedRoot);
       loadAiPresets(selectedRoot);
+      loadAiChoices();
       await loadTree(selectedRoot);
       await loadReferences(selectedRoot);
       reconcileDailyNoteFolder();
@@ -7556,6 +7584,35 @@
                   </select>
                   <small>{todayText} · {zoneName(meetingTimeZone)}</small>
                 </label>
+                {#if aiChoices}
+                  <label class="home-zone">
+                    AI
+                    <select
+                      value={aiChoices.provider}
+                      on:change={(event) =>
+                        changeAiChoice(event.currentTarget.value)}
+                    >
+                      {#each aiChoices.providers as item (item.id)}
+                        <option value={item.id} disabled={!item.configured}>
+                          {item.label}{item.configured ? '' : ' (no API key)'}
+                        </option>
+                      {/each}
+                    </select>
+                    <select
+                      aria-label="AI model"
+                      value={aiChoices.model}
+                      on:change={(event) =>
+                        changeAiChoice(
+                          aiChoices.provider,
+                          event.currentTarget.value
+                        )}
+                    >
+                      {#each aiChoices.models[aiChoices.provider] as item (item.value)}
+                        <option value={item.value}>{item.label}</option>
+                      {/each}
+                    </select>
+                  </label>
+                {/if}
               </div>
               <div class="home-counts" aria-label="Workspace file counts">
                 <strong>{overview.markdownCount}</strong>

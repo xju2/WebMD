@@ -498,3 +498,39 @@ test('linked Jira ticket text goes between the context and the request', async (
     /See CRIC-454.*Jira tickets linked above:\\nCRIC-454: Add Inference.*User request/
   );
 });
+
+test('streams Claude Messages text deltas, with the system prompt split out', async () => {
+  const fetches = [];
+  const usages = [];
+  const text = await collect(
+    streamAiChat({
+      prompt: 'Summarize',
+      env: { AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'secret' },
+      fetchImpl: async (url, options) => {
+        fetches.push({ url, headers: options.headers, body: JSON.parse(options.body) });
+        return streamResponse(
+          'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":7}}}\n\n' +
+            'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}\n\n' +
+            'event: message_delta\ndata: {"type":"message_delta","usage":{"output_tokens":3}}\n\n'
+        );
+      },
+      onTokens: (tokens) => usages.push(tokens)
+    })
+  );
+
+  assert.equal(text, 'Hi');
+  assert.equal(fetches[0].url, 'https://api.anthropic.com/v1/messages');
+  assert.equal(fetches[0].headers['x-api-key'], 'secret');
+  assert.equal(fetches[0].body.model, 'claude-haiku-5-5');
+  assert.ok(fetches[0].body.system);
+  assert.ok(fetches[0].body.messages.every((m) => m.role !== 'developer'));
+});
+
+test('the provider switch lists Claude models and needs the key', async () => {
+  const { aiProviderChoices } = await import('../server/ai.js');
+  const choices = aiProviderChoices({ ANTHROPIC_API_KEY: 'k' });
+  assert.equal(choices.provider, 'anthropic');
+  assert.equal(choices.model, 'claude-haiku-5-5');
+  assert.equal(choices.models.anthropic.length, 4);
+  assert.equal(choices.providers.find((p) => p.id === 'openai').configured, false);
+});

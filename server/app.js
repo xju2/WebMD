@@ -3,7 +3,12 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runAiCompletion, streamAiChat, streamAiEdit } from './ai.js';
+import {
+  aiProviderChoices,
+  runAiCompletion,
+  streamAiChat,
+  streamAiEdit
+} from './ai.js';
 import { fetchArxivMetadata, fetchArxivPdf, isArxivId } from './arxiv.js';
 import {
   buildReferenceSearchMessages,
@@ -115,7 +120,12 @@ import {
 } from './project-log.js';
 import { agendaDays } from '../src/conference-plan.js';
 import { shortestWikiTarget } from '../src/wiki-target.js';
-import { readWorkspaceSettings, writeMeetingTimeZone } from './settings.js';
+import {
+  readAiChoice,
+  readWorkspaceSettings,
+  writeAiChoice,
+  writeMeetingTimeZone
+} from './settings.js';
 import { createWorkspace, WorkspaceError } from './workspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -124,7 +134,7 @@ const distDir = path.resolve(__dirname, '..', 'dist');
 export async function createApp({
   workspaceRoot,
   workspaceRoots,
-  aiEnv = process.env,
+  aiEnv: baseAiEnv = process.env,
   aiFetch = fetch,
   arxivFetch = fetch,
   citationFetch = fetch,
@@ -143,6 +153,18 @@ export async function createApp({
 }) {
   const roots = workspaceRoots?.length ? workspaceRoots : [workspaceRoot];
   const workspaces = await createWorkspaceRegistry(roots);
+  // The provider and model picked on Workspace Home, kept in the first
+  // workspace's settings.json. They sit over the conf file's AI_PROVIDER and
+  // AI_MODEL, so every AI call below reads them through this view of the env.
+  let aiChoice = await readAiChoice(workspaces.get('0')).catch(() => null);
+  const aiEnv = new Proxy(baseAiEnv, {
+    get: (target, key) =>
+      aiChoice && key === 'AI_PROVIDER'
+        ? aiChoice.provider
+        : aiChoice && key === 'AI_MODEL'
+          ? aiChoice.model
+          : target[key]
+  });
   const app = express();
 
   app.use(express.json({ limit: '100mb' }));
@@ -186,6 +208,27 @@ export async function createApp({
           req.body?.timeZone
         )
       });
+    })
+  );
+
+  app.get('/api/ai/provider', (req, res) => {
+    res.json(aiProviderChoices(aiEnv));
+  });
+
+  app.post(
+    '/api/ai/provider',
+    asyncHandler(async (req, res) => {
+      const { provider, model } = req.body ?? {};
+      const choice = aiProviderChoices(aiEnv).providers.find(
+        (item) => item.id === provider
+      );
+      if (!choice?.configured)
+        throw new WorkspaceError(400, `${provider} has no API key set.`);
+      if (typeof model !== 'string' || !/^[\w.:/-]{1,100}$/.test(model))
+        throw new WorkspaceError(400, 'Not a model name.');
+      await writeAiChoice(workspaces.get('0'), provider, model);
+      aiChoice = { provider, model };
+      res.json(aiProviderChoices(aiEnv));
     })
   );
 

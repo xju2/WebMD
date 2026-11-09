@@ -155,9 +155,15 @@ Every key is optional.
 
 - `OPENAI_API_KEY`: turns on the AI features using OpenAI. It never reaches
   the browser.
-- `AI_PROVIDER`: `openai` or `ollama`. Defaults to `openai` when a key is set,
-  `ollama` otherwise.
-- `AI_MODEL`: defaults to `gpt-5.6` for OpenAI and `llama3.2` for Ollama.
+- `ANTHROPIC_API_KEY`: turns on Claude (`ANTHROPIC_BASE_URL` and
+  `ANTHROPIC_MODEL` are optional).
+- `AI_PROVIDER`: `openai`, `anthropic` or `ollama`. Defaults to `openai` when
+  an OpenAI key is set, then `anthropic`, then `ollama`.
+- `AI_MODEL`: defaults to `gpt-5.6` for OpenAI, `claude-haiku-5-5` for Claude
+  and `llama3.2` for Ollama.
+- The AI selector on Workspace Home picks the provider and model at run time,
+  saved as `aiProvider` and `aiModel` in the first workspace's
+  `.webmd/settings.json`. It overrides `AI_PROVIDER` and `AI_MODEL`.
 - `OPENAI_BASE_URL`, `OLLAMA_BASE_URL`: point at another OpenAI-compatible
   server or Ollama instance.
 
