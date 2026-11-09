@@ -212,14 +212,14 @@ export async function createApp({
   );
 
   app.get('/api/ai/provider', (req, res) => {
-    res.json(aiProviderChoices(aiEnv));
+    res.json(aiProviderChoices(aiEnv, baseAiEnv));
   });
 
   app.post(
     '/api/ai/provider',
     asyncHandler(async (req, res) => {
       const { provider, model } = req.body ?? {};
-      const choice = aiProviderChoices(aiEnv).providers.find(
+      const choice = aiProviderChoices(aiEnv, baseAiEnv).providers.find(
         (item) => item.id === provider
       );
       if (!choice?.configured)
@@ -228,7 +228,7 @@ export async function createApp({
         throw new WorkspaceError(400, 'Not a model name.');
       await writeAiChoice(workspaces.get('0'), provider, model);
       aiChoice = { provider, model };
-      res.json(aiProviderChoices(aiEnv));
+      res.json(aiProviderChoices(aiEnv, baseAiEnv));
     })
   );
 

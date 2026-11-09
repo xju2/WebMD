@@ -32,15 +32,25 @@ const MODEL_CHOICES = {
 };
 
 /** The providers and models the Workspace Home switch offers, and the ones in use. */
-export function aiProviderChoices(env) {
+export function aiProviderChoices(env, baseEnv = env) {
   const { provider, model } = aiConfig(env);
+  // What the conf file configures stays first in its provider's list, so
+  // switching back lands on it (a gateway's AI_MODEL is no gpt-5.6).
+  const base = aiConfig(baseEnv);
   const models = Object.fromEntries(
-    Object.entries(MODEL_CHOICES).map(([id, list]) => [
-      id,
-      id === provider && !list.some(([value]) => value === model)
-        ? [...list, [model, model]]
-        : list
-    ])
+    Object.entries(MODEL_CHOICES).map(([id, list]) => {
+      const extra = [
+        ...(id === base.provider ? [base.model] : []),
+        ...(id === provider ? [model] : [])
+      ];
+      const merged = [...extra.map((value) => [value, value]), ...list];
+      return [
+        id,
+        merged.filter(
+          ([value], index) => merged.findIndex(([v]) => v === value) === index
+        )
+      ];
+    })
   );
   return {
     provider,
@@ -177,6 +187,8 @@ const PRICES_PER_MTOK = {
   'claude-sonnet-5-5': [2, 10],
   'claude-sonnet-5': [2, 10],
   'claude-sonnet-4-6': [3, 15],
+  // Up to 100K-token prompts; beyond that it is $0.50 / $2.50.
+  'claude-haiku-5-5': [0.1, 0.5],
   'claude-haiku-4-5': [1, 5]
 };
 

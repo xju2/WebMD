@@ -534,3 +534,13 @@ test('the provider switch lists Claude models and needs the key', async () => {
   assert.equal(choices.models.anthropic.length, 4);
   assert.equal(choices.providers.find((p) => p.id === 'openai').configured, false);
 });
+
+test('the conf file model stays first for its provider after a switch', async () => {
+  const { aiProviderChoices, aiCost } = await import('../server/ai.js');
+  const base = { AI_PROVIDER: 'openai', AI_MODEL: 'claude-opus-4-8', OPENAI_API_KEY: 'k' };
+  const switched = { ...base, AI_PROVIDER: 'anthropic', AI_MODEL: 'claude-haiku-5-5' };
+  const choices = aiProviderChoices(switched, base);
+  assert.equal(choices.models.openai[0].value, 'claude-opus-4-8');
+  assert.equal(choices.models.anthropic[0].value, 'claude-haiku-5-5');
+  assert.equal(aiCost('claude-haiku-5-5', { inputTokens: 1e6, outputTokens: 1e6 }), 0.6);
+});
