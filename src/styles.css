@@ -2205,6 +2205,15 @@ input[type='radio'] {
   color: var(--ink-muted);
 }
 
+.home-warning {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid #d9a441;
+  border-radius: 6px;
+  background: rgba(217, 164, 65, 0.15);
+  overflow-wrap: anywhere;
+}
+
 .home-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

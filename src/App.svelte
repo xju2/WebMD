@@ -302,6 +302,8 @@
   let overviewStatus = 'Loading workspace...';
   let dailyQuote = '';
   let dailyQuoteKey = '';
+  // Why the AI failed on its last call from Workspace Home; '' while it works.
+  let aiWarning = '';
   let graphData = { nodes: [], edges: [], unresolved: 0, broken: [] };
   let bibliography = [];
   let brokenLinksOpen = false;
@@ -1816,6 +1818,7 @@
           model: model ?? aiChoices.models[provider][0].value
         })
       });
+      loadDailyQuote(); // re-checks the AI with the new pick
     } catch (err) {
       error = err.message;
     }
@@ -1980,6 +1983,7 @@
     loadAiPresets(root);
     dailyQuote = '';
     dailyQuoteKey = '';
+    aiWarning = '';
     await loadSettings(root);
     await loadTree();
     await loadReferences(root);
@@ -2495,10 +2499,13 @@
       if (root !== selectedRoot) return;
       dailyQuote = reply.quote || '';
       dailyQuoteKey = key;
-    } catch {
-      // No model configured is the common case here, and the dashboard reads
-      // fine without a quote, so this stays silent.
+      aiWarning = '';
+    } catch (err) {
+      // The dashboard reads fine without a quote, but a quiet failure hides a
+      // broken key or model, so Workspace Home says so.
+      if (root !== selectedRoot) return;
       dailyQuote = '';
+      aiWarning = err.message;
     }
   }
 
@@ -7624,6 +7631,12 @@
 
             {#if dailyQuote}
               <blockquote class="home-quote">{dailyQuote}</blockquote>
+            {/if}
+
+            {#if aiWarning}
+              <p class="home-warning" role="alert">
+                ⚠ The AI is not working: {aiWarning}
+              </p>
             {/if}
 
             {#if overviewStatus}
