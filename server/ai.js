@@ -362,8 +362,10 @@ async function* streamAnthropic(config, messages, fetchImpl, onTokens) {
   }
 
   // Claude takes the system prompt apart from the turns.
+  const isSystem = (message) =>
+    message.role === 'developer' || message.role === 'system';
   const system = messages
-    .filter((message) => message.role === 'developer')
+    .filter(isSystem)
     .map((message) => message.content)
     .join('\n\n');
   const response = await requestProvider(
@@ -380,7 +382,7 @@ async function* streamAnthropic(config, messages, fetchImpl, onTokens) {
         model: config.model,
         max_tokens: ANTHROPIC_MAX_TOKENS,
         system,
-        messages: messages.filter((message) => message.role !== 'developer'),
+        messages: messages.filter((message) => !isSystem(message)),
         stream: true
       })
     },

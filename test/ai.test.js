@@ -544,3 +544,23 @@ test('the conf file model stays first for its provider after a switch', async ()
   assert.equal(choices.models.anthropic[0].value, 'claude-haiku-5-5');
   assert.equal(aiCost('claude-haiku-5-5', { inputTokens: 1e6, outputTokens: 1e6 }), 0.6);
 });
+
+test('Claude gets system-role prompts as the top-level system field', async () => {
+  const { runAiCompletion } = await import('../server/ai.js');
+  let body;
+  await runAiCompletion({
+    messages: [
+      { role: 'system', content: 'Be brief.' },
+      { role: 'user', content: 'Hi' }
+    ],
+    env: { AI_PROVIDER: 'anthropic', ANTHROPIC_API_KEY: 'k' },
+    fetchImpl: async (url, options) => {
+      body = JSON.parse(options.body);
+      return streamResponse(
+        'data: {"type":"content_block_delta","delta":{"text":"ok"}}\n\n'
+      );
+    }
+  });
+  assert.equal(body.system, 'Be brief.');
+  assert.deepEqual(body.messages, [{ role: 'user', content: 'Hi' }]);
+});
