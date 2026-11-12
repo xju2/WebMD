@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.webmd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/npm</string>
+    <string>run</string>
+    <string>dev</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/xju/code/WebMD</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd's default PATH has no Homebrew; dev.mjs spawns npm -->
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/xju/Library/Logs/webmd/dev.log</string>
+  <key>StandardErrorPath</key><string>/Users/xju/Library/Logs/webmd/dev.log</string>
+</dict>
+</plist>
